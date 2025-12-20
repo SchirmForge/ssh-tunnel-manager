@@ -1,0 +1,24 @@
+# Rust build
+/target
+**/*.rs.bk
+
+# IDE/editor
+/.idea/
+/.vscode/
+/*.code-workspace
+/.claude
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+
+# Local env/config
+.env
+.env.*
+/config-files
+
+# Keep the GUI crate local until we have a working version
+/crates/gui/
+
+# some other files I want local only
+/scripts

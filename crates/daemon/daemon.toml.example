@@ -1,0 +1,69 @@
+# SSH Tunnel Manager - Daemon Configuration
+# This file should be placed at: ~/.config/ssh-tunnel-manager/daemon.toml
+
+# Listener mode determines how the daemon accepts connections
+# Options: "unix-socket", "tcp-http", "tcp-https"
+#
+# - unix-socket: Local-only via Unix domain socket (default, no TLS needed)
+# - tcp-http: TCP/HTTP on localhost (for testing, NOT SECURE for network use)
+# - tcp-https: TCP/HTTPS with TLS (required for network access)
+listener_mode = "unix-socket"
+
+# Bind address for TCP modes (ignored in unix-socket mode)
+# Examples:
+#   "127.0.0.1:3443" - localhost only (safe for tcp-http)
+#   "0.0.0.0:3443" - all interfaces (REQUIRES tcp-https mode!)
+#
+# SECURITY: Non-loopback addresses (anything other than 127.x.x.x or localhost)
+# are ONLY allowed with tcp-https mode. tcp-http mode is restricted to loopback
+# addresses only to prevent unencrypted network traffic.
+bind_address = "127.0.0.1:3443"
+
+# TLS certificate paths (for tcp-https mode)
+# These will be auto-generated on first run if they don't exist
+tls_cert_path = "/home/user/.config/ssh-tunnel-manager/server.crt"
+tls_key_path = "/home/user/.config/ssh-tunnel-manager/server.key"
+
+# Authentication token file path
+# The token will be auto-generated on first run if it doesn't exist
+# Clients must provide this token to connect to the daemon
+auth_token_path = "/home/user/.config/ssh-tunnel-manager/daemon.token"
+
+# Require authentication
+# Default: true (for security)
+# - true: Clients must provide valid token (RECOMMENDED, default)
+# - false: No authentication required (NOT RECOMMENDED, use only for testing)
+#
+# Note: Unix socket mode can optionally disable this for local-only use,
+# but TCP modes should always use authentication.
+require_auth = true
+
+# Enable group access to Unix socket and runtime directory
+# Default: false (restrictive single-user permissions: 0700/0600)
+# - false: Directory permissions 0700, socket permissions 0600 (owner only)
+# - true: Directory permissions 0770, socket permissions 0660 (owner + group)
+#
+# Set to true for system daemons where multiple users need access via a shared group.
+# Requires the daemon to run with appropriate user/group (e.g., tunneld:tunneld)
+# and users must be members of that group to connect.
+group_access = false
+
+# ============================================================================
+# Example configurations for different use cases:
+# ============================================================================
+
+# LOCAL USE ONLY (single machine):
+# listener_mode = "unix-socket"
+# No other configuration needed
+
+# TESTING (localhost HTTP):
+# listener_mode = "tcp-http"
+# bind_address = "127.0.0.1:3000"
+# require_auth = true
+# WARNING: No TLS, only use on localhost! Non-loopback addresses are blocked.
+
+# NETWORK USE (LAN/remote access):
+# listener_mode = "tcp-https"
+# bind_address = "0.0.0.0:3443"
+# require_auth = true
+# TLS certificate and token will be auto-generated
