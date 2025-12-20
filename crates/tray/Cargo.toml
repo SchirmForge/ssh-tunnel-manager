@@ -1,10 +1,10 @@
 [package]
 name = "ssh-tunnel-tray"
-version = "0.1.4"
-edition = "2021"
-authors = ["SSH Tunnel Manager Contributors"]
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
 description = "System tray extension for SSH Tunnel Manager"
-license = "MIT OR Apache-2.0"
+license.workspace = true
 
 [dependencies]
 # Workspace dependencies

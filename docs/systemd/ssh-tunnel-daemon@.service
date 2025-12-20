@@ -11,7 +11,8 @@ ExecStart=/usr/local/bin/ssh-tunnel-daemon
 Environment=RUST_LOG=info
 Environment=XDG_RUNTIME_DIR=/run/ssh-tunnel-manager
 RuntimeDirectory=ssh-tunnel-manager
-RuntimeDirectoryMode=0750
+# Set to 0770 to allow group write access (required when group_access=true in daemon.toml)
+RuntimeDirectoryMode=0770
 Restart=on-failure
 RestartSec=3
 # Allow binding to privileged ports while dropping other caps.

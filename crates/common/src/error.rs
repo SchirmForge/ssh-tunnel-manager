@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2025 SSH Tunnel Manager Contributors
+
 // Error types for SSH Tunnel Manager
 
 use thiserror::Error;

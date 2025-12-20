@@ -1,7 +1,11 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2025 SSH Tunnel Manager Contributors
+
 // SSH Tunnel Manager - Daemon Config Module
 // Handles daemon configuration (listener mode, TLS, auth, etc.)
 // Profile management now in ssh-tunnel-common::profile_manager
 
+use std::ffi::OsStr;
 use std::fs;
 use std::path::PathBuf;
 
@@ -16,7 +20,13 @@ pub fn runtime_dir() -> Result<PathBuf> {
 
 /// Get the socket path for the daemon
 pub fn socket_path() -> Result<PathBuf> {
-    Ok(runtime_dir()?.join("ssh-tunnel-manager.sock"))
+    let runtime_dir = runtime_dir()?;
+    let socket_dir = if runtime_dir.file_name() == Some(OsStr::new("ssh-tunnel-manager")) {
+        runtime_dir
+    } else {
+        runtime_dir.join("ssh-tunnel-manager")
+    };
+    Ok(socket_dir.join("ssh-tunnel-manager.sock"))
 }
 
 /// Listener mode for the daemon
@@ -316,6 +326,28 @@ mod tests {
         // Verify that require_auth defaults to true for security
         assert_eq!(config.require_auth, true);
     }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_cli_config_snippet_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let snippet_path = temp_dir.path().join("cli-config.snippet");
+
+        // Write a snippet file
+        let content = "# Test config\nconnection_mode = \"unix-socket\"\n";
+        fs::write(&snippet_path, content).unwrap();
+
+        // Set permissions (same as in write_cli_config_snippet)
+        let permissions = fs::Permissions::from_mode(0o600);
+        fs::set_permissions(&snippet_path, permissions).unwrap();
+
+        // Verify permissions are 0600
+        let metadata = fs::metadata(&snippet_path).unwrap();
+        assert_eq!(metadata.permissions().mode() & 0o777, 0o600);
+    }
 }
 
 /// Write CLI config snippet to help users configure their CLI
@@ -391,6 +423,15 @@ pub fn write_cli_config_snippet(
     // Write the snippet file
     fs::write(&snippet_path, config_content)
         .context("Failed to write CLI config snippet")?;
+
+    // Set restrictive permissions on snippet file (contains auth token and TLS fingerprint)
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let permissions = fs::Permissions::from_mode(0o600);
+        fs::set_permissions(&snippet_path, permissions)
+            .context("Failed to set CLI config snippet permissions")?;
+    }
 
     info!("");
     info!("═══════════════════════════════════════════════════════════");

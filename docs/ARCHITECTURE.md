@@ -311,7 +311,7 @@ tags = ["database", "production"]
 
 ### REST API (daemon)
 
-Base: `http+unix:///run/user/{uid}/ssh-tunnel-manager.sock` (default). TCP modes are for explicit dev/test (HTTP) or remote access (HTTPS only).
+Base: `http+unix:///run/user/{uid}/ssh-tunnel-manager/ssh-tunnel-manager.sock` (default). TCP modes are for explicit dev/test (HTTP) or remote access (HTTPS only).
 
 **Client connection policy**
 - If target host is `localhost`/loopback → force Unix socket.

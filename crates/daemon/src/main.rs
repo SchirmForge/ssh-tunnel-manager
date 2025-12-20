@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2025 SSH Tunnel Manager Contributors
+
 // SSH Tunnel Manager - Daemon
 // Core service for managing SSH tunnels
 
@@ -128,7 +131,7 @@ async fn main() -> Result<()> {
     // Start listener based on configured mode
     match daemon_config.listener_mode {
         ListenerMode::UnixSocket => {
-            serve_unix_socket(app, shutdown_manager.clone(), shutdown_tx).await?;
+            serve_unix_socket(app, &daemon_config, shutdown_manager.clone(), shutdown_tx).await?;
         }
         ListenerMode::TcpHttp => {
             serve_tcp_http(app, &daemon_config.bind_address, shutdown_manager.clone(), shutdown_tx)
@@ -154,12 +157,10 @@ async fn main() -> Result<()> {
 /// Serve on Unix domain socket (local-only, no TLS)
 async fn serve_unix_socket(
     app: axum::Router,
+    daemon_config: &DaemonConfig,
     tunnel_manager: TunnelManager,
     shutdown_tx: tokio::sync::broadcast::Sender<()>,
 ) -> Result<()> {
-    // Load config to check group_access setting
-    let daemon_config = DaemonConfig::load()?;
-
     // Get socket path
     let socket_path = config::socket_path()?;
 

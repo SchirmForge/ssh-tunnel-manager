@@ -155,7 +155,7 @@ cargo run --release --bin ssh-tunnel -- start remote-tunnel
 ### Check daemon is running
 ```bash
 # UnixSocket mode:
-ls -la $XDG_RUNTIME_DIR/ssh-tunnel-manager.sock
+ls -la $XDG_RUNTIME_DIR/ssh-tunnel-manager/ssh-tunnel-manager.sock
 
 # TCP modes:
 netstat -tlnp | grep 3443
@@ -177,7 +177,7 @@ ls -la ~/.config/ssh-tunnel-manager/
 ### Test API directly with curl
 ```bash
 # UnixSocket (requires curl with Unix socket support):
-curl --unix-socket $XDG_RUNTIME_DIR/ssh-tunnel-manager.sock http://daemon/api/health
+curl --unix-socket $XDG_RUNTIME_DIR/ssh-tunnel-manager/ssh-tunnel-manager.sock http://daemon/api/health
 
 # HTTP:
 curl http://127.0.0.1:3443/api/health
@@ -195,7 +195,7 @@ curl -k -H "X-Tunnel-Token: your-token-here" https://127.0.0.1:3443/api/health
 ## Common Issues & Solutions
 
 ### "Failed to bind to socket"
-- Socket file already exists → Remove `$XDG_RUNTIME_DIR/ssh-tunnel-manager.sock`
+- Socket file already exists → Remove `$XDG_RUNTIME_DIR/ssh-tunnel-manager/ssh-tunnel-manager.sock`
 - Daemon already running → Kill existing daemon process
 
 ### "Failed to bind to 0.0.0.0:3443"

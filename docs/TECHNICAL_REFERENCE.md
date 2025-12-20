@@ -123,7 +123,7 @@ Suggested name: `TECHNICAL_REFERENCE.md`. Purpose: internal architecture map of 
   - Auth token: `~/.config/ssh-tunnel-manager/daemon.token`.
   - Known hosts: `~/.config/ssh-tunnel-manager/known_hosts` (custom), can use system one manually.
   - PID file: `$XDG_RUNTIME_DIR/ssh-tunnel-manager/daemon.pid`.
-  - Unix socket: `$XDG_RUNTIME_DIR/ssh-tunnel-manager.sock`.
+  - Unix socket: `$XDG_RUNTIME_DIR/ssh-tunnel-manager/ssh-tunnel-manager.sock`.
 
 ## API Description (daemon HTTP/SSE)
 - Authentication: optional X-Tunnel-Token header when `require_auth` is true; enforced via axum middleware.

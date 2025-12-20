@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2025 SSH Tunnel Manager Contributors
+
 // Build script to capture build timestamp and other metadata
 
 use std::process::Command;

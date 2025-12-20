@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2025 SSH Tunnel Manager Contributors
+
 // Permissions and security hardening for daemon files and directories
 
 use anyhow::{Context, Result};

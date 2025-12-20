@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2025 SSH Tunnel Manager Contributors
+
 // SSH Tunnel Manager - System Tray Extension
 // Provides system tray icon with quick access to tunnel management
 

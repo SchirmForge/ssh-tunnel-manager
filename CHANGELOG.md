@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - Config files: `daemon.toml` set to 0600 (owner read/write only)
     - Auth token: `daemon.token` set to 0600
     - TLS files: Certificate and key files set to 0600
+    - CLI config snippet: `cli-config.snippet` set to 0600 (contains auth token and TLS fingerprint)
     - Runtime directory: 0700 by default (owner only)
     - Unix socket: 0600 by default (owner only)
   - **Group access mode**: Optional `group_access` config for multi-user system daemons
@@ -41,13 +42,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - **Daemon Configuration**: Added `group_access: bool` field with default `false`
 - **Daemon Startup**: Umask set to 0077 before any file creation
-- **Unix Socket Creation**: Permissions set immediately after binding
+- **Unix Socket Creation**: Permissions set immediately after binding, uses already-loaded config instead of reloading
 - **TLS Certificate Generation**: Moved before fingerprint calculation in HTTPS mode
 - **Config File Saving**: Sets 0600 permissions after writing `daemon.toml`
+- **CLI Config Snippet**: Sets 0600 permissions after writing (contains auth token and TLS fingerprint)
 
 ### Technical Details
 - New module: `crates/daemon/src/permissions.rs`
-- 8 security validation unit tests all passing
+- 9 security validation unit tests all passing (8 config validation + 1 CLI snippet permissions)
 - Compatible with systemd service `RuntimeDirectoryMode=0750`
 - Umask: 0077 (rwx------)
 - Default permissions: directories 0700, files/sockets 0600

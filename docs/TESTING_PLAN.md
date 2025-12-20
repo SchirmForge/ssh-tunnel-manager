@@ -24,7 +24,7 @@ rm -f ~/.config/ssh-tunnel-manager/cli.toml
 
 **Tests**:
 - [ ] 1.1: Start daemon without config (should use defaults)
-- [ ] 1.2: Verify daemon listens on Unix socket at `$XDG_RUNTIME_DIR/ssh-tunnel-manager.sock`
+- [ ] 1.2: Verify daemon listens on Unix socket at `$XDG_RUNTIME_DIR/ssh-tunnel-manager/ssh-tunnel-manager.sock`
 - [ ] 1.3: CLI can connect without any configuration
 - [ ] 1.4: Add a tunnel profile with `ssh-tunnel add`
 - [ ] 1.5: Start a tunnel with `ssh-tunnel start <name>`
@@ -283,7 +283,7 @@ openssl x509 -in ~/.config/ssh-tunnel-manager/server.crt -text -noout
 ```bash
 # Clean state before each test suite
 rm -rf ~/.config/ssh-tunnel-manager/
-rm -f $XDG_RUNTIME_DIR/ssh-tunnel-manager.sock
+rm -f $XDG_RUNTIME_DIR/ssh-tunnel-manager/ssh-tunnel-manager.sock
 
 # Build latest code
 cargo build --release
@@ -310,7 +310,7 @@ echo "=== Quick Smoke Test ==="
 
 # Clean state
 rm -rf ~/.config/ssh-tunnel-manager/
-rm -f $XDG_RUNTIME_DIR/ssh-tunnel-manager.sock
+rm -f $XDG_RUNTIME_DIR/ssh-tunnel-manager/ssh-tunnel-manager.sock
 
 # Test 1: UnixSocket mode (default)
 echo "Testing UnixSocket mode..."
@@ -319,7 +319,7 @@ DAEMON_PID=$!
 sleep 2
 
 # Verify socket exists
-if [ -S "$XDG_RUNTIME_DIR/ssh-tunnel-manager.sock" ]; then
+if [ -S "$XDG_RUNTIME_DIR/ssh-tunnel-manager/ssh-tunnel-manager.sock" ]; then
     echo "✓ Unix socket created"
 else
     echo "✗ Unix socket not found"

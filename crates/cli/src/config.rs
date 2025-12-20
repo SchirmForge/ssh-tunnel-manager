@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2025 SSH Tunnel Manager Contributors
+
 // SSH Tunnel Manager - CLI Config Module
 // Handles CLI configuration for connecting to the daemon
 // Note: Most daemon client logic moved to ssh-tunnel-common::daemon_client

@@ -67,11 +67,27 @@ RUST_LOG=info ./target/release/ssh-tunnel-daemon
 ./target/release/ssh-tunnel stop myprofile
 ```
 
-## Run as a service
+## Installation
 
-Systemd unit files live in `docs/systemd/`. See `docs/SYSTEMD.md` for install steps:
-- Per-user service (default): `docs/systemd/ssh-tunnel-daemon.user.service`
-- System service as `tunneld` with CAP_NET_BIND_SERVICE for ports <1024: `docs/systemd/ssh-tunnel-daemon@.service`
+### Quick Install with Systemd
+
+Use the provided installation script for automated setup:
+
+```bash
+# User service (recommended for most users)
+./scripts/install.sh --user-unit --enable
+
+# System service (for privileged ports or system-wide daemon)
+sudo ./scripts/install.sh --system-unit --instance tunneld --enable
+```
+
+The script builds binaries, installs them to `/usr/local/bin`, and configures systemd.
+
+### Manual Installation
+
+See [docs/SYSTEMD.md](docs/SYSTEMD.md) for detailed installation steps:
+- Per-user service (default): [docs/systemd/ssh-tunnel-daemon.user.service](docs/systemd/ssh-tunnel-daemon.user.service)
+- System service as `tunneld` with CAP_NET_BIND_SERVICE for ports <1024: [docs/systemd/ssh-tunnel-daemon@.service](docs/systemd/ssh-tunnel-daemon@.service)
 - Logs are in journald (`journalctl --user-unit ssh-tunnel-daemon -f` or `journalctl -u ssh-tunnel-daemon@tunneld -f`)
 
 ## Project Structure
@@ -442,10 +458,11 @@ This is a personal learning project, but contributions are welcome!
 
 ## License
 
-MIT OR Apache-2.0
+Apache-2.0
 
 ## Acknowledgments
 
 - Built with [russh](https://github.com/Eugeny/russh) for SSH protocol implementation
 - Uses [keyring](https://crates.io/crates/keyring) for cross-platform credential storage
 - CLI built with [clap](https://crates.io/crates/clap) and [dialoguer](https://crates.io/crates/dialoguer)
+- Developed with assistance from generative AI.

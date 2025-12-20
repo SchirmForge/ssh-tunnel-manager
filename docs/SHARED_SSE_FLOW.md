@@ -157,8 +157,9 @@ impl TunnelEventHandler for GuiEventHandler {
 The `DaemonClientConfig::socket_path()` method now automatically detects the daemon socket in multiple locations:
 
 1. Explicit path in config (`daemon_url` as absolute path)
-2. User runtime directory (`/run/user/<uid>/ssh-tunnel-manager.sock`)
-3. System-wide location (`/run/ssh-tunnel-manager/ssh-tunnel-manager.sock`)
+2. User runtime directory (`/run/user/<uid>/ssh-tunnel-manager/ssh-tunnel-manager.sock`)
+3. Legacy user runtime directory (`/run/user/<uid>/ssh-tunnel-manager.sock`)
+4. System-wide location (`/run/ssh-tunnel-manager/ssh-tunnel-manager.sock`)
 
 This ensures the CLI/GUI can connect whether the daemon is running as:
 - The same user (user systemd service)

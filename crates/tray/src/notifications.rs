@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2025 SSH Tunnel Manager Contributors
+
 // Desktop notifications for tunnel events
 
 use notify_rust::{Notification, Timeout};

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2025 SSH Tunnel Manager Contributors
+
 // GTK dialogs for profile selection and confirmation
 // For now, we just launch the GUI for complex selections
 

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2025 SSH Tunnel Manager Contributors
+
 // Daemon monitor - SSE event listener with heartbeat monitoring
 
 use anyhow::{Context, Result};

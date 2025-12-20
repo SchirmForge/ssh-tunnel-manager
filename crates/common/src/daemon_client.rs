@@ -1,6 +1,10 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2025 SSH Tunnel Manager Contributors
+
 // SSH Tunnel Manager - Daemon Client Module
 // Shared daemon connection logic for CLI and GUI
 
+use std::ffi::OsStr;
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -89,8 +93,9 @@ impl DaemonClientConfig {
     ///
     /// Checks multiple locations in priority order:
     /// 1. Explicit path in daemon_url (if absolute path)
-    /// 2. User runtime directory (/run/user/<uid>/ssh-tunnel-manager.sock)
-    /// 3. System-wide location (/run/ssh-tunnel-manager/ssh-tunnel-manager.sock)
+    /// 2. User runtime directory (/run/user/<uid>/ssh-tunnel-manager/ssh-tunnel-manager.sock)
+    /// 3. Legacy user runtime directory (/run/user/<uid>/ssh-tunnel-manager.sock)
+    /// 4. System-wide location (/run/ssh-tunnel-manager/ssh-tunnel-manager.sock)
     pub fn socket_path(&self) -> Result<PathBuf> {
         if self.connection_mode == ConnectionMode::UnixSocket {
             let candidate = self.daemon_url.trim();
@@ -104,9 +109,20 @@ impl DaemonClientConfig {
 
         // Try user runtime directory first (for user-mode daemon)
         if let Some(runtime_dir) = dirs::runtime_dir() {
-            let user_socket = runtime_dir.join("ssh-tunnel-manager.sock");
+            let socket_dir = if runtime_dir.file_name() == Some(OsStr::new("ssh-tunnel-manager")) {
+                runtime_dir.clone()
+            } else {
+                runtime_dir.join("ssh-tunnel-manager")
+            };
+            let user_socket = socket_dir.join("ssh-tunnel-manager.sock");
             if user_socket.exists() {
                 return Ok(user_socket);
+            }
+
+            // Backward compatibility: legacy path without subdirectory
+            let legacy_socket = runtime_dir.join("ssh-tunnel-manager.sock");
+            if legacy_socket.exists() {
+                return Ok(legacy_socket);
             }
         }
 
@@ -118,7 +134,15 @@ impl DaemonClientConfig {
 
         // If neither exists, default to user runtime directory (will be created by daemon)
         dirs::runtime_dir()
-            .map(|p| p.join("ssh-tunnel-manager.sock"))
+            .map(|runtime_dir| {
+                if runtime_dir.file_name() == Some(OsStr::new("ssh-tunnel-manager")) {
+                    runtime_dir.join("ssh-tunnel-manager.sock")
+                } else {
+                    runtime_dir
+                        .join("ssh-tunnel-manager")
+                        .join("ssh-tunnel-manager.sock")
+                }
+            })
             .ok_or_else(|| anyhow::anyhow!("Could not determine runtime directory and no system socket found"))
     }
 }
