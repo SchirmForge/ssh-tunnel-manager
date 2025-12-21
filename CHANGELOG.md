@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **BREAKING: Configuration Fields Split for Better IPv6 Support**
+  - **Daemon Configuration** (`daemon.toml`):
+    - `bind_address` (single field) replaced with `bind_host` and `bind_port` (separate fields)
+    - Migration: `bind_address = "127.0.0.1:3443"` → `bind_host = "127.0.0.1"` and `bind_port = 3443`
+  - **CLI Configuration** (`cli.toml`):
+    - `daemon_url` (for HTTP/HTTPS) replaced with `daemon_host` and `daemon_port` (separate fields)
+    - Migration: `daemon_url = "127.0.0.1:3443"` → `daemon_host = "127.0.0.1"` and `daemon_port = 3443`
+    - `daemon_url` retained for UnixSocket mode (socket path override)
+  - **Improvements**:
+    - Better IPv6 support and clearer configuration
+    - Loopback detection now uses `std::net::IpAddr::is_loopback()` instead of string matching
+    - Properly handles IPv4 (`127.0.0.1`), IPv6 (`::1`), and hostname (`localhost`, case-insensitive)
+    - Type-safe port as `u16` instead of string parsing
+
+### Added
+- IPv6 loopback test coverage (`::1` for tcp-http mode, `::` rejection for tcp-http)
+- IPv6 support test for tcp-https mode
+- Case-insensitive hostname matching for "localhost" (DNS is case-insensitive)
+
+### Fixed
+- Updated all unit tests to use new field structure (`daemon_host`/`daemon_port`, `bind_host`/`bind_port`)
+- Fixed `profile_manager` tests to use current `ProfileMetadata` structure (with timestamps)
+- Fixed `daemon_client` tests to use `daemon_host` and `daemon_port` instead of `daemon_url`
+
 ---
 
 ## [0.1.6] - 2025-12-20

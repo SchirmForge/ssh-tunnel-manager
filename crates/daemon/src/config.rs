@@ -54,9 +54,13 @@ pub struct DaemonConfig {
     #[serde(default)]
     pub listener_mode: ListenerMode,
 
-    /// Bind address for TCP modes (e.g., "0.0.0.0:3443" or "127.0.0.1:3443")
-    #[serde(default = "default_bind_address")]
-    pub bind_address: String,
+    /// Bind host for TCP modes (e.g., "0.0.0.0", "127.0.0.1", or "::1")
+    #[serde(default = "default_bind_host")]
+    pub bind_host: String,
+
+    /// Bind port for TCP modes (e.g., 3443)
+    #[serde(default = "default_bind_port")]
+    pub bind_port: u16,
 
     /// Path to TLS certificate file (for TcpHttps mode)
     #[serde(default = "default_tls_cert_path")]
@@ -88,8 +92,12 @@ pub struct DaemonConfig {
     pub group_access: bool,
 }
 
-fn default_bind_address() -> String {
-    "127.0.0.1:3443".to_string()
+fn default_bind_host() -> String {
+    "127.0.0.1".to_string()
+}
+
+fn default_bind_port() -> u16 {
+    3443
 }
 
 fn default_tls_cert_path() -> PathBuf {
@@ -132,7 +140,8 @@ impl Default for DaemonConfig {
     fn default() -> Self {
         Self {
             listener_mode: ListenerMode::default(),
-            bind_address: default_bind_address(),
+            bind_host: default_bind_host(),
+            bind_port: default_bind_port(),
             tls_cert_path: default_tls_cert_path(),
             tls_key_path: default_tls_key_path(),
             auth_token_path: default_auth_token_path(),
@@ -144,27 +153,44 @@ impl Default for DaemonConfig {
 }
 
 impl DaemonConfig {
+    /// Check if a bind host is a loopback address
+    /// Supports IPv4 (127.0.0.1), IPv6 (::1), and hostname (localhost)
+    fn is_loopback_host(bind_host: &str) -> bool {
+        use std::net::IpAddr;
+
+        // Handle "localhost" as special case
+        if bind_host.eq_ignore_ascii_case("localhost") {
+            return true;
+        }
+
+        // Try parsing as IpAddr (handles "127.0.0.1", "::1", etc.)
+        if let Ok(ip) = bind_host.parse::<IpAddr>() {
+            return ip.is_loopback();
+        }
+
+        // Fail-safe: if we can't parse it, assume non-loopback for security
+        false
+    }
+
     /// Validate the daemon configuration
     pub fn validate(&self) -> Result<()> {
-        // For TCP modes, check if bind address is non-loopback
+        // For TCP modes, check if bind host is non-loopback
         if matches!(self.listener_mode, ListenerMode::TcpHttp | ListenerMode::TcpHttps) {
-            // Parse the bind address to check if it's loopback
-            let is_loopback = self.bind_address.starts_with("127.")
-                || self.bind_address.starts_with("localhost:")
-                || self.bind_address == "localhost";
+            // Parse the bind host to check if it's loopback
+            let is_loopback = Self::is_loopback_host(&self.bind_host);
 
             // If non-loopback and not HTTPS, reject
             if !is_loopback && self.listener_mode == ListenerMode::TcpHttp {
                 anyhow::bail!(
-                    "Security violation: Non-loopback TCP connections (bind_address: {}) require HTTPS mode.\n\
+                    "Security violation: Non-loopback TCP connections (bind_host: {}) require HTTPS mode.\n\
                      Current mode: TcpHttp\n\
                      \n\
                      To fix this:\n\
                      1. Change listener_mode to 'tcp-https' in daemon.toml, OR\n\
-                     2. Use a loopback address (127.0.0.1 or localhost) for bind_address\n\
+                     2. Use a loopback address (127.0.0.1 or localhost) for bind_host\n\
                      \n\
                      HTTP mode is only allowed for localhost connections due to lack of encryption.",
-                    self.bind_address
+                    self.bind_host
                 );
             }
         }
@@ -243,7 +269,6 @@ mod tests {
     fn test_validate_unix_socket_mode() {
         let config = DaemonConfig {
             listener_mode: ListenerMode::UnixSocket,
-            bind_address: "127.0.0.1:3443".to_string(),
             ..Default::default()
         };
         // Unix socket mode should always pass validation
@@ -254,7 +279,8 @@ mod tests {
     fn test_validate_tcp_http_loopback() {
         let config = DaemonConfig {
             listener_mode: ListenerMode::TcpHttp,
-            bind_address: "127.0.0.1:3443".to_string(),
+            bind_host: "127.0.0.1".to_string(),
+            bind_port: 3443,
             ..Default::default()
         };
         // Loopback addresses should be allowed for tcp-http
@@ -265,7 +291,8 @@ mod tests {
     fn test_validate_tcp_http_localhost() {
         let config = DaemonConfig {
             listener_mode: ListenerMode::TcpHttp,
-            bind_address: "localhost:3443".to_string(),
+            bind_host: "localhost".to_string(),
+            bind_port: 3443,
             ..Default::default()
         };
         // localhost should be allowed for tcp-http
@@ -273,10 +300,23 @@ mod tests {
     }
 
     #[test]
+    fn test_validate_tcp_http_ipv6_loopback() {
+        let config = DaemonConfig {
+            listener_mode: ListenerMode::TcpHttp,
+            bind_host: "::1".to_string(),
+            bind_port: 3443,
+            ..Default::default()
+        };
+        // IPv6 loopback should be allowed for tcp-http
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
     fn test_validate_tcp_http_non_loopback_rejected() {
         let config = DaemonConfig {
             listener_mode: ListenerMode::TcpHttp,
-            bind_address: "0.0.0.0:3443".to_string(),
+            bind_host: "0.0.0.0".to_string(),
+            bind_port: 3443,
             ..Default::default()
         };
         // Non-loopback addresses should be rejected for tcp-http
@@ -291,7 +331,8 @@ mod tests {
     fn test_validate_tcp_http_network_address_rejected() {
         let config = DaemonConfig {
             listener_mode: ListenerMode::TcpHttp,
-            bind_address: "192.168.1.100:3443".to_string(),
+            bind_host: "192.168.1.100".to_string(),
+            bind_port: 3443,
             ..Default::default()
         };
         // Network addresses should be rejected for tcp-http
@@ -299,10 +340,23 @@ mod tests {
     }
 
     #[test]
+    fn test_validate_tcp_http_ipv6_network_rejected() {
+        let config = DaemonConfig {
+            listener_mode: ListenerMode::TcpHttp,
+            bind_host: "::".to_string(),
+            bind_port: 3443,
+            ..Default::default()
+        };
+        // IPv6 any address should be rejected for tcp-http
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
     fn test_validate_tcp_https_non_loopback() {
         let config = DaemonConfig {
             listener_mode: ListenerMode::TcpHttps,
-            bind_address: "0.0.0.0:3443".to_string(),
+            bind_host: "0.0.0.0".to_string(),
+            bind_port: 3443,
             ..Default::default()
         };
         // Non-loopback addresses should be allowed for tcp-https
@@ -313,10 +367,23 @@ mod tests {
     fn test_validate_tcp_https_loopback() {
         let config = DaemonConfig {
             listener_mode: ListenerMode::TcpHttps,
-            bind_address: "127.0.0.1:3443".to_string(),
+            bind_host: "127.0.0.1".to_string(),
+            bind_port: 3443,
             ..Default::default()
         };
         // Loopback addresses should also work for tcp-https
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_validate_tcp_https_ipv6() {
+        let config = DaemonConfig {
+            listener_mode: ListenerMode::TcpHttps,
+            bind_host: "::".to_string(),
+            bind_port: 3443,
+            ..Default::default()
+        };
+        // IPv6 any address should be allowed for tcp-https
         assert!(config.validate().is_ok());
     }
 
@@ -353,7 +420,8 @@ mod tests {
 /// Write CLI config snippet to help users configure their CLI
 pub fn write_cli_config_snippet(
     listener_mode: &ListenerMode,
-    bind_address: &str,
+    bind_host: &str,
+    bind_port: u16,
     auth_token: Option<&str>,
     tls_fingerprint: Option<&str>,
 ) -> Result<()> {
@@ -393,8 +461,9 @@ pub fn write_cli_config_snippet(
                  # Copy this to ~/.config/ssh-tunnel-manager/cli.toml\n\
                  \n\
                  connection_mode = \"http\"\n\
-                 daemon_url = \"{}\"\n",
-                bind_address
+                 daemon_host = \"{}\"\n\
+                 daemon_port = {}\n",
+                bind_host, bind_port
             );
             if let Some(token) = auth_token {
                 content.push_str(&format!("auth_token = \"{}\"\n", token));
@@ -407,8 +476,9 @@ pub fn write_cli_config_snippet(
                  # Copy this to ~/.config/ssh-tunnel-manager/cli.toml\n\
                  \n\
                  connection_mode = \"https\"\n\
-                 daemon_url = \"{}\"\n",
-                bind_address
+                 daemon_host = \"{}\"\n\
+                 daemon_port = {}\n",
+                bind_host, bind_port
             );
             if let Some(token) = auth_token {
                 content.push_str(&format!("auth_token = \"{}\"\n", token));

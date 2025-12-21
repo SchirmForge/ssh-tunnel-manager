@@ -41,8 +41,16 @@ pub struct DaemonClientConfig {
     #[serde(default)]
     pub connection_mode: ConnectionMode,
 
-    /// Daemon URL for HTTP/HTTPS modes (e.g., "https://192.168.1.100:3443")
-    #[serde(default = "default_daemon_url")]
+    /// Daemon host for HTTP/HTTPS modes (e.g., "127.0.0.1" or "192.168.1.100")
+    #[serde(default = "default_daemon_host")]
+    pub daemon_host: String,
+
+    /// Daemon port for HTTP/HTTPS modes (e.g., 3443)
+    #[serde(default = "default_daemon_port")]
+    pub daemon_port: u16,
+
+    /// Daemon URL for UnixSocket mode (socket path override, optional)
+    #[serde(default)]
     pub daemon_url: String,
 
     /// Authentication token (if daemon requires auth)
@@ -54,15 +62,21 @@ pub struct DaemonClientConfig {
     pub tls_cert_fingerprint: String,
 }
 
-fn default_daemon_url() -> String {
-    "127.0.0.1:3443".to_string()
+fn default_daemon_host() -> String {
+    "127.0.0.1".to_string()
+}
+
+fn default_daemon_port() -> u16 {
+    3443
 }
 
 impl Default for DaemonClientConfig {
     fn default() -> Self {
         Self {
             connection_mode: ConnectionMode::default(),
-            daemon_url: default_daemon_url(),
+            daemon_host: default_daemon_host(),
+            daemon_port: default_daemon_port(),
+            daemon_url: String::new(),
             auth_token: String::new(),
             tls_cert_fingerprint: String::new(),
         }
@@ -79,12 +93,12 @@ impl DaemonClientConfig {
                 Ok("http://daemon".to_string())
             }
             ConnectionMode::Http => {
-                // Construct HTTP URL from daemon_url (e.g., "127.0.0.1:3443" -> "http://127.0.0.1:3443")
-                Ok(format!("http://{}", self.daemon_url))
+                // Construct HTTP URL from daemon_host:daemon_port
+                Ok(format!("http://{}:{}", self.daemon_host, self.daemon_port))
             }
             ConnectionMode::Https => {
-                // Construct HTTPS URL from daemon_url (e.g., "127.0.0.1:3443" -> "https://127.0.0.1:3443")
-                Ok(format!("https://{}", self.daemon_url))
+                // Construct HTTPS URL from daemon_host:daemon_port
+                Ok(format!("https://{}:{}", self.daemon_host, self.daemon_port))
             }
         }
     }
@@ -212,7 +226,8 @@ mod tests {
     fn test_default_config() {
         let config = DaemonClientConfig::default();
         assert_eq!(config.connection_mode, ConnectionMode::UnixSocket);
-        assert!(!config.daemon_url.is_empty());
+        assert_eq!(config.daemon_host, "127.0.0.1");
+        assert_eq!(config.daemon_port, 3443);
     }
 
     #[test]
@@ -225,7 +240,8 @@ mod tests {
 
         // HTTP mode
         config.connection_mode = ConnectionMode::Http;
-        config.daemon_url = "127.0.0.1:3443".to_string();
+        config.daemon_host = "127.0.0.1".to_string();
+        config.daemon_port = 3443;
         assert_eq!(
             config.daemon_base_url().unwrap(),
             "http://127.0.0.1:3443"
@@ -233,7 +249,8 @@ mod tests {
 
         // HTTPS mode
         config.connection_mode = ConnectionMode::Https;
-        config.daemon_url = "example.com:3443".to_string();
+        config.daemon_host = "example.com".to_string();
+        config.daemon_port = 3443;
         assert_eq!(
             config.daemon_base_url().unwrap(),
             "https://example.com:3443"

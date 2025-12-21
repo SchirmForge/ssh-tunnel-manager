@@ -27,7 +27,7 @@ A secure, performant SSH tunnel management application for Linux with CLI interf
 - Remote port forwarding
 - Dynamic (SOCKS) port forwarding
 - Auto-reconnect/health monitoring wiring
-- System tray integration and desktop notifications
+- Desktop notifications
 - Packaging (Flatpak, AUR, deb)
 
 ## Quick Start

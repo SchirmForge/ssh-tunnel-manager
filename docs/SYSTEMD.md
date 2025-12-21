@@ -77,7 +77,8 @@ sudo systemctl daemon-reload
 sudo -u tunneld mkdir -p /var/lib/ssh-tunnel-manager/.config/ssh-tunnel-manager
 sudo -u tunneld tee /var/lib/ssh-tunnel-manager/.config/ssh-tunnel-manager/daemon.toml >/dev/null <<'EOF'
 listener_mode = "tcp-http"      # or "tcp-https" with cert/key paths
-bind_address = "127.0.0.1:3443" # use <1024 if you need privileged ports
+bind_host = "127.0.0.1"         # IP address to bind to
+bind_port = 3443                # Port to listen on (use <1024 if you need privileged ports)
 require_auth = true
 known_hosts_path = "/var/lib/ssh-tunnel-manager/.config/ssh-tunnel-manager/known_hosts"
 # Enable if multiple users need access (requires users to be in tunneld group)

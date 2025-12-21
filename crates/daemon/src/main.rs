@@ -89,7 +89,8 @@ async fn main() -> Result<()> {
     if token_was_generated || daemon_config.listener_mode == ListenerMode::TcpHttps {
         config::write_cli_config_snippet(
             &daemon_config.listener_mode,
-            &daemon_config.bind_address,
+            &daemon_config.bind_host,
+            daemon_config.bind_port,
             auth_token.as_deref(),
             tls_fingerprint.as_deref(),
         )?;
@@ -134,13 +135,15 @@ async fn main() -> Result<()> {
             serve_unix_socket(app, &daemon_config, shutdown_manager.clone(), shutdown_tx).await?;
         }
         ListenerMode::TcpHttp => {
-            serve_tcp_http(app, &daemon_config.bind_address, shutdown_manager.clone(), shutdown_tx)
+            let bind_address = format!("{}:{}", daemon_config.bind_host, daemon_config.bind_port);
+            serve_tcp_http(app, &bind_address, shutdown_manager.clone(), shutdown_tx)
                 .await?;
         }
         ListenerMode::TcpHttps => {
+            let bind_address = format!("{}:{}", daemon_config.bind_host, daemon_config.bind_port);
             serve_tcp_https(
                 app,
-                &daemon_config.bind_address,
+                &bind_address,
                 &daemon_config.tls_cert_path,
                 &daemon_config.tls_key_path,
                 shutdown_manager.clone(),

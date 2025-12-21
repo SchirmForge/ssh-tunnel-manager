@@ -200,29 +200,35 @@ pub fn profile_exists_by_id(id: &Uuid) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{ConnectionConfig, ForwardingConfig, ForwardingType, ProfileMetadata};
+    use crate::config::ProfileMetadata;
+    use crate::{ConnectionConfig, ForwardingConfig, ForwardingType};
 
     fn create_test_profile(name: &str) -> Profile {
+        use chrono::Utc;
+
         Profile {
             metadata: ProfileMetadata {
                 id: Uuid::new_v4(),
                 name: name.to_string(),
                 description: Some("Test profile".to_string()),
+                created_at: Utc::now(),
+                modified_at: Utc::now(),
                 tags: vec![],
             },
             connection: ConnectionConfig {
                 host: "test.example.com".to_string(),
                 port: 22,
-                username: "testuser".to_string(),
+                user: "testuser".to_string(),
                 auth_type: crate::AuthType::Key,
                 key_path: Some("/home/user/.ssh/id_rsa".into()),
-                password: None,
+                password_stored: false,
             },
             forwarding: ForwardingConfig {
                 forwarding_type: ForwardingType::Local,
-                local_port: 8080,
-                remote_host: "localhost".to_string(),
-                remote_port: 80,
+                bind_address: "127.0.0.1".to_string(),
+                local_port: Some(8080),
+                remote_host: Some("localhost".to_string()),
+                remote_port: Some(80),
             },
             options: Default::default(),
         }

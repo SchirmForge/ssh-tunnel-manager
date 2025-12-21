@@ -58,6 +58,7 @@ impl CliConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ssh_tunnel_common::ConnectionMode;
 
     #[test]
     fn test_default_config() {
@@ -66,7 +67,8 @@ mod tests {
             config.daemon_config.connection_mode,
             ConnectionMode::UnixSocket
         );
-        assert!(!config.daemon_config.daemon_url.is_empty());
+        assert_eq!(config.daemon_config.daemon_host, "127.0.0.1");
+        assert_eq!(config.daemon_config.daemon_port, 3443);
     }
 
     #[test]
@@ -80,9 +82,19 @@ mod tests {
             "http://daemon"
         );
 
-        // HTTPS mode (URL without protocol)
+        // HTTP mode
+        config.daemon_config.connection_mode = ConnectionMode::Http;
+        config.daemon_config.daemon_host = "127.0.0.1".to_string();
+        config.daemon_config.daemon_port = 3443;
+        assert_eq!(
+            config.daemon_config.daemon_base_url().unwrap(),
+            "http://127.0.0.1:3443"
+        );
+
+        // HTTPS mode
         config.daemon_config.connection_mode = ConnectionMode::Https;
-        config.daemon_config.daemon_url = "example.com:3443".to_string();
+        config.daemon_config.daemon_host = "example.com".to_string();
+        config.daemon_config.daemon_port = 3443;
         assert_eq!(
             config.daemon_config.daemon_base_url().unwrap(),
             "https://example.com:3443"
