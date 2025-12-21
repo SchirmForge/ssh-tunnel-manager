@@ -12,19 +12,17 @@ use colored::Colorize;
 use comfy_table::{Attribute, Cell, Color, ContentArrangement, Table};
 use dialoguer::{Confirm, Input, Password};
 use reqwest::Client;
-use serde::Deserialize;
 use std::fs;
 use std::path::PathBuf;
-use std::time::Duration;
 //TODO: implement ctrl-c to cancel the connection (would require this include)
 // use tokio::signal;
 use futures::StreamExt;
 
 use ssh_tunnel_common::{
     delete_profile_by_name, load_profile_by_name, profile_exists_by_name, save_profile,
-    start_tunnel_with_events, stop_tunnel as stop_tunnel_shared, AuthRequest, AuthResponse,
+    start_tunnel_with_events, stop_tunnel as stop_tunnel_shared, AuthRequest,
     AuthType, ConnectionConfig, DaemonTunnelEvent, ForwardingConfig, ForwardingType, Profile,
-    TunnelEventHandler, TunnelOptions, TunnelStatus, Uuid,
+    TunnelEventHandler, TunnelOptions, Uuid,
 };
 
 #[derive(Parser)]
@@ -121,12 +119,6 @@ enum Commands {
         /// Output as JSON for scripting
         #[arg(short, long)]
         json: bool,
-    },
-
-    /// Edit an existing profile
-    Edit {
-        /// Profile name
-        name: String,
     },
 
     /// Delete a profile
@@ -239,10 +231,6 @@ async fn main() -> Result<()> {
         }
         Commands::List { verbose, json } => {
             list_profiles(verbose, json).await?;
-        }
-        Commands::Edit { name } => {
-            println!("Editing profile: {}", name);
-            // TODO: Implement edit command
         }
         Commands::Delete { name } => {
             delete_profile(name).await?;
@@ -567,7 +555,7 @@ async fn add_profile(
     } else {
         Input::new()
             .with_prompt("Local bind address")
-            .default("127.0.0.1".to_string())
+            .default("localhost".to_string())
             .interact_text()?
     };
 
@@ -605,8 +593,8 @@ async fn add_profile(
             .interact_text()?
     };
 
-    // Show bind address info if not default
-    if bind_address != "127.0.0.1" {
+    // Show bind address info if not loopback
+    if !ssh_tunnel_common::is_loopback_address(&bind_address) {
         println!();
         println!(
             "{}",

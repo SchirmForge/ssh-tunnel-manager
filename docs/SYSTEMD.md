@@ -101,7 +101,8 @@ Point the CLI at the TCP endpoint and supply the token created for `tunneld`:
 ```toml
 # ~/.config/ssh-tunnel-manager/cli.toml
 connection_mode = "http"          # or "https" if enabled
-daemon_url = "127.0.0.1:3443"
+daemon_host = "127.0.0.1"
+daemon_port = 3443
 auth_token = "<contents of /var/lib/ssh-tunnel-manager/.config/ssh-tunnel-manager/daemon.token>"
 ```
 

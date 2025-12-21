@@ -10,8 +10,11 @@ use std::sync::Arc;
 use anyhow::Result;
 use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
 use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
-use rustls::{ClientConfig, DigitallySignedStruct, Error as TlsError, RootCertStore, SignatureScheme};
+use rustls::{
+    ClientConfig, DigitallySignedStruct, Error as TlsError, RootCertStore, SignatureScheme,
+};
 use sha2::{Digest, Sha256};
+use x509_parser::prelude::*;
 
 /// Custom certificate verifier that pins to a specific certificate fingerprint
 #[derive(Debug)]
@@ -48,16 +51,14 @@ impl ServerCertVerifier for FingerprintVerifier {
         _intermediates: &[CertificateDer<'_>],
         _server_name: &ServerName,
         _ocsp_response: &[u8],
-        _now: UnixTime,
+        now: UnixTime,
     ) -> Result<ServerCertVerified, TlsError> {
         // Calculate the fingerprint of the presented certificate
         let actual_fingerprint = Self::calculate_fingerprint(end_entity);
 
         // Compare with expected fingerprint
-        if actual_fingerprint == self.expected_fingerprint {
-            Ok(ServerCertVerified::assertion())
-        } else {
-            Err(TlsError::InvalidCertificate(
+        if actual_fingerprint != self.expected_fingerprint {
+            return Err(TlsError::InvalidCertificate(
                 rustls::CertificateError::Other(rustls::OtherError(Arc::new(
                     std::io::Error::new(
                         std::io::ErrorKind::InvalidData,
@@ -67,28 +68,66 @@ impl ServerCertVerifier for FingerprintVerifier {
                         ),
                     ),
                 ))),
-            ))
+            ));
         }
+
+        // Verify certificate is within its validity period
+        // Even with pinning, we should reject expired certificates to avoid
+        // accepting stolen/replayed certs with the same fingerprint
+        let (_, cert) = X509Certificate::from_der(end_entity.as_ref()).map_err(|_| {
+            TlsError::InvalidCertificate(rustls::CertificateError::BadEncoding)
+        })?;
+
+        // Check validity period using the provided timestamp
+        let now_seconds = now.as_secs();
+        let not_before = cert.validity().not_before.timestamp() as u64;
+        let not_after = cert.validity().not_after.timestamp() as u64;
+
+        if now_seconds < not_before {
+            return Err(TlsError::InvalidCertificate(
+                rustls::CertificateError::NotValidYet,
+            ));
+        }
+
+        if now_seconds > not_after {
+            return Err(TlsError::InvalidCertificate(
+                rustls::CertificateError::Expired,
+            ));
+        }
+
+        Ok(ServerCertVerified::assertion())
     }
 
     fn verify_tls12_signature(
         &self,
-        _message: &[u8],
-        _cert: &CertificateDer<'_>,
-        _dss: &DigitallySignedStruct,
+        message: &[u8],
+        cert: &CertificateDer<'_>,
+        dss: &DigitallySignedStruct,
     ) -> Result<HandshakeSignatureValid, TlsError> {
-        // Accept any signature for pinned certificates
-        Ok(HandshakeSignatureValid::assertion())
+        // Even with certificate pinning, we MUST verify the handshake signature
+        // to ensure the server possesses the private key
+        rustls::crypto::verify_tls12_signature(
+            message,
+            cert,
+            dss,
+            &rustls::crypto::aws_lc_rs::default_provider().signature_verification_algorithms,
+        )
     }
 
     fn verify_tls13_signature(
         &self,
-        _message: &[u8],
-        _cert: &CertificateDer<'_>,
-        _dss: &DigitallySignedStruct,
+        message: &[u8],
+        cert: &CertificateDer<'_>,
+        dss: &DigitallySignedStruct,
     ) -> Result<HandshakeSignatureValid, TlsError> {
-        // Accept any signature for pinned certificates
-        Ok(HandshakeSignatureValid::assertion())
+        // Even with certificate pinning, we MUST verify the handshake signature
+        // to ensure the server possesses the private key
+        rustls::crypto::verify_tls13_signature(
+            message,
+            cert,
+            dss,
+            &rustls::crypto::aws_lc_rs::default_provider().signature_verification_algorithms,
+        )
     }
 
     fn supported_verify_schemes(&self) -> Vec<SignatureScheme> {

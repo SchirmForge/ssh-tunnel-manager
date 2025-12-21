@@ -35,8 +35,9 @@ pub fn generate_self_signed_cert(
         "::1".to_string(),
     ])?;
     params.distinguished_name = dn;
+    // Valid from 1 day ago (to handle clock skew) to 10 years in the future
     params.not_before = time::OffsetDateTime::now_utc() - time::Duration::days(1);
-    params.not_after = time::OffsetDateTime::now_utc() + time::Duration::days(365);
+    params.not_after = time::OffsetDateTime::now_utc() + time::Duration::days(3650);
 
     // Generate certificate
     let key_pair = KeyPair::generate()?;
@@ -112,6 +113,56 @@ pub fn get_cert_fingerprint(cert_path: &Path) -> Result<String> {
     Ok(calculate_fingerprint(&certs[0]))
 }
 
+/// Check certificate expiry and warn if approaching expiration
+/// Returns true if certificate needs regeneration (expires within 30 days or already expired)
+pub fn check_cert_expiry(cert_path: &Path) -> Result<bool> {
+    use x509_parser::prelude::*;
+
+    // Read and parse certificate
+    let cert_file = fs::File::open(cert_path)
+        .context("Failed to open certificate file")?;
+    let mut cert_reader = std::io::BufReader::new(cert_file);
+
+    let cert_ders = certs(&mut cert_reader)
+        .collect::<Result<Vec<_>, _>>()
+        .context("Failed to parse certificate")?;
+
+    if cert_ders.is_empty() {
+        anyhow::bail!("No certificates found in file");
+    }
+
+    let (_, cert) = X509Certificate::from_der(&cert_ders[0])
+        .map_err(|e| anyhow::anyhow!("Failed to parse certificate DER: {}", e))?;
+
+    let now = ::time::OffsetDateTime::now_utc().unix_timestamp();
+    let not_after = cert.validity().not_after.timestamp();
+    let days_until_expiry = (not_after - now) / 86400; // seconds to days
+
+    if days_until_expiry <= 0 {
+        warn!("═══════════════════════════════════════════════════════════");
+        warn!("⚠️  TLS CERTIFICATE EXPIRED!");
+        warn!("═══════════════════════════════════════════════════════════");
+        warn!("The TLS certificate has expired.");
+        warn!("Certificate will be regenerated automatically.");
+        warn!("Clients will need to update their pinned fingerprint.");
+        warn!("═══════════════════════════════════════════════════════════");
+        return Ok(true);
+    } else if days_until_expiry <= 30 {
+        warn!("═══════════════════════════════════════════════════════════");
+        warn!("⚠️  TLS CERTIFICATE EXPIRING SOON!");
+        warn!("═══════════════════════════════════════════════════════════");
+        warn!("The TLS certificate will expire in {} days.", days_until_expiry);
+        warn!("Consider regenerating the certificate soon.");
+        warn!("Delete {} to regenerate on next start.", cert_path.display());
+        warn!("═══════════════════════════════════════════════════════════");
+        return Ok(true);
+    } else if days_until_expiry <= 90 {
+        info!("TLS certificate will expire in {} days", days_until_expiry);
+    }
+
+    Ok(false)
+}
+
 /// Load TLS certificate and private key from files
 pub fn load_tls_cert_and_key(
     cert_path: &Path,
@@ -149,13 +200,34 @@ pub fn load_tls_cert_and_key(
 
 /// Create a rustls ServerConfig from certificate and key files
 pub fn create_tls_config(cert_path: &Path, key_path: &Path) -> Result<Arc<ServerConfig>> {
-    // Generate certificate if it doesn't exist
+    let mut needs_regeneration = false;
+
+    // Check if certificate/key exist
     if !cert_path.exists() || !key_path.exists() {
         if cert_path.exists() {
             warn!("Certificate exists but private key is missing, regenerating both");
         } else if key_path.exists() {
             warn!("Private key exists but certificate is missing, regenerating both");
         }
+        needs_regeneration = true;
+    } else {
+        // Check if certificate is expired or expiring soon (within 30 days)
+        match check_cert_expiry(cert_path) {
+            Ok(should_regenerate) => {
+                if should_regenerate {
+                    needs_regeneration = true;
+                }
+            }
+            Err(e) => {
+                warn!("Failed to check certificate expiry: {}", e);
+                warn!("Regenerating certificate to be safe");
+                needs_regeneration = true;
+            }
+        }
+    }
+
+    // Regenerate if needed
+    if needs_regeneration {
         generate_self_signed_cert(cert_path, key_path)?;
     }
 

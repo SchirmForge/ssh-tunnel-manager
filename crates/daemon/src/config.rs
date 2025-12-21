@@ -153,31 +153,12 @@ impl Default for DaemonConfig {
 }
 
 impl DaemonConfig {
-    /// Check if a bind host is a loopback address
-    /// Supports IPv4 (127.0.0.1), IPv6 (::1), and hostname (localhost)
-    fn is_loopback_host(bind_host: &str) -> bool {
-        use std::net::IpAddr;
-
-        // Handle "localhost" as special case
-        if bind_host.eq_ignore_ascii_case("localhost") {
-            return true;
-        }
-
-        // Try parsing as IpAddr (handles "127.0.0.1", "::1", etc.)
-        if let Ok(ip) = bind_host.parse::<IpAddr>() {
-            return ip.is_loopback();
-        }
-
-        // Fail-safe: if we can't parse it, assume non-loopback for security
-        false
-    }
-
     /// Validate the daemon configuration
     pub fn validate(&self) -> Result<()> {
         // For TCP modes, check if bind host is non-loopback
         if matches!(self.listener_mode, ListenerMode::TcpHttp | ListenerMode::TcpHttps) {
             // Parse the bind host to check if it's loopback
-            let is_loopback = Self::is_loopback_host(&self.bind_host);
+            let is_loopback = ssh_tunnel_common::is_loopback_address(&self.bind_host);
 
             // If non-loopback and not HTTPS, reject
             if !is_loopback && self.listener_mode == ListenerMode::TcpHttp {
@@ -395,6 +376,73 @@ mod tests {
     }
 
     #[test]
+    fn test_cli_config_snippet_content() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        std::env::set_var("HOME", temp_dir.path());
+
+        let test_token = "test-token-12345678";
+        let test_fingerprint = "sha256:ABCD1234";
+
+        // Test Unix Socket mode with auth
+        let result = write_cli_config_snippet(
+            &ListenerMode::UnixSocket,
+            "127.0.0.1",
+            3443,
+            Some(test_token),
+            None,
+        );
+        assert!(result.is_ok());
+        let snippet_path = dirs::config_dir().unwrap()
+            .join("ssh-tunnel-manager")
+            .join("cli-config.snippet");
+        let content = fs::read_to_string(&snippet_path).unwrap();
+        assert!(content.contains("connection_mode = \"unix-socket\""));
+        assert!(content.contains(&format!("auth_token = \"{}\"", test_token)));
+
+        // Verify permissions are 0600 on Unix (contains sensitive auth token)
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let metadata = fs::metadata(&snippet_path).unwrap();
+            assert_eq!(metadata.permissions().mode() & 0o777, 0o600,
+                "CLI snippet should have 0600 permissions to protect auth token");
+        }
+
+        // Test HTTP mode with auth
+        let result = write_cli_config_snippet(
+            &ListenerMode::TcpHttp,
+            "127.0.0.1",
+            3443,
+            Some(test_token),
+            None,
+        );
+        assert!(result.is_ok());
+        let content = fs::read_to_string(&snippet_path).unwrap();
+        assert!(content.contains("connection_mode = \"http\""));
+        assert!(content.contains("daemon_host = \"127.0.0.1\""));
+        assert!(content.contains("daemon_port = 3443"));
+        assert!(content.contains(&format!("auth_token = \"{}\"", test_token)));
+
+        // Test HTTPS mode with auth and fingerprint
+        let result = write_cli_config_snippet(
+            &ListenerMode::TcpHttps,
+            "192.168.1.100",
+            3443,
+            Some(test_token),
+            Some(test_fingerprint),
+        );
+        assert!(result.is_ok());
+        let content = fs::read_to_string(&snippet_path).unwrap();
+        assert!(content.contains("connection_mode = \"https\""));
+        assert!(content.contains("daemon_host = \"192.168.1.100\""));
+        assert!(content.contains("daemon_port = 3443"));
+        assert!(content.contains(&format!("auth_token = \"{}\"", test_token)));
+        assert!(content.contains(&format!("tls_cert_fingerprint = \"{}\"", test_fingerprint)));
+    }
+
+    #[test]
     #[cfg(unix)]
     fn test_cli_config_snippet_permissions() {
         use std::os::unix::fs::PermissionsExt;
@@ -444,7 +492,7 @@ pub fn write_cli_config_snippet(
     // Build the CLI config based on listener mode
     let config_content = match listener_mode {
         ListenerMode::UnixSocket => {
-            format!(
+            let mut content = format!(
                 "# CLI Configuration for SSH Tunnel Manager\n\
                  # Copy this to ~/.config/ssh-tunnel-manager/cli.toml\n\
                  \n\
@@ -453,7 +501,12 @@ pub fn write_cli_config_snippet(
                  # Uncomment to override:\n\
                  # daemon_url = \"{}\"\n",
                 socket_path_str, socket_path_str
-            )
+            );
+            // Add auth token if authentication is required
+            if let Some(token) = auth_token {
+                content.push_str(&format!("auth_token = \"{}\"\n", token));
+            }
+            content
         }
         ListenerMode::TcpHttp => {
             let mut content = format!(

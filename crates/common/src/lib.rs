@@ -7,6 +7,7 @@
 pub mod config;
 pub mod daemon_client;
 pub mod error;
+pub mod network;
 pub mod profile_manager;
 pub mod tls;
 pub mod types;
@@ -18,6 +19,7 @@ pub use daemon_client::{
     TunnelEventHandler, TunnelStatusResponse,
 };
 pub use error::{Error, Result};
+pub use network::is_loopback_address;
 pub use profile_manager::{
     delete_profile_by_id, delete_profile_by_name, load_all_profiles, load_profile,
     load_profile_by_id, load_profile_by_name, profile_exists_by_id, profile_exists_by_name,

@@ -21,6 +21,19 @@ use zeroize::Zeroizing;
 /// HTTP header name for authentication token
 pub const AUTH_TOKEN_HEADER: &str = "X-Tunnel-Token";
 
+/// Obfuscate a token for logging (show only last 4 characters)
+/// Example: "abc123def456" -> "********f456"
+pub fn obfuscate_token(token: &str) -> String {
+    if token.len() < 4 {
+        // If token is very short, just mask everything
+        "*".repeat(token.len())
+    } else {
+        let visible_chars = 4;
+        let mask_len = token.len() - visible_chars;
+        format!("{}{}", "*".repeat(mask_len), &token[mask_len..])
+    }
+}
+
 /// Generate a new authentication token
 pub fn generate_token() -> String {
     Uuid::new_v4().to_string()
@@ -52,7 +65,7 @@ pub fn load_or_generate_token(token_path: &PathBuf) -> Result<(String, bool)> {
     info!("Token saved to: {}", token_path.display());
     info!("");
     info!("⚠️  IMPORTANT: Clients must provide this token to connect!");
-    info!("   Token: {}", token);
+    info!("   Token: {} (full token in {})", obfuscate_token(&token), token_path.display());
     info!("   Add to CLI config or use X-Tunnel-Token header");
 
     Ok((token, true))
@@ -132,6 +145,29 @@ pub async fn auth_middleware(
 mod tests {
     use super::*;
     use tempfile::TempDir;
+
+    #[test]
+    fn test_obfuscate_token() {
+        // Normal token (UUID format is 36 chars)
+        let token = "abc123de-f456-7890-1234-567890abcdef";
+        let obfuscated = obfuscate_token(token);
+        assert_eq!(obfuscated, "********************************cdef");
+        assert_eq!(obfuscated.len(), token.len());
+
+        // Short token (4 chars)
+        let short = "1234";
+        assert_eq!(obfuscate_token(short), "1234");
+
+        // Very short token (less than 4 chars)
+        let very_short = "abc";
+        assert_eq!(obfuscate_token(very_short), "***");
+
+        // Longer custom token
+        let custom = "my-secret-token-12345";
+        let obfuscated_custom = obfuscate_token(custom);
+        assert_eq!(obfuscated_custom, "*****************2345");
+        assert!(obfuscated_custom.ends_with("2345"));
+    }
 
     #[test]
     fn test_generate_token() {

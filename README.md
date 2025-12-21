@@ -111,10 +111,10 @@ ssh-tunnel/
 
 ```
 ┌─────────────┐                    ┌─────────────┐
-│     CLI     │◄─── SSE Events ────│   Daemon    │
-│             │                     │             │
+│   CLI/GUI   │◄─── SSE Events ────│   Daemon    │
+│             │                    │             │
 │  Interactive│──── HTTP/REST ────►│ Tunnel Mgmt │
-│   Prompts   │                     │   russh     │
+│   Prompts   │                    │   russh     │
 └─────────────┘                    └─────────────┘
                                            │
                                            ▼
@@ -186,7 +186,7 @@ You'll be prompted for:
 ./target/release/ssh-tunnel list
 
 # Show specific profile
-./target/release/ssh-tunnel show production-db
+./target/release/ssh-tunnel info production-db
 
 # Start tunnel (with real-time status)
 ./target/release/ssh-tunnel start production-db
@@ -205,7 +205,14 @@ You'll be prompted for:
 
 ### Profile Storage
 
-Profiles are stored in `~/.config/ssh-tunnel-manager/profiles/` as TOML files:
+Profiles are stored in `~/.config/ssh-tunnel-manager/profiles/` as TOML files.
+
+**Note**: To edit existing profiles, you can either:
+- Manually edit the TOML files in `~/.config/ssh-tunnel-manager/profiles/`
+- Use the GUI application for a graphical profile editor
+- Delete and recreate the profile using the CLI
+
+Example profile structure:
 
 ```toml
 [metadata]
@@ -248,8 +255,8 @@ When you choose to store credentials in the keychain:
 - **Username**: `{profile-uuid}`
 - **Platform Support**:
   - Linux: Secret Service API (GNOME Keyring, KWallet, etc.)
-  - macOS: Keychain
-  - Windows: Credential Manager
+  - macOS: Keychain (not tested)
+  - Windows: Credential Manager (not tested) 
 
 ## Authentication Methods
 
@@ -440,11 +447,11 @@ See [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md) for detailed implementation
 
 ### Next Priorities
 
-1. ✅ ~~Enhanced authentication error messages~~ (Done!)
+1. Add daemon config file parameter
 2. Implement remote port forwarding
 3. Implement dynamic (SOCKS) port forwarding
-4. Add `edit` command for profiles
-5. GUI implementation
+4. Finish GUI implementation (notification)
+5. Implement auto-connect on the daemon for the profiles that request it
 
 ## Contributing
 

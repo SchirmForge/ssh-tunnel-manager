@@ -70,15 +70,14 @@ async fn main() -> Result<()> {
         (None, false)
     };
 
-    // For HTTPS mode, ensure certificate exists and get fingerprint
+    // For HTTPS mode, ensure certificate is valid and get fingerprint
     // This must happen BEFORE writing the CLI config snippet
+    // We use create_tls_config() which handles both generation and expiry checking,
+    // ensuring we get the fingerprint of the actual cert that will be used
     let tls_fingerprint = if daemon_config.listener_mode == ListenerMode::TcpHttps {
-        // Generate certificate if it doesn't exist (do this BEFORE calculating fingerprint)
-        if !daemon_config.tls_cert_path.exists() || !daemon_config.tls_key_path.exists() {
-            info!("TLS certificate not found, generating...");
-            tls::generate_self_signed_cert(&daemon_config.tls_cert_path, &daemon_config.tls_key_path)?;
-        }
-        // Now we can safely get the fingerprint
+        // Create TLS config - this handles generation, expiry checking, and auto-regeneration
+        let _ = tls::create_tls_config(&daemon_config.tls_cert_path, &daemon_config.tls_key_path)?;
+        // Now we can safely get the fingerprint of the current, valid certificate
         Some(tls::get_cert_fingerprint(&daemon_config.tls_cert_path)?)
     } else {
         None
