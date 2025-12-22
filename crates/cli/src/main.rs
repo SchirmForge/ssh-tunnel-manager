@@ -14,8 +14,6 @@ use dialoguer::{Confirm, Input, Password};
 use reqwest::Client;
 use std::fs;
 use std::path::PathBuf;
-//TODO: implement ctrl-c to cancel the connection (would require this include)
-// use tokio::signal;
 use futures::StreamExt;
 
 use ssh_tunnel_common::{

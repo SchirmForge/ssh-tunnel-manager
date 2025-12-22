@@ -266,8 +266,7 @@ fn create_action_buttons(state: Rc<AppState>, profile: &ProfileModel) -> (gtk4::
         eprintln!("Starting tunnel for profile: {}", profile_clone.name());
 
         if let Some(prof) = profile_clone.profile() {
-            let inner_profile = prof.clone();
-            let tunnel_id = inner_profile.metadata.id;
+            let tunnel_id = prof.metadata.id;
             let state = state_clone.clone();
             let button = button.clone();
 
@@ -275,13 +274,9 @@ fn create_action_buttons(state: Rc<AppState>, profile: &ProfileModel) -> (gtk4::
             button.set_sensitive(false);
 
             glib::MainContext::default().spawn_local(async move {
-                // Use the new SSE-first flow
-                use ssh_tunnel_common::{create_daemon_client, start_tunnel_with_events};
-                use crate::ui::tunnel_handler::GtkTunnelEventHandler;
-
-                // Get daemon config
-                let daemon_config = match state.daemon_client.borrow().as_ref() {
-                    Some(client) => client.config.clone(),
+                // Send start request; SSE listener handles auth/status updates
+                let daemon_client = match state.daemon_client.borrow().as_ref() {
+                    Some(client) => client.clone(),
                     None => {
                         eprintln!("✗ Daemon client not available");
                         button.set_sensitive(true);
@@ -289,42 +284,16 @@ fn create_action_buttons(state: Rc<AppState>, profile: &ProfileModel) -> (gtk4::
                     }
                 };
 
-                // Get window reference
-                let window = match state.window.borrow().as_ref() {
-                    Some(w) => w.clone(),
-                    None => {
-                        eprintln!("✗ Window not available");
-                        button.set_sensitive(true);
-                        return;
-                    }
-                };
-
-                // Create HTTP client
-                let client = match create_daemon_client(&daemon_config) {
-                    Ok(c) => c,
-                    Err(e) => {
-                        eprintln!("✗ Failed to create daemon client: {}", e);
-                        button.set_sensitive(true);
-                        return;
-                    }
-                };
-
-                // Create event handler
-                let mut handler = GtkTunnelEventHandler::new(inner_profile.clone(), &window);
-
-                // Start tunnel with SSE events
-                match start_tunnel_with_events(&client, &daemon_config, tunnel_id, &mut handler).await {
+                match daemon_client.start_tunnel(tunnel_id).await {
                     Ok(_) => {
-                        eprintln!("✓ Tunnel started successfully");
+                        eprintln!("✓ Tunnel start request accepted");
+                        // Keep button disabled; SSE updates will set final state.
                     }
                     Err(e) => {
                         eprintln!("✗ Failed to start tunnel: {}", e);
-                        // Error details are already logged by the handler
+                        button.set_sensitive(true);
                     }
                 }
-
-                // Re-enable button
-                button.set_sensitive(true);
             });
         }
     });

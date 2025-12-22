@@ -314,13 +314,41 @@ impl TunnelManager {
                     tunnel.profile.metadata.name
                 );
 
-                // Hard cancel: abort the task
-                if let Some(handle) = tunnel.join_handle.take() {
-                    handle.abort();
+                // Try graceful shutdown first
+                if let Some(tx) = tunnel.shutdown_tx.take() {
+                    // Send shutdown signal - this should cause the tunnel task to exit gracefully
+                    let _ = tx.send(()).await;
                 }
-                tunnel.status = TunnelStatus::Disconnected;
+
+                // Drop the pending auth sender - this will cause the oneshot receiver
+                // to return Err, which will be caught as "Auth request was cancelled"
                 tunnel.pending_auth = None;
-                tunnel.shutdown_tx = None;
+
+                // Give the task a moment to respond to shutdown signal
+                // If it doesn't stop within 100ms, abort it forcefully
+                if let Some(mut handle) = tunnel.join_handle.take() {
+                    match tokio::time::timeout(
+                        tokio::time::Duration::from_millis(100),
+                        &mut handle
+                    ).await {
+                        Ok(result) => {
+                            // Task finished gracefully within timeout
+                            if let Err(e) = result {
+                                if e.is_cancelled() {
+                                    debug!("Tunnel task was cancelled");
+                                } else {
+                                    debug!("Tunnel task panicked: {:?}", e);
+                                }
+                            }
+                        }
+                        Err(_) => {
+                            // Timeout elapsed, task didn't finish gracefully
+                            handle.abort();
+                        }
+                    }
+                }
+
+                tunnel.status = TunnelStatus::Disconnected;
 
                 // Emit disconnected event
                 if let Err(e) = self.event_tx.send(TunnelEvent::Disconnected {
@@ -714,13 +742,22 @@ async fn monitor_tunnel(
 /// Run the actual SSH tunnel (connects, authenticates, then monitors)
 async fn run_tunnel(
     profile: Profile,
-    shutdown_rx: mpsc::Receiver<()>,
+    mut shutdown_rx: mpsc::Receiver<()>,
     tunnels: Arc<RwLock<HashMap<Uuid, ActiveTunnel>>>,
     event_tx: broadcast::Sender<TunnelEvent>,
     known_hosts_path: Arc<PathBuf>,
 ) -> Result<()> {
     // Phase 1: Establish connection and authenticate
-    let session = establish_connection(&profile, &tunnels, &event_tx, known_hosts_path).await?;
+    // Use tokio::select to allow cancellation during connection/auth
+    let session = tokio::select! {
+        result = establish_connection(&profile, &tunnels, &event_tx, known_hosts_path) => {
+            result?
+        }
+        _ = shutdown_rx.recv() => {
+            info!("Received shutdown signal during connection for tunnel {}", profile.metadata.id);
+            return Ok(()); // Exit gracefully
+        }
+    };
 
     // Phase 2: Monitor tunnel lifecycle
     monitor_tunnel(session, profile, shutdown_rx, tunnels, event_tx).await

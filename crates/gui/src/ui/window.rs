@@ -6,12 +6,15 @@
 use gtk4::{prelude::*, gio};
 use libadwaita as adw;
 use adw::prelude::*;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use std::cell::RefCell;
 
 use super::{navigation, profiles_list, daemon_settings, help_dialog, about_dialog};
+use super::auth_dialog;
 use crate::models::profile_model::ProfileModel;
 use crate::daemon::DaemonClient;
+use ssh_tunnel_common::AuthRequest;
 
 /// Shared application state
 pub struct AppState {
@@ -26,6 +29,9 @@ pub struct AppState {
     pub profile_details_banner: RefCell<Option<adw::Banner>>,
     pub profile_details_start_btn: RefCell<Option<gtk4::Button>>,
     pub profile_details_stop_btn: RefCell<Option<gtk4::Button>>,
+    pub auth_dialog_open: RefCell<HashSet<uuid::Uuid>>,
+    pub pending_auth_requests: RefCell<HashMap<uuid::Uuid, AuthRequest>>,
+    pub active_auth_requests: RefCell<HashMap<uuid::Uuid, AuthRequest>>,
 }
 
 impl AppState {
@@ -50,6 +56,9 @@ impl AppState {
             profile_details_banner: RefCell::new(None),
             profile_details_start_btn: RefCell::new(None),
             profile_details_stop_btn: RefCell::new(None),
+            auth_dialog_open: RefCell::new(HashSet::new()),
+            pending_auth_requests: RefCell::new(HashMap::new()),
+            active_auth_requests: RefCell::new(HashMap::new()),
         })
     }
 
@@ -221,6 +230,7 @@ fn start_event_listener(state: Rc<AppState>, status_icon: gtk4::Image) {
                                 if let Some(list_box) = state.profile_list.borrow().as_ref() {
                                     let list_box_clone = list_box.clone();
                                     let client_clone = client.clone();
+                                    let state_clone = state.clone();
 
                                     glib::MainContext::default().spawn_local(async move {
                                         match client_clone.list_tunnels().await {
@@ -232,6 +242,16 @@ fn start_event_listener(state: Rc<AppState>, status_icon: gtk4::Image) {
                                                         tunnel.id,
                                                         tunnel.status,
                                                     );
+
+                                                    if let Some(request) = tunnel.pending_auth {
+                                                        if let Some(window) = state_clone.window.borrow().as_ref() {
+                                                            super::auth_dialog::handle_auth_request(
+                                                                window,
+                                                                request,
+                                                                state_clone.clone(),
+                                                            );
+                                                        }
+                                                    }
                                                 }
                                             }
                                             Err(e) => {
@@ -253,7 +273,7 @@ fn start_event_listener(state: Rc<AppState>, status_icon: gtk4::Image) {
                     }
 
                 // Create a channel for heartbeat timeout signal
-                let (timeout_tx, timeout_rx) = async_channel::unbounded();
+                let (timeout_tx, mut timeout_rx) = tokio::sync::mpsc::unbounded_channel();
 
                 // Track last heartbeat time using Arc for sharing across tasks
                 // Initialize to NOW so the monitor doesn't trigger immediately
@@ -275,7 +295,7 @@ fn start_event_listener(state: Rc<AppState>, status_icon: gtk4::Image) {
                         if elapsed > heartbeat_timeout {
                             // Timeout reached - send signal to exit event loop
                             eprintln!("✗ Heartbeat timeout - daemon appears offline");
-                            let _ = timeout_tx.send(()).await;
+                            let _ = timeout_tx.send(());
                             break;
                         }
                     }
@@ -291,6 +311,7 @@ fn start_event_listener(state: Rc<AppState>, status_icon: gtk4::Image) {
                     match event {
                         TunnelEvent::Connected { id } => {
                             eprintln!("Tunnel {} connected", id);
+                            auth_dialog::clear_auth_state(&state, id);
 
                             // Update profile list status
                             if let Some(list_box) = state.profile_list.borrow().as_ref() {
@@ -328,6 +349,7 @@ fn start_event_listener(state: Rc<AppState>, status_icon: gtk4::Image) {
                         }
                         TunnelEvent::Starting { id } => {
                             eprintln!("Tunnel {} starting", id);
+                            auth_dialog::clear_auth_state(&state, id);
 
                             // Update profile list status
                             if let Some(list_box) = state.profile_list.borrow().as_ref() {
@@ -352,6 +374,7 @@ fn start_event_listener(state: Rc<AppState>, status_icon: gtk4::Image) {
                         }
                         TunnelEvent::Disconnected { id, reason } => {
                             eprintln!("Tunnel {} disconnected: {}", id, reason);
+                            auth_dialog::clear_auth_state(&state, id);
 
                             // Update profile list status
                             if let Some(list_box) = state.profile_list.borrow().as_ref() {
@@ -388,6 +411,7 @@ fn start_event_listener(state: Rc<AppState>, status_icon: gtk4::Image) {
                         }
                         TunnelEvent::Error { id, error } => {
                             eprintln!("Tunnel {} error: {}", id, error);
+                            auth_dialog::clear_auth_state(&state, id);
 
                             // Update profile list status
                             if let Some(list_box) = state.profile_list.borrow().as_ref() {
@@ -448,10 +472,9 @@ fn start_event_listener(state: Rc<AppState>, status_icon: gtk4::Image) {
 
                             // Show auth dialog if window is available
                             if let Some(window) = state.window.borrow().as_ref() {
-                                super::auth_dialog::show_auth_dialog(
+                                super::auth_dialog::handle_auth_request(
                                     window,
-                                    id,
-                                    &request.prompt,
+                                    request,
                                     state.clone(),
                                 );
                             }

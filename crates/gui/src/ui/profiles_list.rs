@@ -9,6 +9,7 @@ use adw::prelude::*;
 use std::rc::Rc;
 
 use super::window::AppState;
+use super::auth_dialog;
 use crate::models::profile_model::ProfileModel;
 use ssh_tunnel_common::config::Profile;
 use ssh_tunnel_common::types::TunnelStatus;
@@ -124,6 +125,11 @@ pub fn populate_profiles(list_box: &gtk4::ListBox, state: Rc<AppState>) {
                     Ok(Some(status_response)) => {
                         eprintln!("Initial status for profile {}: {:?}", profile_id, status_response.status);
                         update_profile_status(&list_box_clone, profile_id, status_response.status);
+                        if let Some(request) = status_response.pending_auth {
+                            if let Some(window) = state_clone.window.borrow().as_ref() {
+                                auth_dialog::handle_auth_request(window, request, state_clone.clone());
+                            }
+                        }
                     }
                     Ok(None) => {
                         eprintln!("No status found for profile {}", profile_id);

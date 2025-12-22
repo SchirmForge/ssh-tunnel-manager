@@ -404,46 +404,23 @@ pub fn create_placeholder() -> adw::StatusPage {
         .build()
 }
 
-/// Async function to start a tunnel using shared SSE flow
+/// Async function to start a tunnel; SSE listener handles auth/status updates
 async fn start_tunnel_async(profile: &ProfileModel, state: &Rc<AppState>) -> anyhow::Result<()> {
-    use ssh_tunnel_common::{create_daemon_client, start_tunnel_with_events};
-    use crate::ui::tunnel_handler::GtkTunnelEventHandler;
-
     // Get profile data
     let inner_profile = profile
         .profile()
         .ok_or_else(|| anyhow::anyhow!("Profile data not available"))?;
     let tunnel_id = inner_profile.metadata.id;
 
-    // Get daemon config from state
-    let daemon_config = state
+    // Send start request; daemon SSE events will drive auth prompts and UI updates
+    let daemon_client = state
         .daemon_client
         .borrow()
         .as_ref()
         .ok_or_else(|| anyhow::anyhow!("Daemon client not available"))?
-        .config
         .clone();
 
-    // Create HTTP client
-    let client = create_daemon_client(&daemon_config)?;
-
-    // Get window reference for auth dialogs
-    let window = state
-        .window
-        .borrow()
-        .as_ref()
-        .ok_or_else(|| anyhow::anyhow!("Window not available"))?
-        .clone();
-
-    // Create event handler
-    let mut handler = GtkTunnelEventHandler::new(
-        inner_profile.clone(),
-        &window,
-    );
-
-    // Use the shared SSE-first helper
-    start_tunnel_with_events(&client, &daemon_config, tunnel_id, &mut handler).await?;
-
+    daemon_client.start_tunnel(tunnel_id).await?;
     Ok(())
 }
 

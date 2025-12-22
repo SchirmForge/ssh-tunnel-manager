@@ -18,9 +18,11 @@ use ssh_tunnel_common::{AuthRequest, DaemonTunnelEvent, Profile, TunnelEventHand
 pub struct GtkTunnelEventHandler {
     profile: Profile,
     /// Channel for sending authentication responses from dialog back to handler
-    auth_response_tx: Arc<Mutex<Option<async_channel::Sender<String>>>>,
+    auth_response_tx: Arc<Mutex<Option<std::sync::mpsc::Sender<Option<String>>>>>,
     /// Window for showing dialogs (stored as glib::Object pointer, which is Send)
     window_ptr: usize,
+    /// Flag to track if auth has been cancelled (prevents showing subsequent dialogs)
+    cancelled: Arc<Mutex<bool>>,
 }
 
 // SAFETY: We only access the window from the main GTK thread via glib::MainContext::invoke
@@ -39,13 +41,14 @@ impl GtkTunnelEventHandler {
             profile,
             auth_response_tx: Arc::new(Mutex::new(None)),
             window_ptr,
+            cancelled: Arc::new(Mutex::new(false)),
         }
     }
 
-    /// Show authentication dialog and wait for response
-    async fn show_auth_dialog_async(&self, prompt: &str, hidden: bool) -> Result<String> {
-        // Create an async channel for the response
-        let (tx, rx) = async_channel::bounded::<String>(1);
+    /// Show authentication dialog and wait for response synchronously
+    fn show_auth_dialog_sync(&self, prompt: &str, hidden: bool) -> Result<String> {
+        // Create a synchronous channel for the response
+        let (tx, rx) = std::sync::mpsc::channel::<Option<String>>();
 
         // Store the sender so the dialog can use it
         {
@@ -53,23 +56,26 @@ impl GtkTunnelEventHandler {
             *guard = Some(tx);
         }
 
-        // Show the dialog immediately (we're already on the main thread)
+        // Show the dialog on the main thread using glib::idle_add
         let prompt_str = prompt.to_string();
         let auth_tx = self.auth_response_tx.clone();
         let window_ptr = self.window_ptr;
 
-        // SAFETY: We know the window is still alive because the tunnel operation
-        // is happening within the UI context. We're already on the main thread.
-        unsafe {
-            let window = &*(window_ptr as *const adw::ApplicationWindow);
-            show_auth_dialog_internal(window, &prompt_str, hidden, auth_tx);
-        }
+        glib::idle_add_once(move || {
+            // SAFETY: We know the window is still alive because the tunnel operation
+            // is happening within the UI context.
+            unsafe {
+                let window = &*(window_ptr as *const adw::ApplicationWindow);
+                show_auth_dialog_internal(window, &prompt_str, hidden, auth_tx);
+            }
+        });
 
-        // Wait asynchronously for the response
+        // Block waiting for response - this is safe because we're in a separate
+        // task context spawned by glib::spawn_local, not the main event loop
         let response = rx
             .recv()
-            .await
-            .map_err(|_| anyhow::anyhow!("Authentication dialog was closed"))?;
+            .map_err(|_| anyhow::anyhow!("Authentication dialog was closed"))?
+            .ok_or_else(|| anyhow::anyhow!("Authentication was cancelled"))?;
 
         Ok(response)
     }
@@ -77,8 +83,88 @@ impl GtkTunnelEventHandler {
 
 impl TunnelEventHandler for GtkTunnelEventHandler {
     fn on_auth_required(&mut self, request: &AuthRequest) -> Result<String> {
-        // Block on the async dialog - this works because we're in a glib spawn_local context
-        futures::executor::block_on(self.show_auth_dialog_async(&request.prompt, request.hidden))
+        eprintln!("[AUTH] on_auth_required called for tunnel {}", request.tunnel_id);
+        eprintln!("[AUTH] Prompt: {}", request.prompt);
+        eprintln!("[AUTH] Hidden: {}", request.hidden);
+
+        // Check if already cancelled
+        let is_cancelled = *self.cancelled.lock().unwrap();
+        eprintln!("[AUTH] Checking cancellation flag: {}", is_cancelled);
+
+        if is_cancelled {
+            eprintln!("[AUTH] Auth already cancelled, rejecting subsequent auth request");
+            return Err(anyhow::anyhow!("Authentication was cancelled"));
+        }
+
+        eprintln!("[AUTH] Creating response storage and nested main loop");
+
+        // Create response storage (shared between callback and main code)
+        let response: Arc<Mutex<Option<Option<String>>>> = Arc::new(Mutex::new(None));
+        let response_clone = response.clone();
+
+        // Create nested main loop for modal behavior
+        let main_loop = glib::MainLoop::new(None, false);
+        let main_loop_clone = main_loop.clone();
+
+        let cancelled = self.cancelled.clone();
+
+        eprintln!("[AUTH] Showing auth dialog on main thread");
+
+        // Show dialog with callback
+        unsafe {
+            let window = &*(self.window_ptr as *const adw::ApplicationWindow);
+            show_auth_dialog_with_callback(window, &request.prompt, request.hidden, move |result| {
+                eprintln!("[AUTH] Dialog callback invoked");
+                eprintln!("[AUTH] Result type: {}", if result.is_some() { "Some(text)" } else { "None (cancelled)" });
+
+                if let Some(ref text) = result {
+                    eprintln!("[AUTH] Response length: {} chars", text.len());
+                }
+
+                // Store response
+                *response_clone.lock().unwrap() = Some(result.clone());
+                eprintln!("[AUTH] Response stored in Arc<Mutex>");
+
+                // Set cancelled flag if user cancelled
+                if result.is_none() {
+                    eprintln!("[AUTH] Setting cancelled flag to true");
+                    *cancelled.lock().unwrap() = true;
+                } else {
+                    eprintln!("[AUTH] User provided input, not setting cancelled flag");
+                }
+
+                // Quit the nested event loop
+                eprintln!("[AUTH] Quitting nested main loop");
+                main_loop_clone.quit();
+            });
+        }
+
+        eprintln!("[AUTH] Waiting for dialog response (main_loop.run())...");
+
+        // Run nested event loop - blocks but processes GTK events
+        main_loop.run();
+
+        eprintln!("[AUTH] Main loop exited, extracting response");
+
+        // Extract and return response
+        let result = response.lock().unwrap().take();
+
+        eprintln!("[AUTH] Response extracted from storage");
+
+        match result {
+            Some(Some(text)) => {
+                eprintln!("[AUTH] Returning Ok with {} chars of text", text.len());
+                Ok(text)
+            }
+            Some(None) => {
+                eprintln!("[AUTH] Returning error: Authentication was cancelled");
+                Err(anyhow::anyhow!("Authentication was cancelled"))
+            }
+            None => {
+                eprintln!("[AUTH] ERROR: Dialog closed unexpectedly (no response stored)");
+                Err(anyhow::anyhow!("Dialog closed unexpectedly"))
+            }
+        }
     }
 
     fn on_connected(&mut self) {
@@ -120,13 +206,15 @@ impl TunnelEventHandler for GtkTunnelEventHandler {
     }
 }
 
-/// Internal function to show the auth dialog
-fn show_auth_dialog_internal(
+/// Show authentication dialog with a callback
+fn show_auth_dialog_with_callback<F>(
     window: &adw::ApplicationWindow,
     prompt: &str,
     hidden: bool,
-    auth_tx: Arc<Mutex<Option<async_channel::Sender<String>>>>,
-) {
+    callback: F,
+) where
+    F: FnOnce(Option<String>) + 'static,
+{
     let dialog = adw::MessageDialog::builder()
         .transient_for(window)
         .modal(true)
@@ -181,9 +269,19 @@ fn show_auth_dialog_internal(
         });
     }
 
-    // Handle response
+    // Handle response with callback
     let entry_clone = entry.clone();
+    let callback = std::cell::RefCell::new(Some(callback));
+    let response_handled = std::cell::RefCell::new(false);
+
     dialog.connect_response(None, move |dialog, response| {
+        // Ensure we only handle the response once
+        if *response_handled.borrow() {
+            eprintln!("Warning: Dialog response already handled, ignoring duplicate");
+            return;
+        }
+        *response_handled.borrow_mut() = true;
+
         if response == "submit" {
             // Get the text from the appropriate widget type
             let text = if let Some(password_entry) = entry_clone.downcast_ref::<gtk4::PasswordEntry>() {
@@ -194,18 +292,21 @@ fn show_auth_dialog_internal(
                 String::new()
             };
 
-            if !text.is_empty() {
-                // Send the response through the async channel
-                let mut guard = auth_tx.lock().unwrap();
-                if let Some(tx) = guard.take() {
-                    let _ = tx.try_send(text);
+            eprintln!("Auth dialog submit with text length: {}", text.len());
+
+            // Call callback with result
+            if let Some(cb) = callback.borrow_mut().take() {
+                if !text.is_empty() {
+                    cb(Some(text));
+                } else {
+                    cb(None);
                 }
             }
         } else {
-            // User cancelled - drop the sender which causes recv() to fail
-            let mut guard = auth_tx.lock().unwrap();
-            if let Some(tx) = guard.take() {
-                drop(tx);
+            eprintln!("Auth dialog cancelled");
+            // User cancelled
+            if let Some(cb) = callback.borrow_mut().take() {
+                cb(None);
             }
         }
 
@@ -213,4 +314,20 @@ fn show_auth_dialog_internal(
     });
 
     dialog.present();
+}
+
+/// Internal function to show the auth dialog (legacy, kept for compatibility)
+#[allow(dead_code)]
+fn show_auth_dialog_internal(
+    window: &adw::ApplicationWindow,
+    prompt: &str,
+    hidden: bool,
+    auth_tx: Arc<Mutex<Option<std::sync::mpsc::Sender<Option<String>>>>>,
+) {
+    show_auth_dialog_with_callback(window, prompt, hidden, move |result| {
+        let mut guard = auth_tx.lock().unwrap();
+        if let Some(tx) = guard.take() {
+            let _ = tx.send(result);
+        }
+    });
 }

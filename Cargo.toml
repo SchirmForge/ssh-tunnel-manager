@@ -18,6 +18,7 @@ repository = "https://github.com/schirmForge/ssh-tunnel"
 # Async runtime
 tokio = { version = "1.40", features = ["full"] }
 tokio-util = { version = "0.7", features = ["codec"] }
+async-trait = "0.1"
 
 # HTTP/REST API
 axum = { version = "0.7", features = ["ws"] }

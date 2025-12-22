@@ -460,8 +460,8 @@ pub async fn start_tunnel_with_events<H: TunnelEventHandler>(
     // SSE-driven flow with fallback
     let idle_fallback = Duration::from_secs(15);
     let overall_timeout = Duration::from_secs(60);
-    let mut idle_timer = tokio::time::sleep(idle_fallback);
-    let mut overall_timer = tokio::time::sleep(overall_timeout);
+    let idle_timer = tokio::time::sleep(idle_fallback);
+    let overall_timer = tokio::time::sleep(overall_timeout);
     tokio::pin!(idle_timer);
     tokio::pin!(overall_timer);
 
