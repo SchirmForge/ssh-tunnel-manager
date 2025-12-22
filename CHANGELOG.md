@@ -7,6 +7,77 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **CLI stop --all command** - Stop all active tunnels with daemon status checking
+  - Queries daemon for list of active tunnels
+  - Filters to only running states (Connecting, Connected, WaitingForAuth, Reconnecting)
+  - Stops each active tunnel individually with error handling
+  - Provides detailed feedback with success/failure counts
+  - Usage: `ssh-tunnel stop --all`
+
+### Fixed
+- **IPv6 address formatting in host:port strings** - Proper URL notation for IPv6 literals
+  - Added `format_host_port()` helper function in common crate
+  - IPv6 addresses now wrapped in brackets: `[::1]:22` instead of `::1:22`
+  - Fixes SSH connections, local port binding, daemon URLs with IPv6 addresses
+  - Applied to: daemon tunnel connections, daemon bind addresses, daemon client URLs, GUI displays
+
+### Changed
+- **Tunnel description formatting** - Unified display across CLI and GUI
+  - Added `format_tunnel_description()` helper in common crate
+  - New format with explicit labels:
+    - Local forwarding: `local: 127.0.0.1:8080 → remote: example.com:80`
+    - Remote forwarding: `remote: example.com:80 → local: 127.0.0.1:8080`
+    - Dynamic SOCKS: `SOCKS: 127.0.0.1:1080`
+  - Consistent across CLI connection messages, GUI profile details, and profile lists
+  - Properly handles IPv6 addresses with bracket notation
+
+---
+
+## [0.1.7] - 2025-12-22
+
+### Fixed
+- **GUI Authentication Dialog Architecture** - Complete rewrite to event-driven pattern
+  - Fixed crashes with `EnterError` (nested executor issue)
+  - Fixed unresponsive/frozen dialogs
+  - Fixed duplicate dialogs appearing on cancel
+  - Fixed 60-second timeout on cancellation
+  - **Root cause**: Attempting to run nested `glib::MainLoop` inside `glib::spawn_local` context
+  - **Solution**: Event-driven architecture via SSE
+    - Daemon sends `AuthRequired` events via Server-Sent Events
+    - GUI `handle_auth_request()` shows dialogs asynchronously
+    - Dialog state tracking prevents duplicates (`auth_dialog_open`, `pending_auth_requests`, `active_auth_requests`)
+    - Cancel button calls `daemon_client.stop_tunnel()` for immediate abort
+  - Removed failed approaches: async-trait, async channels, nested MainLoop
+  - **Files changed**:
+    - `crates/gui/src/ui/auth_dialog.rs` - New event-driven dialog handler with queuing
+    - `crates/gui/src/ui/tunnel_handler.rs` - Removed (no longer needed)
+    - `crates/gui/src/ui/profile_details.rs` - Simplified to just call `start_tunnel()`
+    - `crates/gui/src/ui/details.rs` - Simplified to just call `start_tunnel()`
+    - `crates/gui/src/ui/profiles_list.rs` - Check for pending auth on initial status query
+    - `crates/gui/src/ui/window.rs` - Added state fields for dialog tracking
+  - All authentication flows now work correctly: password entry, cancel, SSH retry, concurrent tunnels
+- **Daemon Graceful Cancellation** - Fixed connection hanging during auth
+  - Modified `stop()` to send shutdown signal before aborting task
+  - Modified `run_tunnel()` to use `tokio::select!` for shutdown during connection/auth phase
+  - Fixes 30-second hang when canceling during authentication prompt
+
+### Changed
+- Removed `async-channel` dependency from GUI (no longer needed with event-driven approach)
+- Removed unused `TunnelEventHandler` implementations in GUI (auth now via SSE)
+- Fixed `unused_mut` warnings in `daemon_client.rs` (removed `mut` from timer variables)
+
+### Technical Details
+- Architecture shift: Synchronous trait blocking → Event-driven SSE
+- No more nested event loops or executor conflicts
+- Dialog responsiveness via async GTK callbacks
+- State machine for dialog queuing prevents race conditions
+- Clean separation: daemon handles SSH, GUI handles user interaction via events
+
+---
+
+## [Unreleased - Future IPv6 Work]
+
 ### Changed
 - **BREAKING: Configuration Fields Split for Better IPv6 Support**
   - **Daemon Configuration** (`daemon.toml`):

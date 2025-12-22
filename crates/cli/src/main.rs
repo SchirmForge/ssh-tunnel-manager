@@ -17,10 +17,11 @@ use std::path::PathBuf;
 use futures::StreamExt;
 
 use ssh_tunnel_common::{
-    delete_profile_by_name, load_profile_by_name, profile_exists_by_name, save_profile,
-    start_tunnel_with_events, stop_tunnel as stop_tunnel_shared, AuthRequest,
-    AuthType, ConnectionConfig, DaemonTunnelEvent, ForwardingConfig, ForwardingType, Profile,
-    TunnelEventHandler, TunnelOptions, Uuid,
+    delete_profile_by_name, load_all_profiles, load_profile_by_name, profile_exists_by_name,
+    save_profile, start_tunnel_with_events, stop_tunnel as stop_tunnel_shared,
+    AuthRequest, AuthType, ConnectionConfig, DaemonTunnelEvent,
+    ForwardingConfig, ForwardingType, Profile, TunnelEventHandler, TunnelOptions,
+    TunnelStatus, TunnelStatusResponse, Uuid,
 };
 
 #[derive(Parser)]
@@ -139,8 +140,12 @@ enum Commands {
 
     /// Stop a tunnel
     Stop {
-        /// Profile name
-        name: String,
+        /// Profile name (optional when using --all)
+        name: Option<String>,
+
+        /// Stop all active tunnels
+        #[arg(long, conflicts_with = "name")]
+        all: bool,
     },
 
     /// Restart a tunnel
@@ -239,8 +244,14 @@ async fn main() -> Result<()> {
         Commands::Start { name } => {
             start_tunnel(name).await?;
         }
-        Commands::Stop { name } => {
-            stop_tunnel(name).await?;
+        Commands::Stop { name, all } => {
+            if all {
+                stop_all_tunnels().await?;
+            } else if let Some(n) = name {
+                stop_tunnel(n).await?;
+            } else {
+                anyhow::bail!("Either provide a profile name or use --all to stop all tunnels");
+            }
         }
         Commands::Restart { name } => {
             println!("Restarting tunnel: {}", name);
@@ -351,11 +362,8 @@ fn announce_connected(profile: &Profile) {
     println!(
         "{}",
         format!(
-            "✓ Tunnel connected! Forwarding {}:{} → {}:{}",
-            profile.forwarding.bind_address,
-            profile.forwarding.local_port.unwrap_or(0),
-            profile.forwarding.remote_host.as_deref().unwrap_or("?"),
-            profile.forwarding.remote_port.unwrap_or(0)
+            "✓ Tunnel connected! {}",
+            ssh_tunnel_common::format_tunnel_description(&profile.forwarding)
         )
         .green()
         .bold()
@@ -363,7 +371,7 @@ fn announce_connected(profile: &Profile) {
     println!();
     println!(
         "{}",
-        "Tunnel is running. Press Ctrl+C to stop (or use 'ssh-tunnel stop')".dimmed()
+        "Tunnel is running. Use 'ssh-tunnel stop [<name>|--all]' to stop.".dimmed()
     );
 }
 
@@ -387,6 +395,119 @@ async fn stop_tunnel(name: String) -> Result<()> {
     stop_tunnel_shared(&client, &cli_config.daemon_config, tunnel_id).await?;
 
     println!("{}", "✓ Tunnel stopped".green().bold());
+    Ok(())
+}
+
+async fn stop_all_tunnels() -> Result<()> {
+    use serde::Deserialize;
+
+    #[derive(Debug, Deserialize)]
+    struct TunnelsListResponse {
+        tunnels: Vec<TunnelStatusResponse>,
+    }
+
+    let client = create_daemon_client()?;
+    let cli_config = config::CliConfig::load()?;
+    let base_url = daemon_base_url()?;
+
+    println!("{}", "Querying daemon for active tunnels...".dimmed());
+
+    // Query daemon for all tunnels
+    let url = format!("{}/api/tunnels", base_url);
+    let request = client.get(&url);
+    let request = add_auth_header(request)?;
+
+    let response = request
+        .send()
+        .await
+        .context("Failed to query daemon for tunnel list")?;
+
+    if !response.status().is_success() {
+        anyhow::bail!("Failed to get tunnel list from daemon: {}", response.status());
+    }
+
+    let list: TunnelsListResponse = response
+        .json()
+        .await
+        .context("Failed to parse tunnels list")?;
+
+    // Filter to only active/running tunnels
+    let active_tunnels: Vec<_> = list
+        .tunnels
+        .into_iter()
+        .filter(|t| {
+            matches!(
+                t.status,
+                TunnelStatus::Connecting
+                    | TunnelStatus::Connected
+                    | TunnelStatus::WaitingForAuth
+                    | TunnelStatus::Reconnecting
+            )
+        })
+        .collect();
+
+    if active_tunnels.is_empty() {
+        println!("{}", "No active tunnels to stop".yellow());
+        return Ok(());
+    }
+
+    println!(
+        "{}",
+        format!("Found {} active tunnel(s)", active_tunnels.len())
+            .green()
+            .bold()
+    );
+
+    // Load all profiles to get names
+    let all_profiles = load_all_profiles()?;
+    let mut stopped_count = 0;
+    let mut failed_count = 0;
+
+    for tunnel in active_tunnels {
+        // Find profile name by ID
+        let profile_name = all_profiles
+            .iter()
+            .find(|p| p.metadata.id == tunnel.id)
+            .map(|p| p.metadata.name.as_str())
+            .unwrap_or("unknown");
+
+        println!(
+            "{}",
+            format!("Stopping tunnel '{}' ({})", profile_name, tunnel.id).yellow()
+        );
+
+        match stop_tunnel_shared(&client, &cli_config.daemon_config, tunnel.id).await {
+            Ok(_) => {
+                println!("  {}", "✓ Stopped".green());
+                stopped_count += 1;
+            }
+            Err(e) => {
+                println!("  {}", format!("✗ Failed: {}", e).red());
+                failed_count += 1;
+            }
+        }
+    }
+
+    println!();
+    if failed_count == 0 {
+        println!(
+            "{}",
+            format!("✓ Successfully stopped {} tunnel(s)", stopped_count)
+                .green()
+                .bold()
+        );
+    } else {
+        println!(
+            "{}",
+            format!(
+                "Stopped {} tunnel(s), {} failed",
+                stopped_count, failed_count
+            )
+            .yellow()
+            .bold()
+        );
+    }
+
     Ok(())
 }
 
@@ -721,9 +842,17 @@ async fn add_profile(
     } else {
         println!("  Auth: Password");
     }
+    // Create a ForwardingConfig for display
+    let forwarding = ssh_tunnel_common::ForwardingConfig {
+        forwarding_type: ssh_tunnel_common::ForwardingType::Local,
+        bind_address: bind_address.clone(),
+        local_port: Some(local_port),
+        remote_host: Some(forward_host.clone()),
+        remote_port: Some(forward_port),
+    };
     println!(
-        "  Tunnel: {}:{} → {}:{}",
-        bind_address, local_port, forward_host, forward_port
+        "  Tunnel: {}",
+        ssh_tunnel_common::format_tunnel_description(&forwarding)
     );
     println!();
     println!(
@@ -917,18 +1046,7 @@ fn print_profiles_table(profiles: &[Profile]) {
             profile.connection.user, profile.connection.host, profile.connection.port
         );
 
-        let tunnel = if let (Some(local_port), Some(remote_host), Some(remote_port)) = (
-            profile.forwarding.local_port,
-            &profile.forwarding.remote_host,
-            profile.forwarding.remote_port,
-        ) {
-            format!(
-                "{}:{} → {}:{}",
-                profile.forwarding.bind_address, local_port, remote_host, remote_port
-            )
-        } else {
-            "N/A".to_string()
-        };
+        let tunnel = ssh_tunnel_common::format_tunnel_description(&profile.forwarding);
 
         let tags = if profile.metadata.tags.is_empty() {
             "-".to_string()

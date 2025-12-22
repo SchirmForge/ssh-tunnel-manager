@@ -12,12 +12,16 @@ This testing procedure validates the fix for authentication dialog issues includ
 
 ## Implementation Details
 
-The fix uses GTK's traditional nested `MainLoop` pattern:
-- Synchronous `TunnelEventHandler::on_auth_required()` trait method
-- `glib::MainLoop::new()` creates a nested event loop for modal dialog behavior
-- `main_loop.run()` blocks but continues processing GTK events (keeps UI responsive)
-- Dialog callback stores response in `Arc<Mutex>` and quits the nested loop
-- Cancellation flag prevents showing subsequent auth dialogs from SSH retry attempts
+The fix uses an **event-driven architecture** via Server-Sent Events (SSE):
+- Daemon sends `AuthRequired` events when authentication is needed
+- GUI SSE listener calls `handle_auth_request()` which shows dialog asynchronously
+- Dialog state tracking prevents duplicate dialogs:
+  - `auth_dialog_open`: Set of currently open dialog tunnel IDs
+  - `pending_auth_requests`: Queue of auth requests waiting for dialog to close
+  - `active_auth_requests`: Currently active auth request per tunnel
+- Cancel button calls `daemon_client.stop_tunnel()` for immediate abort
+- Subsequent auth requests (SSH retry) are queued and de-duplicated
+- No blocking operations, no nested event loops, fully async/event-driven
 
 ## Test Scenarios
 
@@ -346,9 +350,10 @@ If issues occur, check logs for:
 ## Related Files
 
 Implementation files:
-- [crates/common/src/daemon_client.rs](crates/common/src/daemon_client.rs) - Trait definition
-- [crates/gui/src/ui/tunnel_handler.rs](crates/gui/src/ui/tunnel_handler.rs) - GTK implementation
-- [crates/cli/src/main.rs](crates/cli/src/main.rs) - CLI implementation
+- [crates/gui/src/ui/auth_dialog.rs](crates/gui/src/ui/auth_dialog.rs) - Event-driven dialog handler with queuing
+- [crates/daemon/src/tunnel.rs](crates/daemon/src/tunnel.rs) - Graceful shutdown during auth
+- [crates/gui/src/ui/window.rs](crates/gui/src/ui/window.rs) - AppState with dialog tracking fields
+- [crates/gui/src/ui/profiles_list.rs](crates/gui/src/ui/profiles_list.rs) - SSE listener integration
 
 Testing locations:
 - [crates/gui/src/ui/profile_details.rs](crates/gui/src/ui/profile_details.rs) - Main tunnel start location

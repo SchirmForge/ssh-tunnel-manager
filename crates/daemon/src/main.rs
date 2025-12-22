@@ -134,12 +134,12 @@ async fn main() -> Result<()> {
             serve_unix_socket(app, &daemon_config, shutdown_manager.clone(), shutdown_tx).await?;
         }
         ListenerMode::TcpHttp => {
-            let bind_address = format!("{}:{}", daemon_config.bind_host, daemon_config.bind_port);
+            let bind_address = ssh_tunnel_common::format_host_port(&daemon_config.bind_host, daemon_config.bind_port);
             serve_tcp_http(app, &bind_address, shutdown_manager.clone(), shutdown_tx)
                 .await?;
         }
         ListenerMode::TcpHttps => {
-            let bind_address = format!("{}:{}", daemon_config.bind_host, daemon_config.bind_port);
+            let bind_address = ssh_tunnel_common::format_host_port(&daemon_config.bind_host, daemon_config.bind_port);
             serve_tcp_https(
                 app,
                 &bind_address,

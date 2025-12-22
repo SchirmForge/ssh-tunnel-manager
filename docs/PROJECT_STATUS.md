@@ -95,20 +95,111 @@
 - Host keys are verified and stored in `~/.config/ssh-tunnel-manager/known_hosts`.
 - Credentials remain in OS keyring; SSH keys are referenced by path only.
 
-## Known Gaps / TODO
+## Roadmap & TODO Tracking
 
-- Implement remote and dynamic/SOCKS forwarding.
-- Wire `auto_reconnect`/monitoring to actual reconnection and health checks.
-- ✅ ~~Enforce auth by default for TCP modes; treat HTTP as dev-only~~ - **Done!** Authentication enabled by default, HTTP restricted to loopback.
-- Fix outdated tests in `crates/common` (profile manager schema drift).
-- ✅ ~~Share the CLI's SSE-first start/stop flow with the GUI~~ - **Done!** Extracted to `daemon_client::start_tunnel_with_events`.
-- ✅ ~~Integrate shared SSE-first flow into GUI~~ - **Done!** GTK event handler implements `TunnelEventHandler` trait.
-- ✅ ~~Enhance GUI status updates (add status labels, progress indicators)~~ - **Done!** Real-time colored status dots on profile list.
-- ✅ ~~Add Help and About windows~~ - **Done!** Markdown-rendered documentation in burger menu.
-- Daemon page in GUI: show daemon configuration (from running daemon using API, not from file), restart daemon (user only), stop daemon (user only), start daemon (user only), configure autostart for user (running a systemctl command), configure profiles that should autostart (via API).
-- System integration: systemd user service, tray, notifications.
-- Packaging: Flatpak manifest and build pipeline.
-- Clarify token handoff so the CLI can consume it without logging secrets.
+### Recently Completed ✅
+
+- ✅ **CLI stop --all command** (v0.1.7) - Stop all active tunnels with status checking from daemon
+- ✅ **IPv6 host management** (v0.1.7) - Proper URL formatting with `[addr]:port` notation for IPv6 literals
+- ✅ **Tunnel description formatting** (v0.1.7) - Unified display across CLI/GUI with `local:`/`remote:` labels
+- ✅ **Enforce auth by default for TCP modes** - Authentication enabled by default, HTTP restricted to loopback
+- ✅ **Share CLI's SSE-first start/stop flow with GUI** - Extracted to `daemon_client::start_tunnel_with_events`
+- ✅ **Integrate shared SSE-first flow into GUI** - GTK event handler implements `TunnelEventHandler` trait
+- ✅ **Enhance GUI status updates** - Real-time colored status dots on profile list
+- ✅ **Add Help and About windows** - Markdown-rendered documentation in burger menu
+
+### High Priority 🚧
+
+#### Remote Port Forwarding (`ssh -R`)
+- Status: **Planned** - Infrastructure ready, implementation needed
+- Files: See `~/.claude/plans/remote-forwarding-implementation.md`
+- Components:
+  - 🚧 Daemon: Implement `run_remote_forward_task()` using russh reverse forwarding API
+  - 🚧 CLI: Add `--forwarding-type` argument for profile creation
+  - 🚧 GUI: Add forwarding type dropdown in profile dialog
+- Estimated effort: 12-19 hours
+
+#### Dynamic/SOCKS Proxy (`ssh -D`)
+- Status: **Planned** - Similar to remote forwarding
+- Description: SOCKS5 proxy for dynamic port forwarding
+- Components:
+  - 🚧 Daemon: Implement `run_dynamic_forward_task()` with SOCKS5 protocol handling
+  - 🚧 CLI: Support `--forwarding-type dynamic`
+  - 🚧 GUI: Add to forwarding type dropdown
+
+#### Configurable Daemon Config Path
+- Status: **Planned**
+- Description: Pass daemon config file as command-line parameter
+- Default: `~/.config/ssh-tunnel-manager/daemon.toml`
+- Files: `crates/daemon/src/main.rs`, `crates/daemon/src/config.rs`
+- Benefits: Multi-instance daemons, testing, system-wide configs
+
+#### Enhanced Logging
+- Status: **Planned - Design decision needed**
+- Description: Daemon logging with `--debug` option and configurable log levels
+- Options to consider:
+  1. **journalctl integration** (systemd) - Best for system services
+  2. **Dedicated log files** - Better for debugging, log rotation needed
+  3. **Hybrid approach** - Both journalctl and optional file output
+- Questions:
+  - Default log level? (Info, Debug, Trace)
+  - Rotation policy for file-based logs?
+  - Structured logging (JSON) for parsing?
+
+### Medium Priority 🔵
+
+#### GUI Dark Mode
+- Status: **Planned**
+- Description: Auto-selection based on system theme preferences
+- Implementation: Use GTK4 `AdwStyleManager` to detect and follow system theme
+- Files: `crates/gui/src/main.rs`, `crates/gui/src/ui/window.rs`
+
+#### Daemon Management GUI
+- Status: **Partially planned**
+- Description: Graphical interface for daemon configuration and monitoring
+- Features:
+  - Show daemon configuration (from running daemon using API, not file)
+  - Restart/stop/start daemon (user-only operations)
+  - Configure autostart for user (systemctl command integration)
+  - Configure profiles that should autostart (via daemon API)
+- Files: `crates/gui/src/ui/daemon_page.rs` (new)
+
+### Future Enhancements 📅
+
+#### Auto-Reconnect/Health Monitoring
+- Status: **Config exists, wiring needed**
+- Description: Wire `auto_reconnect`/monitoring to actual reconnection and health checks
+- Current: Options exist in profile config but not implemented
+- Files: `crates/daemon/src/tunnel.rs`
+
+#### Desktop Notifications
+- Status: **Planned**
+- Description: System notifications for tunnel status changes
+- Library: `notify-rust` (already in dependencies)
+- Events: Connected, Disconnected, Failed, Authentication Required
+
+#### System Integration
+- Status: **Partial** - systemd units exist, tray/notifications pending
+- Components:
+  - ✅ Systemd user service templates
+  - 🚧 System tray integration
+  - 🚧 Desktop notifications
+  - 🚧 Autostart on login
+
+#### Packaging
+- Status: **Planned**
+- Targets:
+  - 🚧 Flatpak (manifest needed)
+  - 🚧 AUR (PKGBUILD needed)
+  - 🚧 Debian package (.deb)
+  - 🚧 AppImage
+
+### Known Issues / Technical Debt 🔧
+
+- ❌ Fix outdated tests in `crates/common` (profile manager schema drift)
+- ❌ Clarify token handoff so CLI can consume it without logging secrets
+- 🚧 Remote forwarding not implemented (returns error)
+- 🚧 Dynamic/SOCKS forwarding not implemented (returns error)
 
 ## Quick Commands
 

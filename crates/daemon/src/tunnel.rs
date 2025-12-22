@@ -636,7 +636,7 @@ async fn establish_connection(
     });
 
     // Connect to SSH server
-    let addr = format!("{}:{}", profile.connection.host, profile.connection.port);
+    let addr = ssh_tunnel_common::format_host_port(&profile.connection.host, profile.connection.port);
     info!("Connecting to SSH server: {}", addr);
 
     // session wrapped in a timeout
@@ -1161,7 +1161,7 @@ async fn run_local_forward_task(
         .remote_port
         .ok_or_else(|| anyhow::anyhow!("Remote port not specified"))?;
 
-    let bind_addr: SocketAddr = format!("{}:{}", profile.forwarding.bind_address, local_port)
+    let bind_addr: SocketAddr = ssh_tunnel_common::format_host_port(&profile.forwarding.bind_address, local_port)
         .parse()
         .context("Invalid bind address")?;
 

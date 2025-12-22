@@ -14,3 +14,30 @@ Thumbs.db
 .env
 .env.*
 
+# Packaging outputs
+*.deb
+*.changes
+*.buildinfo
+*.dsc
+*.rpm
+*.srpm
+*.flatpak
+*.flatpakref
+*.flatpakrepo
+packaging/deb/debian/.debhelper/
+packaging/deb/debian/*.debhelper
+packaging/deb/debian/*.log
+packaging/deb/debian/*.substvars
+packaging/deb/debian/debhelper-build-stamp
+packaging/deb/debian/files
+packaging/deb/debian/tmp/
+packaging/deb/debian/ssh-tunnel-daemon/
+packaging/deb/debian/ssh-tunnel-cli/
+packaging/deb/debian/ssh-tunnel-gui/
+packaging/rpm/BUILD/
+packaging/rpm/BUILDROOT/
+packaging/rpm/RPMS/
+packaging/rpm/SRPMS/
+packaging/rpm/*.tar.*
+packaging/flatpak/.flatpak-builder/
+packaging/flatpak/build/

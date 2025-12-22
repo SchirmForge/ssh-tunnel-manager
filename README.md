@@ -445,13 +445,29 @@ kwalletd5
 
 See [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md) for detailed implementation status and roadmap.
 
-### Next Priorities
+### Completed Features ✅
 
-1. Add daemon config file parameter
-2. Implement remote port forwarding
-3. Implement dynamic (SOCKS) port forwarding
-4. Finish GUI implementation (notification)
-5. Implement auto-connect on the daemon for the profiles that request it
+- ✅ **CLI stop --all command** - Stop all active tunnels with status checking
+- ✅ **IPv6 host management** - Proper URL formatting with `[addr]:port` notation for IPv6 literals
+- ✅ **Tunnel description formatting** - Unified display across CLI/GUI with proper local/remote labeling
+
+### Planned Features 🚧
+
+#### High Priority
+- 🚧 **Remote port forwarding** (`ssh -R`) - Forward remote server ports to local destinations
+- 🚧 **Dynamic/SOCKS proxy** (`ssh -D`) - SOCKS5 proxy for dynamic port forwarding
+- 🚧 **Configurable daemon config path** - Pass daemon config file as parameter (default: `~/.config/ssh-tunnel-manager`)
+- 🚧 **Enhanced logging** - Daemon logging with `--debug` option and configurable log levels
+  - Options: journalctl integration or dedicated log files
+
+#### Medium Priority
+- 🚧 **GUI dark mode** - Auto-selection based on system theme preferences
+- 🚧 **Daemon management GUI** - Graphical interface for daemon configuration and monitoring
+
+#### Future Enhancements
+- Desktop notifications for tunnel status changes
+- Auto-reconnect/health monitoring wiring
+- Packaging (Flatpak, AUR, deb)
 
 ## Contributing
 

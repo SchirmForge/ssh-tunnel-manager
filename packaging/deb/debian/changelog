@@ -1,0 +1,5 @@
+ssh-tunnel-manager (0.1.7-1) UNRELEASED; urgency=medium
+
+  * Initial packaging templates.
+
+ -- SSH Tunnel Manager Contributors <maintainer@example.com>  Wed, 01 Jan 2025 00:00:00 +0000

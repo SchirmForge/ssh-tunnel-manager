@@ -144,24 +144,7 @@ fn create_summary_group(profile: &ProfileModel) -> adw::PreferencesGroup {
         let tunnel_row = adw::ActionRow::new();
         tunnel_row.set_title("Tunnel Configuration");
 
-        let tunnel_description = match prof.forwarding.forwarding_type {
-            ForwardingType::Local => {
-                let local_port = prof.forwarding.local_port.unwrap_or(0);
-                let remote_host = prof.forwarding.remote_host.as_deref().unwrap_or("localhost");
-                let remote_port = prof.forwarding.remote_port.unwrap_or(0);
-                format!("Local → localhost:{} → {}:{}", local_port, remote_host, remote_port)
-            }
-            ForwardingType::Remote => {
-                let remote_host = prof.forwarding.remote_host.as_deref().unwrap_or("localhost");
-                let local_port = prof.forwarding.local_port.unwrap_or(0);
-                let remote_port = prof.forwarding.remote_port.unwrap_or(0);
-                format!("Remote → :{} → {}:{}", remote_port, remote_host, local_port)
-            }
-            ForwardingType::Dynamic => {
-                let local_port = prof.forwarding.local_port.unwrap_or(1080);
-                format!("Dynamic SOCKS proxy on localhost:{}", local_port)
-            }
-        };
+        let tunnel_description = ssh_tunnel_common::format_tunnel_description(&prof.forwarding);
 
         tunnel_row.set_subtitle(&tunnel_description);
         let tunnel_icon = gtk4::Image::from_icon_name("network-transmit-receive-symbolic");

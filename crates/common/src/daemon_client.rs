@@ -94,11 +94,13 @@ impl DaemonClientConfig {
             }
             ConnectionMode::Http => {
                 // Construct HTTP URL from daemon_host:daemon_port
-                Ok(format!("http://{}:{}", self.daemon_host, self.daemon_port))
+                let host_port = crate::format_host_port(&self.daemon_host, self.daemon_port);
+                Ok(format!("http://{}", host_port))
             }
             ConnectionMode::Https => {
                 // Construct HTTPS URL from daemon_host:daemon_port
-                Ok(format!("https://{}:{}", self.daemon_host, self.daemon_port))
+                let host_port = crate::format_host_port(&self.daemon_host, self.daemon_port);
+                Ok(format!("https://{}", host_port))
             }
         }
     }

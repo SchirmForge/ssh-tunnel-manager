@@ -1,0 +1,37 @@
+Source: ssh-tunnel-manager
+Section: net
+Priority: optional
+Maintainer: SSH Tunnel Manager Contributors <maintainer@example.com>
+Build-Depends: debhelper-compat (= 13),
+ cargo,
+ rustc,
+ pkg-config,
+ libgtk-4-dev,
+ libadwaita-1-dev,
+ libglib2.0-dev,
+ libsecret-1-dev
+Standards-Version: 4.7.0
+Rules-Requires-Root: no
+Homepage: https://github.com/schirmForge/ssh-tunnel
+
+Package: ssh-tunnel-daemon
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Suggests: ssh-tunnel-cli
+Description: SSH Tunnel Manager daemon
+ The daemon manages SSH tunnels and exposes an API for clients.
+
+Package: ssh-tunnel-cli
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Suggests: ssh-tunnel-daemon
+Description: SSH Tunnel Manager CLI
+ Command-line interface to manage SSH tunnel profiles and sessions.
+
+Package: ssh-tunnel-gui
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Suggests: ssh-tunnel-daemon, ssh-tunnel-cli
+Enhances: gnome-shell | kde-plasma-desktop | kde-standard
+Description: SSH Tunnel Manager GUI
+ GTK4-based GUI for managing SSH tunnels.
