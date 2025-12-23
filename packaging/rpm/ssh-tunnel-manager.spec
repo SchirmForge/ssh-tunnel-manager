@@ -3,7 +3,7 @@ Version: 0.1.7
 Release: 1%{?dist}
 Summary: SSH tunnel manager daemon, CLI, and GUI
 License: Apache-2.0
-URL: https://github.com/schirmForge/ssh-tunnel
+URL: https://github.com/SchirmForge/ssh-tunnel
 Source0: %{name}-%{version}.tar.gz
 
 BuildRequires: cargo

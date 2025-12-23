@@ -61,3 +61,9 @@ tracing-subscriber = { workspace = true }
 
 # Markdown rendering
 pulldown-cmark = "0.12"
+
+# SSH key validation
+russh-keys = { workspace = true }
+
+# Shell expansion for tilde (~) in paths
+shellexpand = "3.1"

@@ -30,6 +30,35 @@ A secure, performant SSH tunnel management application for Linux with CLI interf
 - Desktop notifications
 - Packaging (Flatpak, AUR, deb)
 
+## Server and Headless Environments
+
+SSH Tunnel Manager works seamlessly on servers and in containers, with automatic keyring fallback.
+
+### Automatic Detection
+
+When running on headless servers or in environments without keyring access:
+- The CLI **automatically detects** keyring unavailability
+- Profile creation **still succeeds** - passwords just aren't stored
+- You'll see: `⚠️  System keychain not available`
+- The daemon will **prompt interactively** when starting tunnels
+
+### Manual Override
+
+To explicitly disable keyring (useful for automation):
+
+```bash
+export SSH_TUNNEL_SKIP_KEYRING=1
+ssh-tunnel add myprofile --host server.com --user myuser --key ~/.ssh/id_ed25519
+```
+
+Useful for:
+- Docker containers and CI/CD
+- Ansible/configuration management
+- Systemd system services
+- Environments where keyring causes issues
+
+See [SYSTEMD.md](docs/SYSTEMD.md) for system service configuration.
+
 ## Quick Start
 
 ### Prerequisites
@@ -41,7 +70,7 @@ A secure, performant SSH tunnel management application for Linux with CLI interf
 
 ```bash
 # Clone the repository
-git clone https://github.com/schirmForge/ssh-tunnel.git
+git clone https://github.com/SchirmForge/ssh-tunnel.git
 cd ssh-tunnel
 
 # Build CLI and daemon

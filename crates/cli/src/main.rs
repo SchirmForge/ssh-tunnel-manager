@@ -20,7 +20,7 @@ use ssh_tunnel_common::{
     delete_profile_by_name, load_all_profiles, load_profile_by_name, profile_exists_by_name,
     save_profile, start_tunnel_with_events, stop_tunnel as stop_tunnel_shared,
     AuthRequest, AuthType, ConnectionConfig, DaemonTunnelEvent,
-    ForwardingConfig, ForwardingType, Profile, TunnelEventHandler, TunnelOptions,
+    ForwardingConfig, ForwardingType, PasswordStorage, Profile, TunnelEventHandler, TunnelOptions,
     TunnelStatus, TunnelStatusResponse, Uuid,
 };
 
@@ -576,7 +576,7 @@ async fn add_profile(
     };
 
     // Authentication type selection
-    let (auth_type, key_path, password_stored) = if let Some(path) = key_path {
+    let (auth_type, key_path, password_storage) = if let Some(path) = key_path {
         // Key path provided via CLI argument - use key auth
         validate_ssh_key(&path)?;
 
@@ -600,14 +600,20 @@ async fn add_profile(
                 .default(!non_interactive)  // Default to yes in interactive mode, no in non-interactive
                 .interact()?;
 
-            if store_passphrase {
-                store_password_in_keychain(&profile_id, &passphrase)?;
-            }
+            let password_storage = if store_passphrase {
+                if store_password_in_keychain(&profile_id, &passphrase)? {
+                    PasswordStorage::Keychain
+                } else {
+                    PasswordStorage::None
+                }
+            } else {
+                PasswordStorage::None
+            };
 
-            (AuthType::Key, Some(path), store_passphrase)
+            (AuthType::Key, Some(path), password_storage)
         } else {
             // Unencrypted key - no passphrase needed
-            (AuthType::Key, Some(path), false)
+            (AuthType::Key, Some(path), PasswordStorage::None)
         }
     } else if non_interactive {
         anyhow::bail!("SSH key path is required in non-interactive mode");
@@ -629,13 +635,19 @@ async fn add_profile(
                 .default(false)
                 .interact()?;
 
-            if store_password {
+            let password_storage = if store_password {
                 println!("{}", "⚠️  Note: Password cannot be validated until first connection.".yellow());
                 println!("{}", "    If the password is incorrect, you'll be prompted again when starting the tunnel.".dimmed());
-                store_password_in_keychain(&profile_id, &password)?;
-            }
+                if store_password_in_keychain(&profile_id, &password)? {
+                    PasswordStorage::Keychain
+                } else {
+                    PasswordStorage::None
+                }
+            } else {
+                PasswordStorage::None
+            };
 
-            (AuthType::Password, None, store_password)
+            (AuthType::Password, None, password_storage)
         } else {
             // Key authentication
             let key_path = PathBuf::from(shellexpand::tilde(&key_path_input).to_string());
@@ -647,7 +659,7 @@ async fn add_profile(
                 .default(false)
                 .interact()?;
 
-            if store_passphrase {
+            let password_storage = if store_passphrase {
                 let passphrase = Password::new()
                     .with_prompt("SSH key passphrase")
                     .interact()?;
@@ -656,14 +668,17 @@ async fn add_profile(
                 if let Err(e) = validate_key_passphrase(&key_path, &passphrase) {
                     println!("{}", format!("⚠️  Failed to load SSH key with provided passphrase: {}", e).yellow());
                     println!("{}", "The passphrase will not be stored.".yellow());
-                    (AuthType::Key, Some(key_path), false)
+                    PasswordStorage::None
+                } else if store_password_in_keychain(&profile_id, &passphrase)? {
+                    PasswordStorage::Keychain
                 } else {
-                    store_password_in_keychain(&profile_id, &passphrase)?;
-                    (AuthType::Key, Some(key_path), store_passphrase)
+                    PasswordStorage::None
                 }
             } else {
-                (AuthType::Key, Some(key_path), store_passphrase)
-            }
+                PasswordStorage::None
+            };
+
+            (AuthType::Key, Some(key_path), password_storage)
         }
     };
 
@@ -807,7 +822,7 @@ async fn add_profile(
         user: user.clone(),
         auth_type,
         key_path,
-        password_stored,
+        password_storage,
     };
 
     let forwarding = ForwardingConfig {
@@ -863,16 +878,36 @@ async fn add_profile(
     Ok(())
 }
 
-fn store_password_in_keychain(profile_id: &Uuid, password: &str) -> Result<()> {
-    use keyring::Entry;
+/// Try to store password in keychain with graceful fallback
+///
+/// Returns `Ok(true)` if successfully stored, `Ok(false)` if keyring unavailable.
+/// Only returns `Err` for unrecoverable errors.
+fn store_password_in_keychain(profile_id: &Uuid, password: &str) -> Result<bool> {
+    use ssh_tunnel_common::is_keychain_available;
 
-    let entry = Entry::new("ssh-tunnel-manager", &profile_id.to_string())
-        .context("Failed to create keychain entry")?;
-    entry
-        .set_password(password)
-        .context("Failed to store password in keychain")?;
-    println!("{}", "  ✓ Password stored in system keychain".green());
-    Ok(())
+    // First, check if keyring is available
+    if !is_keychain_available() {
+        // Keyring not available - warn user but don't fail
+        println!("{}", "⚠️  System keychain not available".yellow());
+        println!("{}", "    Password will NOT be stored - you'll be prompted when starting tunnels".dimmed());
+        println!("{}", "    (This is normal on headless servers and containers)".dimmed());
+        return Ok(false); // Not stored, but not an error
+    }
+
+    // Keyring is available - try to store
+    match ssh_tunnel_common::store_password(profile_id, password) {
+        Ok(()) => {
+            println!("{}", "  ✓ Password stored in system keychain".green());
+            Ok(true) // Successfully stored
+        }
+        Err(e) => {
+            // Keyring was available during test, but storage failed
+            // This could be: keyring locked, permission issues, etc.
+            println!("{}", format!("⚠️  Failed to store in keychain: {}", e).yellow());
+            println!("{}", "    Password will NOT be stored - you'll be prompted when starting tunnels".dimmed());
+            Ok(false) // Not stored, but don't fail profile creation
+        }
+    }
 }
 
 fn validate_ssh_key(key_path: &PathBuf) -> Result<()> {

@@ -13,7 +13,7 @@ use std::rc::Rc;
 use crate::models::profile_model::ProfileModel;
 use crate::ui::window::AppState;
 use ssh_tunnel_common::config::{
-    Profile, ProfileMetadata, ConnectionConfig, ForwardingConfig, TunnelOptions,
+    Profile, ProfileMetadata, ConnectionConfig, ForwardingConfig, PasswordStorage, TunnelOptions,
 };
 use ssh_tunnel_common::types::{AuthType, ForwardingType};
 
@@ -188,19 +188,34 @@ fn create_dialog(
         .build();
     key_path_row.add_suffix(&key_path_box);
 
-    // Key password
+    // Store in keychain switch (moved before password entry)
+    let store_keychain_switch = gtk4::Switch::new();
+    store_keychain_switch.set_active(false);
+    store_keychain_switch.set_valign(gtk4::Align::Center);
+    store_keychain_switch.set_sensitive(false);
+    let store_keychain_row = adw::ActionRow::builder()
+        .title("Store Passphrase in Keychain")
+        .subtitle("Save passphrase in system keychain for automatic retrieval")
+        .activatable(true)
+        .build();
+    store_keychain_row.add_suffix(&store_keychain_switch);
+    store_keychain_row.set_activatable_widget(Some(&store_keychain_switch));
+
+    // Key password (only shown when keychain is enabled)
     let key_password_entry = gtk4::PasswordEntry::builder()
         .show_peek_icon(true)
         .sensitive(false)
         .build();
     let key_password_row = adw::ActionRow::builder()
-        .title("Key Password")
-        .subtitle("Password for encrypted SSH key (optional)")
+        .title("Key Passphrase")
+        .subtitle("Enter passphrase for encrypted SSH key")
+        .visible(false)
         .build();
     key_password_row.add_suffix(&key_password_entry);
 
     auth_group.add(&key_row);
     auth_group.add(&key_path_row);
+    auth_group.add(&store_keychain_row);
     auth_group.add(&key_password_row);
     content_box.append(&auth_group);
 
@@ -208,12 +223,31 @@ fn create_dialog(
     {
         let key_path_entry = key_path_entry.clone();
         let browse_button = browse_button.clone();
-        let key_password_entry = key_password_entry.clone();
+        let store_keychain_switch = store_keychain_switch.clone();
+        let key_password_row = key_password_row.clone();
         key_switch.connect_active_notify(move |switch| {
             let active = switch.is_active();
             key_path_entry.set_sensitive(active);
             browse_button.set_sensitive(active);
+            store_keychain_switch.set_sensitive(active);
+            if !active {
+                store_keychain_switch.set_active(false);
+                key_password_row.set_visible(false);
+            }
+        });
+    }
+
+    // Wire up keychain switch to show/hide password entry
+    {
+        let key_password_row = key_password_row.clone();
+        let key_password_entry = key_password_entry.clone();
+        store_keychain_switch.connect_active_notify(move |switch| {
+            let active = switch.is_active();
+            key_password_row.set_visible(active);
             key_password_entry.set_sensitive(active);
+            if !active {
+                key_password_entry.set_text("");
+            }
         });
     }
 
@@ -397,6 +431,15 @@ fn create_dialog(
                 if let Some(ref key_path) = inner_profile.connection.key_path {
                     key_path_entry.set_text(&key_path.to_string_lossy());
                 }
+
+                // Check if password is stored in keychain
+                if inner_profile.connection.password_storage == PasswordStorage::Keychain {
+                    // Enable keychain switch and show password entry
+                    store_keychain_switch.set_active(true);
+                    store_keychain_switch.set_sensitive(true);
+                    key_password_row.set_visible(true);
+                    key_password_row.set_subtitle("Passphrase stored in system keychain - enter new passphrase to update");
+                }
             }
 
             // Populate forwarding fields
@@ -444,6 +487,7 @@ fn create_dialog(
             let use_key = key_switch.is_active();
             let key_path_text = key_path_entry.text().to_string();
             let key_password = key_password_entry.text().to_string();
+            let store_in_keychain = store_keychain_switch.is_active();
 
             // Forwarding fields
             let local_host = local_host_entry.text().to_string();
@@ -476,9 +520,32 @@ fn create_dialog(
             }
 
             // Validate SSH key if enabled
-            if use_key && key_path_text.trim().is_empty() {
-                show_error_dialog(&dialog, "SSH key path is required when using key authentication");
-                return;
+            if use_key {
+                if key_path_text.trim().is_empty() {
+                    show_error_dialog(&dialog, "SSH key path is required when using key authentication");
+                    return;
+                }
+
+                // Expand tilde in path
+                let expanded_path = shellexpand::tilde(&key_path_text).to_string();
+                let key_path = std::path::PathBuf::from(expanded_path);
+
+                // Validate key file exists and has proper permissions
+                if let Err(e) = validate_ssh_key(&key_path) {
+                    show_error_dialog(&dialog, &e);
+                    return;
+                }
+
+                // If storing in keychain, validate the passphrase works
+                if store_in_keychain && !key_password.is_empty() {
+                    if let Err(e) = validate_key_passphrase(&key_path, &key_password) {
+                        show_error_dialog(
+                            &dialog,
+                            &format!("Cannot store passphrase: {}\n\nPlease verify the passphrase is correct.", e)
+                        );
+                        return;
+                    }
+                }
             }
 
             // Validate local host
@@ -517,11 +584,16 @@ fn create_dialog(
                     user,
                     auth_type: if use_key { AuthType::Key } else { AuthType::Password },
                     key_path: if use_key && !key_path_text.trim().is_empty() {
-                        Some(std::path::PathBuf::from(key_path_text.trim()))
+                        let expanded_path = shellexpand::tilde(&key_path_text.trim()).to_string();
+                        Some(std::path::PathBuf::from(expanded_path))
                     } else {
                         None
                     },
-                    password_stored: !key_password.is_empty(),
+                    password_storage: if store_in_keychain && !key_password.is_empty() {
+                        PasswordStorage::Keychain
+                    } else {
+                        PasswordStorage::None
+                    },
                 },
                 forwarding: ForwardingConfig {
                     forwarding_type: ForwardingType::Local,
@@ -557,6 +629,24 @@ fn create_dialog(
                 Err(e) => {
                     show_error_dialog(&dialog, &format!("Failed to save profile: {}", e));
                     return;
+                }
+            }
+
+            // Handle keychain storage for SSH key passphrase
+            let profile_id = profile.metadata.id;
+            if store_in_keychain && !key_password.is_empty() {
+                // Store passphrase in keychain
+                if let Err(e) = store_password_in_keychain(&profile_id, &key_password) {
+                    eprintln!("⚠️  Failed to store passphrase in keychain: {}", e);
+                    show_error_dialog(&dialog, &format!("Profile saved, but failed to store passphrase in keychain: {}", e));
+                    return;
+                }
+                eprintln!("✓ Passphrase stored in system keychain");
+            } else if !store_in_keychain {
+                // Remove from keychain if checkbox is unchecked
+                if let Err(e) = remove_password_from_keychain(&profile_id) {
+                    eprintln!("⚠️  Failed to remove passphrase from keychain: {}", e);
+                    // Non-fatal error, continue
                 }
             }
 
@@ -641,4 +731,74 @@ fn show_file_chooser(parent: &adw::Window, entry: &Entry) {
             }
         }
     });
+}
+
+/// Validate SSH key file exists and has proper permissions
+fn validate_ssh_key(key_path: &std::path::Path) -> Result<(), String> {
+    use std::fs;
+
+    // Check if file exists
+    if !key_path.exists() {
+        return Err(format!(
+            "SSH key not found: {}\n\nCreate a key with: ssh-keygen -t ed25519",
+            key_path.display()
+        ));
+    }
+
+    // Check if it's a file (not a directory)
+    if !key_path.is_file() {
+        return Err(format!(
+            "SSH key path is not a file: {}",
+            key_path.display()
+        ));
+    }
+
+    // Check permissions on Unix systems
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if let Ok(metadata) = fs::metadata(key_path) {
+            let permissions = metadata.permissions();
+            let mode = permissions.mode();
+
+            // SSH keys should be 0600 or 0400 (no group/other access)
+            if mode & 0o077 != 0 {
+                return Err(format!(
+                    "SSH key has insecure permissions: {:o}\n\nFix with: chmod 600 {}",
+                    mode & 0o777,
+                    key_path.display()
+                ));
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Validate that the passphrase works with the SSH key
+fn validate_key_passphrase(key_path: &std::path::Path, passphrase: &str) -> Result<(), String> {
+    use russh_keys::decode_secret_key;
+    use std::fs;
+
+    // Read the key file
+    let key_data = fs::read_to_string(key_path)
+        .map_err(|e| format!("Failed to read SSH key file: {}", e))?;
+
+    // Attempt to decode with the passphrase
+    decode_secret_key(&key_data, Some(passphrase))
+        .map_err(|e| format!("Invalid passphrase or corrupted key: {}", e))?;
+
+    Ok(())
+}
+
+/// Store password/passphrase in system keychain
+fn store_password_in_keychain(profile_id: &Uuid, password: &str) -> Result<(), String> {
+    ssh_tunnel_common::store_password(profile_id, password)
+        .map_err(|e| format!("{}", e))
+}
+
+/// Remove password/passphrase from system keychain
+fn remove_password_from_keychain(profile_id: &Uuid) -> Result<(), String> {
+    ssh_tunnel_common::remove_password(profile_id)
+        .map_err(|e| format!("{}", e))
 }

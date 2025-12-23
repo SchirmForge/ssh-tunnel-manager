@@ -10,8 +10,7 @@ use std::rc::Rc;
 
 use super::window::AppState;
 use crate::models::profile_model::ProfileModel;
-use ssh_tunnel_common::ForwardingType;
-use ssh_tunnel_common::TunnelStatus;
+use ssh_tunnel_common::{ForwardingType, PasswordStorage, TunnelStatus};
 
 /// Create the profile details view
 pub fn create(state: Rc<AppState>, profile: &ProfileModel) -> adw::NavigationPage {
@@ -199,7 +198,7 @@ fn create_details_expander(profile: &ProfileModel) -> adw::ExpanderRow {
         // Password stored
         let password_row = adw::ActionRow::new();
         password_row.set_title("Password Stored");
-        password_row.set_subtitle(if prof.connection.password_stored { "Yes (in keyring)" } else { "No" });
+        password_row.set_subtitle(if prof.connection.password_storage == PasswordStorage::Keychain { "Yes (in keyring)" } else { "No" });
         expander.add_row(&password_row);
 
         // Keepalive interval

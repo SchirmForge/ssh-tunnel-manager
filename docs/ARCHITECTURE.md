@@ -454,7 +454,7 @@ Planned (not yet implemented): profile CRUD endpoints.
 
 ### Manifest Structure
 ```yaml
-app-id: com.github.schirmforge.SSHTunnelManager
+app-id: com.github.SchirmForge.SSHTunnelManager
 runtime: org.gnome.Platform
 runtime-version: '47'
 sdk: org.gnome.Sdk
@@ -470,7 +470,7 @@ finish-args:
   - --socket=fallback-x11    # GUI fallback
   - --filesystem=~/.ssh:ro   # SSH keys (read-only)
   - --talk-name=org.freedesktop.secrets  # Keyring
-  - --own-name=com.github.schirmforge.SSHTunnelManager  # D-Bus
+  - --own-name=com.github.SchirmForge.SSHTunnelManager  # D-Bus
 
 modules:
   - name: ssh-tunnel-manager

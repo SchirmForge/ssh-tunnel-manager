@@ -20,7 +20,9 @@ use tokio::sync::{broadcast, mpsc, oneshot, RwLock};
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
-use ssh_tunnel_common::{AuthRequest, AuthRequestType, ForwardingType, Profile, TunnelStatus};
+use ssh_tunnel_common::{
+    AuthRequest, AuthRequestType, ForwardingType, PasswordStorage, Profile, TunnelStatus,
+};
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 const AUTH_RESPONSE_TIMEOUT: Duration = Duration::from_secs(60);
@@ -861,7 +863,7 @@ async fn authenticate_with_key(
     profile: &Profile,
 ) -> Result<bool> {
     // Try to load with stored passphrase first if available
-    let key = if profile.connection.password_stored {
+    let key = if profile.connection.password_storage == PasswordStorage::Keychain {
         match crate::security::get_stored_password(&profile.metadata.id) {
             Ok(passphrase) => {
                 info!("Using stored passphrase from keychain");
@@ -955,7 +957,7 @@ async fn authenticate_with_password(
     profile: &Profile,
 ) -> Result<bool> {
     // Try stored password first if available
-    let password = if profile.connection.password_stored {
+    let password = if profile.connection.password_storage == PasswordStorage::Keychain {
         match crate::security::get_stored_password(&profile.metadata.id) {
             Ok(pwd) => {
                 info!("Using stored password from keychain");

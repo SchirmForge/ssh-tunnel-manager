@@ -40,6 +40,9 @@ pub enum Error {
     #[error("Permission denied: {0}")]
     PermissionDenied(String),
 
+    #[error("Keychain error: {0}")]
+    Keychain(String),
+
     #[error("Unknown error: {0}")]
     Unknown(String),
 }

@@ -6,8 +6,8 @@
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>Apache-2.0</project_license>
   <developer_name>SSH Tunnel Manager Contributors</developer_name>
-  <url type="homepage">https://github.com/schirmForge/ssh-tunnel</url>
-  <url type="bugtracker">https://github.com/schirmForge/ssh-tunnel/issues</url>
+  <url type="homepage">https://github.com/SchirmForge/ssh-tunnel</url>
+  <url type="bugtracker">https://github.com/SchirmForge/ssh-tunnel/issues</url>
   <launchable type="desktop-id">com.github.ssh-tunnel-manager.desktop</launchable>
   <description>
     <p>

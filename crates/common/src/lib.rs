@@ -7,18 +7,20 @@
 pub mod config;
 pub mod daemon_client;
 pub mod error;
+pub mod keychain;
 pub mod network;
 pub mod profile_manager;
 pub mod tls;
 pub mod types;
 
-pub use config::{ConnectionConfig, ForwardingConfig, Profile, TunnelOptions};
+pub use config::{ConnectionConfig, ForwardingConfig, PasswordStorage, Profile, TunnelOptions};
 pub use daemon_client::{
     add_auth_header, create_daemon_client, start_tunnel_with_events, stop_tunnel,
     ConnectionMode, DaemonClientConfig, TunnelEvent as DaemonTunnelEvent,
     TunnelEventHandler, TunnelStatusResponse,
 };
 pub use error::{Error, Result};
+pub use keychain::{get_password, has_password, is_keychain_available, remove_password, store_password};
 pub use network::is_loopback_address;
 pub use profile_manager::{
     delete_profile_by_id, delete_profile_by_name, load_all_profiles, load_profile,

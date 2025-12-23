@@ -51,9 +51,6 @@ dirs = { workspace = true }
 # Path expansion for ~ in file paths
 shellexpand = "3.1"
 
-# Keychain integration
-keyring = "2.3"
-
 # SSH key validation
 russh-keys = { workspace = true }
 

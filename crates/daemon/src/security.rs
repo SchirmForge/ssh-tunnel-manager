@@ -3,15 +3,14 @@
 
 // Security module
 
-use anyhow::{Context, Result};
-use keyring::Entry;
+use anyhow::Result;
 use uuid::Uuid;
 
 /// Retrieve password or passphrase from system keychain
+///
+/// This is a convenience wrapper around ssh_tunnel_common::keychain::get_password
+/// that converts the error type to anyhow::Error.
 pub fn get_stored_password(profile_id: &Uuid) -> Result<String> {
-    let entry = Entry::new("ssh-tunnel-manager", &profile_id.to_string())
-        .context("Failed to access keychain entry")?;
-    entry
-        .get_password()
-        .context("Failed to retrieve password from keychain")
+    ssh_tunnel_common::get_password(profile_id)
+        .map_err(|e| anyhow::anyhow!("Failed to retrieve password from keychain: {}", e))
 }

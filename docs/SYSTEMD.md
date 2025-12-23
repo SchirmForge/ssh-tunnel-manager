@@ -18,6 +18,57 @@ sudo ./scripts/install.sh --system-unit --instance tunneld --enable
 
 The script handles building binaries, installing them to `/usr/local/bin`, and setting up systemd units.
 
+## ⚠️ Important: Keyring Limitations for System Services
+
+SSH Tunnel Manager uses the system keyring (Secret Service on Linux, Keychain on macOS, Credential Manager on Windows) to securely store SSH passwords and key passphrases.
+
+### Impact on Systemd Services
+
+When running as a systemd **system service** (under the `tunneld` user):
+- **Keyring is NOT accessible** - system services run without a user session
+- Profiles with `password_storage = "keychain"` will **request passwords interactively**
+- If no client is connected to the daemon, tunnels will **timeout after 60 seconds**
+
+### Solutions
+
+**Option 1: Don't Store Passwords (Recommended)**
+```bash
+# Create profiles without keyring storage
+sudo -u tunneld ssh-tunnel add myprofile --host server.com --user myuser --key ~/.ssh/id_ed25519
+# Answer "No" when prompted about keychain storage
+
+# The CLI will automatically detect keyring is unavailable and skip it
+```
+
+**Option 2: Use Unencrypted SSH Keys**
+```bash
+# Generate a key WITHOUT a passphrase for the service
+sudo -u tunneld ssh-keygen -t ed25519 -f /var/lib/tunneld/.ssh/id_service -N ""
+
+# Use in profiles (no passphrase needed)
+sudo -u tunneld ssh-tunnel add myprofile --host server.com --user myuser \
+  --key /var/lib/tunneld/.ssh/id_service
+```
+
+**Option 3: Disable Keyring via Environment Variable**
+```systemd
+# In /etc/systemd/system/ssh-tunnel-daemon@.service
+[Service]
+Environment="SSH_TUNNEL_SKIP_KEYRING=1"
+```
+
+### Detecting Keyring Issues
+
+If tunnels fail with errors like:
+```
+Failed to retrieve password from keychain: Keychain error: ...
+Authentication prompt timed out after 60s
+```
+
+This indicates keyring is not accessible. The daemon will fall back to requesting passwords interactively, but systemd services typically have no connected clients.
+
+**Solution:** Use unencrypted keys or don't store passwords in keychain for service profiles.
+
 ## Manual Installation
 
 If you prefer manual installation or need more control:

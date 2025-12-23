@@ -41,6 +41,79 @@ pub struct ProfileMetadata {
     pub tags: Vec<String>,
 }
 
+/// Where password/passphrase is stored
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PasswordStorage {
+    /// Not stored - user will be prompted
+    None,
+    /// Stored in system keychain/keyring
+    Keychain,
+    /// Stored in encrypted file (future feature)
+    File,
+}
+
+impl Default for PasswordStorage {
+    fn default() -> Self {
+        PasswordStorage::None
+    }
+}
+
+impl Serialize for PasswordStorage {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            PasswordStorage::None => serializer.serialize_str("none"),
+            PasswordStorage::Keychain => serializer.serialize_str("keychain"),
+            PasswordStorage::File => serializer.serialize_str("file"),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for PasswordStorage {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct PasswordStorageVisitor;
+
+        impl<'de> serde::de::Visitor<'de> for PasswordStorageVisitor {
+            type Value = PasswordStorage;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("a password storage type (none/keychain/file or boolean)")
+            }
+
+            fn visit_bool<E>(self, v: bool) -> std::result::Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                // Backward compatibility: old boolean values
+                Ok(if v {
+                    PasswordStorage::Keychain
+                } else {
+                    PasswordStorage::None
+                })
+            }
+
+            fn visit_str<E>(self, v: &str) -> std::result::Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                match v.to_lowercase().as_str() {
+                    "none" | "false" => Ok(PasswordStorage::None),
+                    "keychain" | "true" => Ok(PasswordStorage::Keychain),
+                    "file" => Ok(PasswordStorage::File),
+                    _ => Err(E::custom(format!("unknown password storage type: {}", v))),
+                }
+            }
+        }
+
+        deserializer.deserialize_any(PasswordStorageVisitor)
+    }
+}
+
 /// SSH connection configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConnectionConfig {
@@ -56,9 +129,9 @@ pub struct ConnectionConfig {
     /// Path to SSH private key (for key auth)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub key_path: Option<PathBuf>,
-    /// Whether password is stored in keyring
+    /// Where password/passphrase is stored
     #[serde(default)]
-    pub password_stored: bool,
+    pub password_storage: PasswordStorage,
 }
 
 /// Port forwarding configuration
@@ -269,7 +342,7 @@ mod tests {
                 user: "user".to_string(),
                 auth_type: AuthType::Key,
                 key_path: Some(PathBuf::from("/home/user/.ssh/id_ed25519")),
-                password_stored: false,
+                password_storage: PasswordStorage::None,
             },
             ForwardingConfig {
                 forwarding_type: ForwardingType::Local,
@@ -293,7 +366,7 @@ mod tests {
                 user: "user".to_string(),
                 auth_type: AuthType::Key,
                 key_path: Some(PathBuf::from("/home/user/.ssh/id_ed25519")),
-                password_stored: false,
+                password_storage: PasswordStorage::None,
             },
             ForwardingConfig {
                 forwarding_type: ForwardingType::Local,

@@ -50,7 +50,6 @@ tracing-subscriber = { workspace = true }
 # Security
 secret-service = { workspace = true }
 zeroize = { workspace = true }
-keyring = "2.3"
 
 # TLS
 axum-server = { version = "0.7", features = ["tls-rustls"] }

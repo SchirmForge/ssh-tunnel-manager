@@ -1,7 +1,7 @@
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: ssh-tunnel-manager
 Upstream-Contact: SSH Tunnel Manager Contributors <maintainer@example.com>
-Source: https://github.com/schirmForge/ssh-tunnel
+Source: https://github.com/SchirmForge/ssh-tunnel
 
 Files: *
 Copyright: 2024 SSH Tunnel Manager Contributors

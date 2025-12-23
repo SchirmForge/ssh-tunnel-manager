@@ -1,7 +1,7 @@
 Source: ssh-tunnel-manager
 Section: net
 Priority: optional
-Maintainer: SSH Tunnel Manager Contributors <maintainer@example.com>
+Maintainer: SSH Tunnel Manager Contributors <SchirmForge@example.com>
 Build-Depends: debhelper-compat (= 13),
  cargo,
  rustc,
@@ -12,7 +12,7 @@ Build-Depends: debhelper-compat (= 13),
  libsecret-1-dev
 Standards-Version: 4.7.0
 Rules-Requires-Root: no
-Homepage: https://github.com/schirmForge/ssh-tunnel
+Homepage: https://github.com/SchirmForge/ssh-tunnel
 
 Package: ssh-tunnel-daemon
 Architecture: any

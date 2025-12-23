@@ -12,7 +12,7 @@ version = "0.1.7"
 edition = "2021"
 authors = ["SSH Tunnel Manager Contributors"]
 license = "Apache-2.0"
-repository = "https://github.com/schirmForge/ssh-tunnel"
+repository = "https://github.com/SchirmForge/ssh-tunnel"
 
 [workspace.dependencies]
 # Async runtime

@@ -43,3 +43,6 @@ rustls = { version = "0.23", features = ["aws-lc-rs"] }
 webpki-roots = "0.26"
 sha2 = "0.10"
 x509-parser = "0.16"
+
+# Keychain/keyring for secure password storage
+keyring = { version = "3.6", features = ["linux-native", "apple-native", "windows-native"] }
