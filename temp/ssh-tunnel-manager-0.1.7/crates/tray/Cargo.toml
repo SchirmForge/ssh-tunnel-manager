@@ -1,0 +1,49 @@
+[package]
+name = "ssh-tunnel-tray"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "System tray extension for SSH Tunnel Manager"
+license.workspace = true
+
+[dependencies]
+# Workspace dependencies
+ssh-tunnel-common = { path = "../common" }
+
+# System tray
+ksni = "0.2"
+
+# Desktop notifications
+notify-rust = "4.11"
+
+# Async runtime
+tokio = { workspace = true, features = ["full"] }
+futures-util = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+toml = { workspace = true }
+
+# HTTP client
+reqwest = { workspace = true }
+
+# Time
+chrono = { workspace = true }
+
+# UUID
+uuid = { workspace = true }
+
+# Error handling
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+# GTK for dialogs
+gtk4 = { workspace = true }
+libadwaita = { workspace = true }
+
+dirs = { workspace = true }

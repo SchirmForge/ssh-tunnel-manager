@@ -1,0 +1,46 @@
+.nav-header {
+  border-bottom: 1px solid rgba(0,0,0,0.35); /* tweak darkness */
+  box-shadow: none; /* if you want just the line */
+}
+
+/* Status indicator colors */
+.status-dot {
+    font-size: 14pt;
+    font-weight: bold;
+}
+
+.status-connected {
+    color: @success_color;  /* Green */
+}
+
+.status-warning {
+    color: @warning_color;  /* Orange */
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
+.status-error {
+    color: @error_color;  /* Red */
+}
+
+.status-inactive {
+    color: @window_fg_color;
+    opacity: 0.4;  /* Dimmed gray */
+}
+
+/* Daemon status icon animations */
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+.daemon-connecting {
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
+.daemon-connected {
+    color: @success_color;  /* Green for connected */
+}
+
+.daemon-offline {
+    color: @error_color;  /* Red for offline */
+}

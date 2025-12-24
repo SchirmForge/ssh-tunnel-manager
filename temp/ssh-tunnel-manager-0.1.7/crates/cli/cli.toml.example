@@ -1,0 +1,46 @@
+# SSH Tunnel Manager - CLI Configuration
+# This file should be placed at: ~/.config/ssh-tunnel-manager/cli.toml
+
+# Connection mode determines how the CLI connects to the daemon
+# Options: "unix-socket", "http", "https"
+#
+# - unix-socket: Connect via Unix domain socket (default, local-only)
+# - http: Connect via HTTP (for testing, not secure)
+# - https: Connect via HTTPS with TLS (for network access)
+connection_mode = "unix-socket"
+
+# Daemon address for HTTP/HTTPS modes (ignored in unix-socket mode)
+# Examples:
+#   "http://127.0.0.1:3443" - localhost HTTP
+#   "https://192.168.1.100:3443" - remote daemon over HTTPS
+daemon_url = "https://127.0.0.1:3443"
+
+# Authentication token (required if daemon has require_auth = true)
+# This token must match the daemon's token in daemon.token file
+# Leave empty to disable authentication
+auth_token = ""
+
+# TLS certificate fingerprint for HTTPS mode (optional but recommended)
+# This enables certificate pinning for secure connections
+# The daemon will display this fingerprint on first run
+# Format: SHA256 fingerprint as colon-separated hex (e.g., "AA:BB:CC:...")
+tls_cert_fingerprint = ""
+
+# ============================================================================
+# Example configurations for different use cases:
+# ============================================================================
+
+# LOCAL USE ONLY (same machine as daemon):
+# connection_mode = "unix-socket"
+# No other configuration needed
+
+# TESTING (localhost HTTP):
+# connection_mode = "http"
+# daemon_url = "http://127.0.0.1:3443"
+# auth_token = "paste-token-here"
+
+# NETWORK USE (remote daemon):
+# connection_mode = "https"
+# daemon_url = "https://192.168.1.100:3443"
+# auth_token = "paste-token-here"
+# tls_cert_fingerprint = "paste-fingerprint-here"
