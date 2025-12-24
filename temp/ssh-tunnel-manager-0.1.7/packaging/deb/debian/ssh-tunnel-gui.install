@@ -1,3 +1,0 @@
-target/release/ssh-tunnel-gui usr/bin/
-packaging/desktop/com.github.ssh-tunnel-manager.desktop usr/share/applications/
-packaging/appstream/com.github.ssh-tunnel-manager.metainfo.xml usr/share/metainfo/

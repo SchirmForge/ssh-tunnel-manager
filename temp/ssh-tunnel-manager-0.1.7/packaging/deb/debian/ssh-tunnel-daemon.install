@@ -1,3 +1,0 @@
-target/release/ssh-tunnel-daemon usr/bin/
-packaging/systemd/ssh-tunnel-daemon@.service usr/lib/systemd/system/
-packaging/systemd/ssh-tunnel-daemon.service usr/lib/systemd/user/
