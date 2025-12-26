@@ -15,8 +15,9 @@ pub mod types;
 
 pub use config::{ConnectionConfig, ForwardingConfig, PasswordStorage, Profile, TunnelOptions};
 pub use daemon_client::{
-    add_auth_header, create_daemon_client, start_tunnel_with_events, stop_tunnel,
-    ConnectionMode, DaemonClientConfig, TunnelEvent as DaemonTunnelEvent,
+    add_auth_header, cli_config_snippet_exists, create_daemon_client,
+    get_cli_config_snippet_path, start_tunnel_with_events, stop_tunnel, validate_daemon_config,
+    ConfigValidationResult, ConnectionMode, DaemonClientConfig, TunnelEvent as DaemonTunnelEvent,
     TunnelEventHandler, TunnelStatusResponse,
 };
 pub use error::{Error, Result};
@@ -29,8 +30,8 @@ pub use profile_manager::{
 };
 pub use tls::{create_insecure_tls_config, create_pinned_tls_config};
 pub use types::{
-    AuthRequest, AuthRequestType, AuthResponse, AuthType, ForwardingType, StartTunnelResult,
-    TunnelEvent, TunnelStatus,
+    AuthRequest, AuthRequestType, AuthResponse, AuthType, DaemonInfo, ForwardingType,
+    StartTunnelResult, TunnelEvent, TunnelStatus,
 };
 
 // Re-export commonly used external types

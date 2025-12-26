@@ -14,6 +14,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Stops each active tunnel individually with error handling
   - Provides detailed feedback with success/failure counts
   - Usage: `ssh-tunnel stop --all`
+- **CLI status command** - Display tunnel connection status
+  - `ssh-tunnel status <profile>` - Show detailed status for a single tunnel
+  - `ssh-tunnel status --all` - Show formatted table of all active tunnels
+  - Color-coded status indicators (green/yellow/red/gray)
+  - Displays connection status, remote host, forwarding configuration, and uptime
+- **CLI restart command** - Gracefully restart tunnels
+  - `ssh-tunnel restart <profile>` - Stop and restart a tunnel
+  - Two-step process with delay to ensure clean shutdown
+  - Graceful handling when tunnel is not currently running
+- **Enhanced 401 authentication error handling** - Proactive config validation
+  - Comprehensive error message with step-by-step instructions when auth fails
+  - Automatic detection if CLI config file is missing
+  - Interactive prompt to copy daemon-generated config snippet
+  - Common validation helpers in `ssh_tunnel_common::daemon_client` for reuse in GUI
+  - New functions: `get_cli_config_snippet_path()`, `cli_config_snippet_exists()`, `validate_daemon_config()`
+  - `ConfigValidationResult` enum with three states: Valid, MissingConfigSnippetAvailable, MissingConfigNoSnippet
+  - All daemon commands now validate config BEFORE attempting connection
 - **Keyring graceful fallback for headless environments** - Server and container support
   - Test-based keyring availability detection using actual DBus/Secret Service operations
   - No environment variable guessing - tests real keyring functionality
@@ -39,6 +56,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - Dynamic SOCKS: `SOCKS: 127.0.0.1:1080`
   - Consistent across CLI connection messages, GUI profile details, and profile lists
   - Properly handles IPv6 addresses with bracket notation
+- **Config validation architecture** - Validation before connection attempts
+  - Moved config validation to common crate for reuse across CLI and GUI
+  - CLI validates daemon config at start of every daemon command
+  - Clear separation: validate → offer snippet copy → connect
+  - Prevents confusing 401 errors by catching config issues early
 
 ---
 

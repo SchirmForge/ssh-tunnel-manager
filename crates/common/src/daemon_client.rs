@@ -220,6 +220,58 @@ pub fn add_auth_header(
     }
 }
 
+/// Get the path to the daemon-generated CLI config snippet
+pub fn get_cli_config_snippet_path() -> Result<PathBuf> {
+    let config_dir = dirs::config_dir()
+        .ok_or_else(|| anyhow::anyhow!("Could not determine config directory"))?;
+    Ok(config_dir
+        .join("ssh-tunnel-manager")
+        .join("cli-config.snippet"))
+}
+
+/// Check if the daemon-generated CLI config snippet exists
+pub fn cli_config_snippet_exists() -> bool {
+    get_cli_config_snippet_path()
+        .map(|p| p.exists())
+        .unwrap_or(false)
+}
+
+/// Result type for config validation
+#[derive(Debug)]
+pub enum ConfigValidationResult {
+    /// Config is valid and ready to use
+    Valid,
+    /// Config file doesn't exist but snippet is available
+    MissingConfigSnippetAvailable(PathBuf),
+    /// Config file doesn't exist and no snippet available
+    MissingConfigNoSnippet,
+}
+
+/// Validate daemon client configuration before attempting connection
+///
+/// This should be called BEFORE any daemon connection attempt to provide
+/// clear guidance to users about configuration issues.
+///
+/// # Arguments
+/// * `config_path` - Path to the CLI config file (e.g., ~/.config/ssh-tunnel-manager/cli.toml)
+///
+/// # Returns
+/// ConfigValidationResult indicating the status
+pub fn validate_daemon_config(config_path: &PathBuf) -> ConfigValidationResult {
+    if config_path.exists() {
+        return ConfigValidationResult::Valid;
+    }
+
+    // Config doesn't exist - check if snippet is available
+    if let Ok(snippet_path) = get_cli_config_snippet_path() {
+        if snippet_path.exists() {
+            return ConfigValidationResult::MissingConfigSnippetAvailable(snippet_path);
+        }
+    }
+
+    ConfigValidationResult::MissingConfigNoSnippet
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -369,7 +421,26 @@ pub async fn start_tunnel_with_events<H: TunnelEventHandler>(
         };
 
         if !resp.status().is_success() {
-            let err_msg = format!("Daemon returned non-success status for events: {}", resp.status());
+            let status = resp.status();
+            let err_msg = if status == reqwest::StatusCode::UNAUTHORIZED {
+                format!(
+                    "Authentication failed: 401 Unauthorized\n\n\
+                    The daemon requires authentication but no valid token was provided.\n\
+                    \n\
+                    To fix this:\n\
+                    1. Check if the daemon has generated a CLI config snippet at:\n\
+                       ~/.config/ssh-tunnel-manager/cli-config.snippet\n\
+                    \n\
+                    2. Copy it to your CLI config:\n\
+                       cp ~/.config/ssh-tunnel-manager/cli-config.snippet ~/.config/ssh-tunnel-manager/cli.toml\n\
+                    \n\
+                    3. Or manually add the auth_token to ~/.config/ssh-tunnel-manager/cli.toml\n\
+                    \n\
+                    The daemon generates this snippet on first startup when authentication is enabled."
+                )
+            } else {
+                format!("Daemon returned non-success status for events: {}", status)
+            };
             let _ = sse_ready_tx.send(Err(anyhow::anyhow!("{}", err_msg))).await;
             let _ = event_tx.send(Err(anyhow::anyhow!("{}", err_msg)));
             return;

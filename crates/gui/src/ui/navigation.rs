@@ -12,7 +12,7 @@ use super::window::AppState;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum NavigationPage {
-    Profiles,
+    Client,
     Daemon,
 }
 
@@ -54,16 +54,16 @@ pub fn create(state: Rc<AppState>, status_icon: gtk4::Image) -> gtk4::Box {
     list_box.add_css_class("navigation-sidebar");
     list_box.set_vexpand(true);
 
-    // Profiles item
-    let profiles_row = create_nav_row("Profiles", "folder-documents-symbolic");
-    list_box.append(&profiles_row);
+    // Client item
+    let client_row = create_nav_row("Client", "folder-documents-symbolic");
+    list_box.append(&client_row);
 
     // Daemon item
     let daemon_row = create_nav_row("Daemon", "preferences-system-symbolic");
     list_box.append(&daemon_row);
 
-    // Select Profiles by default
-    list_box.select_row(Some(&profiles_row));
+    // Select Client by default
+    list_box.select_row(Some(&client_row));
 
     // Handle selection changes
     {
@@ -72,7 +72,7 @@ pub fn create(state: Rc<AppState>, status_icon: gtk4::Image) -> gtk4::Box {
             if let Some(row) = row {
                 let index = row.index();
                 let page = match index {
-                    0 => NavigationPage::Profiles,
+                    0 => NavigationPage::Client,
                     1 => NavigationPage::Daemon,
                     _ => return,
                 };
@@ -106,38 +106,51 @@ fn on_navigation_changed(state: &AppState, page: NavigationPage) {
     state.current_nav_page.replace(page);
 
     // Get the navigation view from state
-    if let Some(nav_view) = state.nav_view.borrow().as_ref() {
-        // Find and navigate to the appropriate page
-        let page_name = match page {
-            NavigationPage::Profiles => "Profiles",
-            NavigationPage::Daemon => "Daemon",
-        };
-
-        // The NavigationView should have pages with these titles
-        // Pop all pages first to go back to root
-        while nav_view.visible_page().is_some() {
-            if let Some(visible) = nav_view.visible_page() {
-                if visible.title().as_str() == page_name {
-                    break; // Already on the correct page
-                }
-                if !nav_view.pop() {
-                    break; // Can't pop anymore
-                }
-            }
+    let nav_view = match state.nav_view.borrow().as_ref() {
+        Some(view) => view.clone(),
+        None => {
+            eprintln!("Warning: nav_view not initialized");
+            return;
         }
+    };
 
-        // Now find and push the correct page
-        // Since we added both pages in window.rs, we need to navigate to the right one
-        let stack = nav_view.navigation_stack();
-        for i in 0..stack.n_items() {
-            if let Some(item) = stack.item(i) {
-                if let Ok(page_widget) = item.downcast::<adw::NavigationPage>() {
-                    if page_widget.title().as_str() == page_name {
-                        nav_view.replace(&[page_widget]);
-                        break;
-                    }
-                }
-            }
+    // Get the target page reference directly (no title-based lookup!)
+    let target_page = match page {
+        NavigationPage::Client => state.client_page.borrow().clone(),
+        NavigationPage::Daemon => state.daemon_page.borrow().clone(),
+    };
+
+    let target_page = match target_page {
+        Some(p) => p,
+        None => {
+            eprintln!("Warning: target page not initialized");
+            return;
+        }
+    };
+
+    // Check if we're already on the correct page
+    if let Some(visible) = nav_view.visible_page() {
+        if visible == target_page {
+            eprintln!("Already on the target page");
+            return;
+        }
+    }
+
+    // Pop back to root (Client page)
+    while nav_view.pop() {
+        eprintln!("Popped a page");
+    }
+
+    // Push the target page if it's not the Client page
+    match page {
+        NavigationPage::Client => {
+            // Already at root after popping
+            eprintln!("Navigated to Client page (root)");
+        }
+        NavigationPage::Daemon => {
+            // Push the daemon page
+            nav_view.push(&target_page);
+            eprintln!("Pushed Daemon page");
         }
     }
 }

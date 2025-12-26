@@ -156,8 +156,12 @@ enum Commands {
 
     /// Show tunnel status
     Status {
-        /// Profile name (optional, shows all if not specified)
+        /// Profile name
         name: Option<String>,
+
+        /// Show status for all profiles
+        #[arg(short, long)]
+        all: bool,
     },
 
     /// Daemon management
@@ -254,15 +258,16 @@ async fn main() -> Result<()> {
             }
         }
         Commands::Restart { name } => {
-            println!("Restarting tunnel: {}", name);
-            // TODO: Implement restart command
+            restart_tunnel(name).await?;
         }
-        Commands::Status { name } => {
-            match name {
-                Some(n) => println!("Status for: {}", n),
-                None => println!("Status for all tunnels"),
+        Commands::Status { name, all } => {
+            if all {
+                show_all_tunnels_status().await?;
+            } else if let Some(n) = name {
+                show_tunnel_status(n).await?;
+            } else {
+                anyhow::bail!("Either provide a profile name or use --all to show all tunnel statuses");
             }
-            // TODO: Implement status command
         }
         Commands::Daemon { action } => {
             match action {
@@ -312,7 +317,71 @@ impl TunnelEventHandler for CliEventHandler {
     }
 }
 
+/// Ensure daemon configuration is valid before attempting connection
+///
+/// This function checks if the CLI config exists and offers to copy the
+/// daemon-generated snippet if available. This should be called BEFORE
+/// any daemon connection attempt.
+///
+/// # Returns
+/// Ok(()) if config is valid or user accepted to copy snippet
+/// Err if config is missing and cannot be resolved
+fn ensure_daemon_config() -> Result<()> {
+    use ssh_tunnel_common::{validate_daemon_config, ConfigValidationResult};
+
+    let config_path = config::CliConfig::config_path()?;
+
+    match validate_daemon_config(&config_path) {
+        ConfigValidationResult::Valid => Ok(()),
+        ConfigValidationResult::MissingConfigSnippetAvailable(snippet_path) => {
+            println!("{}", "⚠️  CLI configuration not found".yellow().bold());
+            println!();
+            println!("The daemon has generated a configuration snippet at:");
+            println!("  {}", snippet_path.display());
+            println!();
+            println!("Would you like to copy it to your CLI config?");
+
+            if Confirm::new()
+                .with_prompt(format!("Copy to {}", config_path.display()))
+                .default(true)
+                .interact()?
+            {
+                config::CliConfig::copy_snippet_to_config()?;
+                println!();
+                println!("{}", "✓ Configuration copied successfully!".green());
+                println!("{}", "  You can now run your command.".dimmed());
+                Ok(())
+            } else {
+                anyhow::bail!(
+                    "CLI configuration required. Please copy the snippet manually:\n  \
+                    cp {} {}",
+                    snippet_path.display(),
+                    config_path.display()
+                );
+            }
+        }
+        ConfigValidationResult::MissingConfigNoSnippet => {
+            anyhow::bail!(
+                "CLI configuration not found at: {}\n\n\
+                The daemon needs to be started at least once to generate the configuration snippet.\n\
+                \n\
+                Please:\n\
+                1. Start the daemon (it will generate ~/.config/ssh-tunnel-manager/cli-config.snippet)\n\
+                2. Copy the snippet to {}\n\
+                \n\
+                If using Unix socket mode (default), the daemon can auto-detect the socket path.\n\
+                For HTTP/HTTPS modes, the snippet contains the required auth_token.",
+                config_path.display(),
+                config_path.display()
+            );
+        }
+    }
+}
+
 async fn start_tunnel(name: String) -> Result<()> {
+    // Validate config BEFORE attempting daemon connection
+    ensure_daemon_config()?;
+
     let profile = load_profile_by_name(&name)?;
     let tunnel_id = profile.metadata.id;
 
@@ -371,11 +440,14 @@ fn announce_connected(profile: &Profile) {
     println!();
     println!(
         "{}",
-        "Tunnel is running. Use 'ssh-tunnel stop [<name>|--all]' to stop.".dimmed()
+        "Tunnel is running. Use 'ssh-tunnel stop <name>|--all' to stop.".dimmed()
     );
 }
 
 async fn stop_tunnel(name: String) -> Result<()> {
+    // Validate config BEFORE attempting daemon connection
+    ensure_daemon_config()?;
+
     let profile = load_profile_by_name(&name)?;
     let tunnel_id = profile.metadata.id;
 
@@ -398,8 +470,74 @@ async fn stop_tunnel(name: String) -> Result<()> {
     Ok(())
 }
 
+async fn restart_tunnel(name: String) -> Result<()> {
+    // Validate config BEFORE attempting daemon connection
+    ensure_daemon_config()?;
+
+    let profile = load_profile_by_name(&name)?;
+    let tunnel_id = profile.metadata.id;
+
+    println!(
+        "{}",
+        format!(
+            "Restarting tunnel '{}' ({})",
+            profile.metadata.name, tunnel_id
+        )
+        .yellow()
+        .bold()
+    );
+    println!();
+
+    let client = create_daemon_client()?;
+    let cli_config = config::CliConfig::load()?;
+
+    // Step 1: Stop the tunnel (if running)
+    println!("{}", "Step 1: Stopping tunnel...".dimmed());
+    match stop_tunnel_shared(&client, &cli_config.daemon_config, tunnel_id).await {
+        Ok(_) => {
+            println!("  {}", "✓ Stopped".green());
+        }
+        Err(e) => {
+            // Check if error is "not found" - that's okay, tunnel wasn't running
+            let err_str = e.to_string();
+            if err_str.contains("404") || err_str.contains("Not Found") {
+                println!("  {}", "ℹ Tunnel was not running".dimmed());
+            } else {
+                println!("  {}", format!("✗ Failed to stop: {}", e).red());
+                anyhow::bail!("Failed to stop tunnel before restart: {}", e);
+            }
+        }
+    }
+
+    // Small delay to ensure clean shutdown
+    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+
+    // Step 2: Start the tunnel
+    println!("{}", "Step 2: Starting tunnel...".dimmed());
+
+    let mut handler = CliEventHandler {
+        profile: profile.clone(),
+    };
+
+    match start_tunnel_with_events(&client, &cli_config.daemon_config, tunnel_id, &mut handler).await {
+        Ok(_) => {
+            println!();
+            println!("{}", "✓ Tunnel restarted successfully".green().bold());
+            Ok(())
+        }
+        Err(e) => {
+            println!();
+            println!("{}", format!("✗ Failed to start tunnel: {}", e).red().bold());
+            Err(e)
+        }
+    }
+}
+
 async fn stop_all_tunnels() -> Result<()> {
     use serde::Deserialize;
+
+    // Validate config BEFORE attempting daemon connection
+    ensure_daemon_config()?;
 
     #[derive(Debug, Deserialize)]
     struct TunnelsListResponse {
@@ -507,6 +645,194 @@ async fn stop_all_tunnels() -> Result<()> {
             .bold()
         );
     }
+
+    Ok(())
+}
+
+async fn show_tunnel_status(name: String) -> Result<()> {
+    // Validate config BEFORE attempting daemon connection
+    ensure_daemon_config()?;
+
+    let profile = load_profile_by_name(&name)?;
+    let tunnel_id = profile.metadata.id;
+
+    let client = create_daemon_client()?;
+    let cli_config = config::CliConfig::load()?;
+    let base_url = daemon_base_url()?;
+
+    println!(
+        "{}",
+        format!("Checking status for '{}' ({})", profile.metadata.name, tunnel_id)
+            .bold()
+    );
+    println!();
+
+    // Query daemon for tunnel status
+    let status_url = format!("{}/api/tunnels/{}/status", base_url, tunnel_id);
+    let status_resp = ssh_tunnel_common::add_auth_header(
+        client.get(&status_url),
+        &cli_config.daemon_config,
+    )?
+    .send()
+    .await
+    .context("Failed to query tunnel status")?;
+
+    if status_resp.status() == reqwest::StatusCode::NOT_FOUND {
+        println!("{}", "Status: Not Active".dimmed());
+        println!("{}", "The tunnel is not currently running in the daemon".dimmed());
+        return Ok(());
+    }
+
+    if !status_resp.status().is_success() {
+        anyhow::bail!("Failed to get tunnel status: {}", status_resp.status());
+    }
+
+    let status: TunnelStatusResponse = status_resp
+        .json()
+        .await
+        .context("Failed to parse tunnel status")?;
+
+    // Display status with color coding
+    let status_text = match &status.status {
+        TunnelStatus::Connected => "Connected".green().bold(),
+        TunnelStatus::Connecting => "Connecting...".yellow(),
+        TunnelStatus::Reconnecting => "Reconnecting...".yellow(),
+        TunnelStatus::WaitingForAuth => "Waiting for Authentication".yellow().bold(),
+        TunnelStatus::Disconnecting => "Disconnecting...".yellow(),
+        TunnelStatus::Disconnected => "Disconnected".red(),
+        TunnelStatus::Failed(reason) => format!("Failed: {}", reason).red().bold(),
+        TunnelStatus::NotConnected => "Not Connected".dimmed(),
+    };
+
+    println!("Status: {}", status_text);
+
+    // Show pending auth if any
+    if let Some(auth_req) = status.pending_auth {
+        println!();
+        println!("{}", "Pending Authentication:".yellow().bold());
+        println!("  Type: {:?}", auth_req.auth_type);
+        println!("  Prompt: {}", auth_req.prompt);
+    }
+
+    // Show profile details
+    println!();
+    println!("{}", "Profile Details:".bold());
+    println!("  Remote: {}@{}:{}",
+        profile.connection.user,
+        profile.connection.host,
+        profile.connection.port
+    );
+
+    let forwarding_desc = ssh_tunnel_common::format_tunnel_description(&profile.forwarding);
+    println!("  Forwarding: {}", forwarding_desc);
+
+    Ok(())
+}
+
+async fn show_all_tunnels_status() -> Result<()> {
+    use serde::Deserialize;
+
+    // Validate config BEFORE attempting daemon connection
+    ensure_daemon_config()?;
+
+    #[derive(Debug, Deserialize)]
+    struct TunnelsListResponse {
+        tunnels: Vec<TunnelStatusResponse>,
+    }
+
+    let client = create_daemon_client()?;
+    let cli_config = config::CliConfig::load()?;
+    let base_url = daemon_base_url()?;
+
+    println!("{}", "Querying daemon for tunnel statuses...".dimmed());
+    println!();
+
+    // Query daemon for all tunnels
+    let url = format!("{}/api/tunnels", base_url);
+    let resp = ssh_tunnel_common::add_auth_header(client.get(&url), &cli_config.daemon_config)?
+        .send()
+        .await
+        .context("Failed to query daemon for tunnels list")?;
+
+    if !resp.status().is_success() {
+        anyhow::bail!("Failed to get tunnels list: {}", resp.status());
+    }
+
+    let tunnels_response: TunnelsListResponse = resp
+        .json()
+        .await
+        .context("Failed to parse tunnels list")?;
+
+    if tunnels_response.tunnels.is_empty() {
+        println!("{}", "No active tunnels found in daemon".yellow());
+        println!();
+        println!("{}", "Tip: Use 'ssh-tunnel start <profile>' to start a tunnel".dimmed());
+        return Ok(());
+    }
+
+    // Load all profiles to get names
+    let all_profiles = load_all_profiles()?;
+
+    // Create a formatted table
+    let mut table = Table::new();
+    table
+        .set_content_arrangement(ContentArrangement::Dynamic)
+        .set_header(vec![
+            Cell::new("Profile").add_attribute(Attribute::Bold),
+            Cell::new("Status").add_attribute(Attribute::Bold),
+            Cell::new("Remote").add_attribute(Attribute::Bold),
+            Cell::new("Forwarding").add_attribute(Attribute::Bold),
+        ]);
+
+    for tunnel in &tunnels_response.tunnels {
+        let profile = all_profiles
+            .iter()
+            .find(|p| p.metadata.id == tunnel.id);
+
+        let profile_name = profile
+            .map(|p| p.metadata.name.as_str())
+            .unwrap_or("unknown");
+
+        // Format status with color
+        let status_cell = match &tunnel.status {
+            TunnelStatus::Connected => Cell::new("Connected").fg(Color::Green),
+            TunnelStatus::Connecting => Cell::new("Connecting").fg(Color::Yellow),
+            TunnelStatus::Reconnecting => Cell::new("Reconnecting").fg(Color::Yellow),
+            TunnelStatus::WaitingForAuth => Cell::new("Waiting Auth").fg(Color::Yellow),
+            TunnelStatus::Disconnecting => Cell::new("Disconnecting").fg(Color::Yellow),
+            TunnelStatus::Disconnected => Cell::new("Disconnected").fg(Color::Red),
+            TunnelStatus::Failed(reason) => {
+                Cell::new(format!("Failed: {}", reason)).fg(Color::Red)
+            }
+            TunnelStatus::NotConnected => Cell::new("Not Connected").fg(Color::DarkGrey),
+        };
+
+        let remote_str = if let Some(p) = profile {
+            format!("{}@{}:{}", p.connection.user, p.connection.host, p.connection.port)
+        } else {
+            "N/A".to_string()
+        };
+
+        let forwarding_str = if let Some(p) = profile {
+            ssh_tunnel_common::format_tunnel_description(&p.forwarding)
+        } else {
+            "N/A".to_string()
+        };
+
+        table.add_row(vec![
+            Cell::new(profile_name),
+            status_cell,
+            Cell::new(remote_str),
+            Cell::new(forwarding_str),
+        ]);
+    }
+
+    println!("{table}");
+    println!();
+    println!(
+        "{}",
+        format!("Total: {} tunnel(s)", tunnels_response.tunnels.len()).bold()
+    );
 
     Ok(())
 }
@@ -1187,6 +1513,9 @@ fn print_profiles_verbose(profiles: &[Profile]) {
 }
 
 async fn watch_events(name: Option<String>) -> Result<()> {
+    // Validate config BEFORE attempting daemon connection
+    ensure_daemon_config()?;
+
     let client = create_daemon_client()?;
     let base_url = daemon_base_url()?;
 

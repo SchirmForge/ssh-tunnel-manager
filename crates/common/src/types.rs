@@ -176,3 +176,31 @@ pub struct TunnelStatusResponse {
        matches!(self, TunnelStatus::Connecting | TunnelStatus::WaitingForAuth | TunnelStatus::Disconnecting)
    }
 } */
+
+/// Information about the daemon (version, config, runtime stats)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DaemonInfo {
+    // Version info
+    pub version: String,
+
+    // Uptime (since daemon started)
+    pub uptime_seconds: u64,
+    pub started_at: String, // ISO 8601 timestamp
+
+    // Configuration
+    pub listener_mode: String, // "unix-socket", "tcp-http", "tcp-https"
+    pub bind_host: Option<String>, // for TCP modes
+    pub bind_port: Option<u16>,    // for TCP modes
+    pub socket_path: Option<String>, // for Unix socket mode
+    pub require_auth: bool,
+    pub group_access: bool,
+
+    // Runtime info
+    pub config_file_path: String,
+    pub known_hosts_path: String,
+    pub active_tunnels_count: usize,
+
+    // Process info
+    pub pid: u32,
+    pub user: String, // username running daemon
+}

@@ -25,6 +25,9 @@ pub struct AppState {
     pub daemon_client: RefCell<Option<DaemonClient>>,
     pub current_nav_page: RefCell<navigation::NavigationPage>,
     pub nav_view: RefCell<Option<adw::NavigationView>>,
+    // Direct references to navigation pages (cleaner than title-based lookup)
+    pub client_page: RefCell<Option<adw::NavigationPage>>,
+    pub daemon_page: RefCell<Option<adw::NavigationPage>>,
     // Profile details page widgets for real-time updates
     pub profile_details_banner: RefCell<Option<adw::Banner>>,
     pub profile_details_start_btn: RefCell<Option<gtk4::Button>>,
@@ -32,6 +35,8 @@ pub struct AppState {
     pub auth_dialog_open: RefCell<HashSet<uuid::Uuid>>,
     pub pending_auth_requests: RefCell<HashMap<uuid::Uuid, AuthRequest>>,
     pub active_auth_requests: RefCell<HashMap<uuid::Uuid, AuthRequest>>,
+    // Callback to refresh daemon page content
+    pub daemon_page_refresh: RefCell<Option<Box<dyn Fn()>>>,
 }
 
 impl AppState {
@@ -51,8 +56,11 @@ impl AppState {
             window: RefCell::new(None),
             profile_list: RefCell::new(None),
             daemon_client: RefCell::new(daemon_client),
-            current_nav_page: RefCell::new(navigation::NavigationPage::Profiles),
+            current_nav_page: RefCell::new(navigation::NavigationPage::Client),
             nav_view: RefCell::new(None),
+            client_page: RefCell::new(None),
+            daemon_page: RefCell::new(None),
+            daemon_page_refresh: RefCell::new(None),
             profile_details_banner: RefCell::new(None),
             profile_details_start_btn: RefCell::new(None),
             profile_details_stop_btn: RefCell::new(None),
@@ -158,13 +166,15 @@ pub fn build(app: &adw::Application) -> adw::ApplicationWindow {
     // Store nav_view reference in state so navigation can switch pages
     state.nav_view.replace(Some(nav_view.clone()));
 
-    // Create profiles list page (default)
-    let profiles_page = profiles_list::create(state.clone());
-    nav_view.add(&profiles_page);
+    // Create Client page (default)
+    let client_page = profiles_list::create(state.clone());
+    nav_view.add(&client_page);
+    state.client_page.replace(Some(client_page));
 
     // Create daemon settings page
     let daemon_page = daemon_settings::create(state.clone());
     nav_view.add(&daemon_page);
+    state.daemon_page.replace(Some(daemon_page));
 
     // Wrap navigation view in a page
     let content_page = adw::NavigationPage::builder()
@@ -224,6 +234,14 @@ fn start_event_listener(state: Rc<AppState>, status_icon: gtk4::Image) {
 
                             // Reset backoff on successful connection
                             backoff = tokio::time::Duration::from_secs(2);
+
+                            // Refresh daemon page if we're currently viewing it
+                            if *state.current_nav_page.borrow() == navigation::NavigationPage::Daemon {
+                                if let Some(refresh) = state.daemon_page_refresh.borrow().as_ref() {
+                                    eprintln!("✓ Refreshing daemon page (daemon connected)");
+                                    refresh();
+                                }
+                            }
 
                             // Query initial tunnel statuses for all profiles
                             if let Some(client) = state.daemon_client.borrow().as_ref() {
@@ -521,6 +539,14 @@ fn start_event_listener(state: Rc<AppState>, status_icon: gtk4::Image) {
                             status_icon.remove_css_class("daemon-connected");
                             status_icon.remove_css_class("daemon-connecting");
                             status_icon.add_css_class("daemon-offline");
+
+                            // Refresh daemon page if we're currently viewing it
+                            if *state.current_nav_page.borrow() == navigation::NavigationPage::Daemon {
+                                if let Some(refresh) = state.daemon_page_refresh.borrow().as_ref() {
+                                    eprintln!("✓ Refreshing daemon page (daemon disconnected)");
+                                    refresh();
+                                }
+                            }
 
                             // Reset all profile statuses to NotConnected (gray)
                             if let Some(list_box) = state.profile_list.borrow().as_ref() {

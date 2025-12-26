@@ -73,6 +73,9 @@ dirs = { workspace = true }
 # Async channels
 async-trait = "0.1"
 
+# User information
+users = "0.11"
+
 # System calls (for PID file management)
 libc = "0.2"
 

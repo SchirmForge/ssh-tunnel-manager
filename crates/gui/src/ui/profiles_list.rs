@@ -56,6 +56,41 @@ pub fn create(state: Rc<AppState>) -> adw::NavigationPage {
     container_box.set_margin_start(24);
     container_box.set_margin_end(24);
 
+    // Add Client Configuration link at the top
+    let config_link_row = adw::ActionRow::builder()
+        .title("Client Configuration")
+        .subtitle("Configure CLI and GUI to drive the daemon")
+        .activatable(true)
+        .build();
+
+    // Add chevron icon to indicate navigation
+    let chevron = gtk4::Image::from_icon_name("go-next-symbolic");
+    config_link_row.add_suffix(&chevron);
+
+
+    // Handle click to navigate to configuration page
+    {
+        let state_clone = state.clone();
+        config_link_row.connect_activated(move |_| {
+            if let Some(nav_view) = state_clone.nav_view.borrow().as_ref() {
+                let config_page = super::client_config::create(Rc::clone(&state_clone));
+                nav_view.push(&config_page);
+            }
+        });
+    }
+
+    // Wrap config link in a ListBox with boxed-list style
+    let config_list = gtk4::ListBox::new();
+    config_list.add_css_class("boxed-list");
+    config_list.append(&config_link_row);
+
+    container_box.append(&config_list);
+
+    // Add spacing between config link and profiles list
+    let spacer = gtk4::Box::new(gtk4::Orientation::Horizontal, 0);
+    spacer.set_height_request(24);
+    container_box.append(&spacer);
+
     // Create list box for profiles
     let list_box = gtk4::ListBox::new();
     list_box.set_selection_mode(gtk4::SelectionMode::None);
@@ -79,7 +114,7 @@ pub fn create(state: Rc<AppState>) -> adw::NavigationPage {
 
     // Create navigation page
     let page = adw::NavigationPage::builder()
-        .title("Profiles")
+        .title("Client")
         .child(&content_box)
         .build();
 

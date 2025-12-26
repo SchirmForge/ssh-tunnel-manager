@@ -113,6 +113,8 @@ async fn main() -> Result<()> {
     let state = Arc::new(AppState {
         tunnel_manager,
         shutdown_tx: shutdown_tx.clone(),
+        started_at: Arc::new(tokio::sync::RwLock::new(std::time::SystemTime::now())),
+        config: Arc::new(daemon_config.clone()),
     });
     let shutdown_manager = state.tunnel_manager.clone();
 

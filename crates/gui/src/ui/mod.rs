@@ -7,6 +7,7 @@ pub mod window;
 pub mod navigation;
 pub mod profiles_list;
 pub mod profile_details;
+pub mod client_config;
 pub mod daemon_settings;
 pub mod sidebar;
 pub mod details;

@@ -4,8 +4,9 @@ A secure, performant SSH tunnel management application for Linux with CLI interf
 
 ## Status
 
-🟢 **v0.1.6** — Production-ready CLI/Daemon/GUI with comprehensive security hardening
+🟢 **v0.1.8** — Production-ready CLI/Daemon/GUI with enhanced error handling
 ✅ **Full-featured GUI** with profile management, real-time status, and markdown documentation
+✅ **Enhanced CLI** with status/restart commands and proactive config validation
 🟢 **Local port forwarding** works end-to-end with interactive auth, keychain storage, and host key verification
 🚧 Remote/dynamic forwarding and auto-reconnect wiring are not implemented yet; some `crates/common` tests are stale.
 
@@ -223,8 +224,17 @@ You'll be prompted for:
 # Check tunnel status
 ./target/release/ssh-tunnel status production-db
 
+# Check all tunnel statuses (formatted table)
+./target/release/ssh-tunnel status --all
+
+# Restart tunnel (graceful stop → start)
+./target/release/ssh-tunnel restart production-db
+
 # Stop tunnel
 ./target/release/ssh-tunnel stop production-db
+
+# Stop all running tunnels
+./target/release/ssh-tunnel stop --all
 
 # Delete profile
 ./target/release/ssh-tunnel delete production-db
@@ -433,6 +443,23 @@ curl -N http://127.0.0.1:3000/api/events
 
 ## Troubleshooting
 
+### CLI Configuration Missing (401 Unauthorized)
+
+**Error**: `Failed to establish SSE connection: Daemon returned non-success status for events: 401 Unauthorized`
+
+This means your CLI configuration file is missing. The CLI will automatically detect this and offer to copy the daemon-generated config snippet.
+
+**Automatic Solution**: Just run any daemon command and follow the prompts:
+```bash
+./target/release/ssh-tunnel start myprofile
+# You'll be prompted to copy the config snippet automatically
+```
+
+**Manual Solution**: Copy the daemon-generated snippet:
+```bash
+cp ~/.config/ssh-tunnel-manager/cli-config.snippet ~/.config/ssh-tunnel-manager/cli.toml
+```
+
 ### Authentication Fails with "Server requires: publickey"
 
 Your profile is configured for password authentication, but the server only accepts SSH keys.
@@ -476,6 +503,9 @@ See [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md) for detailed implementation
 
 ### Completed Features ✅
 
+- ✅ **Enhanced 401 authentication error handling** - Proactive config validation with interactive snippet copy
+- ✅ **CLI status command** - Display tunnel status with `--all` flag for formatted table view
+- ✅ **CLI restart command** - Graceful tunnel restart with two-step stop→start process
 - ✅ **CLI stop --all command** - Stop all active tunnels with status checking
 - ✅ **IPv6 host management** - Proper URL formatting with `[addr]:port` notation for IPv6 literals
 - ✅ **Tunnel description formatting** - Unified display across CLI/GUI with proper local/remote labeling

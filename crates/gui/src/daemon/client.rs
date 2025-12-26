@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 use ssh_tunnel_common::{
     add_auth_header, create_daemon_client, AuthRequest, AuthResponse, DaemonClientConfig,
-    TunnelStatus,
+    DaemonInfo, TunnelStatus,
 };
 
 /// Daemon client for tunnel operations
@@ -242,6 +242,58 @@ impl DaemonClient {
                     error: "Unknown error".to_string(),
                 });
             anyhow::bail!("Failed to submit auth: {}", error.error)
+        }
+    }
+
+    /// Get daemon information (version, config, uptime, etc.)
+    pub async fn get_daemon_info(&self) -> Result<DaemonInfo> {
+        let url = format!("{}/api/daemon/info", self.base_url()?);
+        let request = self.client.get(&url);
+        let request = add_auth_header(request, &self.config)?;
+
+        let response = request
+            .send()
+            .await
+            .context("Failed to send daemon info request")?;
+
+        if response.status().is_success() {
+            let info: DaemonInfo = response
+                .json()
+                .await
+                .context("Failed to parse daemon info")?;
+            Ok(info)
+        } else {
+            let error: ErrorResponse = response
+                .json()
+                .await
+                .unwrap_or_else(|_| ErrorResponse {
+                    error: "Unknown error".to_string(),
+                });
+            anyhow::bail!("Failed to get daemon info: {}", error.error)
+        }
+    }
+
+    /// Shutdown the daemon
+    pub async fn shutdown_daemon(&self) -> Result<()> {
+        let url = format!("{}/api/daemon/shutdown", self.base_url()?);
+        let request = self.client.post(&url);
+        let request = add_auth_header(request, &self.config)?;
+
+        let response = request
+            .send()
+            .await
+            .context("Failed to send shutdown request")?;
+
+        if response.status().is_success() || response.status() == reqwest::StatusCode::ACCEPTED {
+            Ok(())
+        } else {
+            let error: ErrorResponse = response
+                .json()
+                .await
+                .unwrap_or_else(|_| ErrorResponse {
+                    error: "Unknown error".to_string(),
+                });
+            anyhow::bail!("Failed to shutdown daemon: {}", error.error)
         }
     }
 }

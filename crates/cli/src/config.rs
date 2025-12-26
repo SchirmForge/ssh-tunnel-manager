@@ -53,6 +53,32 @@ impl CliConfig {
             .ok_or_else(|| anyhow::anyhow!("Could not determine config directory"))?;
         Ok(config_dir.join("ssh-tunnel-manager").join("cli.toml"))
     }
+
+    /// Copy the daemon-generated snippet to the CLI config file
+    pub fn copy_snippet_to_config() -> Result<()> {
+        use ssh_tunnel_common::get_cli_config_snippet_path;
+
+        let snippet_path = get_cli_config_snippet_path()?;
+        let config_path = Self::config_path()?;
+
+        if !snippet_path.exists() {
+            anyhow::bail!(
+                "CLI config snippet not found at: {}\n\
+                Make sure the daemon has been started at least once.",
+                snippet_path.display()
+            );
+        }
+
+        // Ensure parent directory exists
+        if let Some(parent) = config_path.parent() {
+            fs::create_dir_all(parent).context("Failed to create config directory")?;
+        }
+
+        // Copy the snippet
+        fs::copy(&snippet_path, &config_path).context("Failed to copy config snippet")?;
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]

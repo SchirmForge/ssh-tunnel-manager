@@ -2,8 +2,8 @@
 
 ## Current State
 
-**Version**: v0.1.6
-**Status**: ✅ Production-ready CLI/Daemon/GUI with comprehensive security hardening  
+**Version**: v0.1.8
+**Status**: ✅ Production-ready CLI/Daemon/GUI with enhanced error handling and tunnel management  
 
 - CLI and daemon work end-to-end for **local port forwarding** with interactive auth.  
 - **SSE** powers real-time updates (`/api/events`); REST covers start/stop/status/auth.  
@@ -18,6 +18,7 @@
 - Keychain module with availability detection (`is_keychain_available()`) and storage operations.
 - Shared types for auth flows (`AuthType`, `AuthRequest`, `TunnelStatus`, events).
 - Daemon client helpers (reqwest setup, auth header, TLS pinning helpers, socket path auto-detection).
+- **Config validation helpers** - `validate_daemon_config()`, `get_cli_config_snippet_path()`, `cli_config_snippet_exists()` for proactive validation.
 - **SSE-first tunnel control flow** (`start_tunnel_with_events`, `stop_tunnel`) with event handler trait for shared CLI/GUI logic.
 
 ### ✅ Daemon (`crates/daemon`)
@@ -29,11 +30,13 @@
 - PID file guard to avoid duplicate instances.
 
 ### ✅ CLI (`crates/cli`)
-- Profile CRUD (add/list/show/delete) with interactive prompts and non-interactive flags.
+- Profile CRUD (add/list/show/delete/info) with interactive prompts and non-interactive flags.
 - Keychain integration for passwords/passphrases with graceful fallback for headless environments.
 - Automatic keyring availability detection - profile creation succeeds even when keyring unavailable.
-- Start/stop/status using **shared SSE-first flow** from common module; interactive auth handling.
+- Tunnel control: start/stop/restart/status with `--all` flag support.
+- **Proactive daemon config validation** - checks config before connection attempts with interactive snippet copy.
 - Table/JSON output, colorized UX, validation of key permissions and privileged ports.
+- Start/stop/status using **shared SSE-first flow** from common module; interactive auth handling.
 
 ### ✅ GUI (`crates/gui`)
 - Libadwaita/GTK4 application with functional start/stop using **shared SSE-first flow**.
@@ -104,6 +107,17 @@
 
 ### Recently Completed ✅
 
+- ✅ **Enhanced 401 authentication error handling** (v0.1.8) - Proactive config validation with interactive snippet copy
+  - Config validation before daemon connection attempts prevents confusing 401 errors
+  - Interactive prompt to copy daemon-generated config snippet when missing
+  - Common validation helpers in `ssh_tunnel_common::daemon_client` for reuse in GUI
+  - Comprehensive step-by-step error messages for authentication failures
+  - All daemon commands now call `ensure_daemon_config()` before connecting
+- ✅ **CLI status command** (v0.1.8) - Display tunnel connection status
+  - Single tunnel status with detailed information
+  - `--all` flag for formatted table of all active tunnels
+  - Color-coded status indicators
+- ✅ **CLI restart command** (v0.1.8) - Graceful tunnel restart with two-step stop→start process
 - ✅ **Keyring graceful fallback for headless environments** (v0.1.7) - Automatic detection and graceful fallback when system keyring unavailable
   - Test-based availability detection using actual keyring operations (no environment variable guessing)
   - CLI profile creation succeeds even when keyring unavailable with clear warnings

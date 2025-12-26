@@ -27,14 +27,17 @@ use uuid::Uuid;
 
 use ssh_tunnel_common::{load_profile_by_id, AuthRequest, AuthResponse, TunnelStatus};
 use chrono::{DateTime, Utc};
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
+use crate::config::DaemonConfig;
 use crate::tunnel::{TunnelEvent, TunnelManager};
 
 /// Shared application state
 pub struct AppState {
     pub tunnel_manager: TunnelManager,
     pub shutdown_tx: tokio::sync::broadcast::Sender<()>,
+    pub started_at: Arc<tokio::sync::RwLock<SystemTime>>,
+    pub config: Arc<DaemonConfig>,
 }
 
 /// API error response
@@ -80,6 +83,8 @@ pub enum OutgoingEvent {
 pub fn create_router(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/api/health", get(health))
+        .route("/api/daemon/info", get(get_daemon_info))
+        .route("/api/daemon/shutdown", post(shutdown_daemon))
         .route("/api/tunnels", get(list_tunnels))
         .route("/api/tunnels/:id/start", post(start_tunnel))
         .route("/api/tunnels/:id/stop", post(stop_tunnel))
@@ -372,6 +377,102 @@ fn heartbeat_interval() -> Duration {
 #[cfg(test)]
 fn heartbeat_interval() -> Duration {
     Duration::from_millis(100)
+}
+
+/// Get daemon information (version, config, uptime, etc.)
+async fn get_daemon_info(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    use std::time::UNIX_EPOCH;
+    use ssh_tunnel_common::DaemonInfo;
+
+    // Compute uptime
+    let started = *state.started_at.read().await;
+    let uptime = SystemTime::now()
+        .duration_since(started)
+        .unwrap_or_default()
+        .as_secs();
+
+    // Format started_at as ISO 8601
+    let started_at_timestamp = started
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let started_at_iso = chrono::DateTime::from_timestamp(started_at_timestamp as i64, 0)
+        .map(|dt| dt.to_rfc3339())
+        .unwrap_or_else(|| "unknown".to_string());
+
+    // Count active tunnels
+    let tunnels = state.tunnel_manager.list_active().await;
+    let active_count = tunnels.len();
+
+    // Get config details
+    let config = &state.config;
+
+    // Determine listener mode string
+    let listener_mode = match config.listener_mode {
+        crate::config::ListenerMode::UnixSocket => "unix-socket",
+        crate::config::ListenerMode::TcpHttp => "tcp-http",
+        crate::config::ListenerMode::TcpHttps => "tcp-https",
+    }.to_string();
+
+    // Get socket path (for Unix socket mode)
+    let socket_path = if matches!(config.listener_mode, crate::config::ListenerMode::UnixSocket) {
+        crate::config::socket_path()
+            .ok()
+            .map(|p| p.display().to_string())
+    } else {
+        None
+    };
+
+    // Get config file path
+    let config_file_path = dirs::config_dir()
+        .map(|dir| dir.join("ssh-tunnel-manager").join("daemon.toml").display().to_string())
+        .unwrap_or_else(|| "unknown".to_string());
+
+    // Get current username
+    let username = users::get_current_username()
+        .and_then(|s| s.into_string().ok())
+        .unwrap_or_else(|| "unknown".to_string());
+
+    let info = DaemonInfo {
+        version: env!("CARGO_PKG_VERSION").to_string(),
+        uptime_seconds: uptime,
+        started_at: started_at_iso,
+        listener_mode,
+        bind_host: if matches!(config.listener_mode, crate::config::ListenerMode::TcpHttp | crate::config::ListenerMode::TcpHttps) {
+            Some(config.bind_host.clone())
+        } else {
+            None
+        },
+        bind_port: if matches!(config.listener_mode, crate::config::ListenerMode::TcpHttp | crate::config::ListenerMode::TcpHttps) {
+            Some(config.bind_port)
+        } else {
+            None
+        },
+        socket_path,
+        require_auth: config.require_auth,
+        group_access: config.group_access,
+        config_file_path,
+        known_hosts_path: config.known_hosts_path.display().to_string(),
+        active_tunnels_count: active_count,
+        pid: std::process::id(),
+        user: username,
+    };
+
+    Json(info)
+}
+
+/// Shutdown the daemon
+async fn shutdown_daemon(State(_state): State<Arc<AppState>>) -> impl IntoResponse {
+    info!("API: Shutdown request received");
+
+    // Spawn a task to exit after a short delay
+    tokio::spawn(async {
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        info!("Shutting down daemon...");
+        std::process::exit(0);
+    });
+
+    StatusCode::ACCEPTED
 }
 
 #[cfg(test)]
