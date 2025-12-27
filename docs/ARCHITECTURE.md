@@ -152,21 +152,29 @@ A secure, performant SSH tunnel management application for Linux with GUI and CL
 
 #### 2c. Qt GUI (`crates/gui-qt`)
 
-**Purpose**: KDE/Qt desktop application
+**Purpose**: KDE/Qt6 desktop application with QML
 
-**Implementation Status**: 🚧 Planned (future)
+**Implementation Status**: 🚧 Under Development (qmetaobject-rs + Qt6/QML)
 
-**Features**:
+**Current State**:
+- Basic QML UI with Rust backend using qmetaobject-rs
+- AppBackend QObject bridging QML and gui-core
+- Placeholder window showing technology stack
+- Full functionality being implemented
+
+**Planned Features**:
 - All features from gui-core
-- Qt/KDE Plasma integration
-- Native KDE styling and widgets
+- Qt6/QML declarative UI
+- Native KDE Plasma integration
 - Same functionality as GTK version
 
 **Technology**:
-- Qt bindings for Rust (TBD - qmetaobject-rs or CXX-Qt)
-- Uses `gui-core` for business logic (~60-70% code reuse)
+- **qmetaobject-rs**: Rust bindings for Qt6
+- **QML**: Declarative UI (Qt Quick)
+- **gui-core**: Shared business logic (~60-70% code reuse)
+- See [crates/gui-qt/README.md](../crates/gui-qt/README.md) for implementation details
 
-#### 2b. GNOME Shell Extension (JavaScript)
+#### 2d. GNOME Shell Extension (JavaScript)
 
 **Purpose**: Native GNOME top bar integration
 
@@ -187,7 +195,7 @@ A secure, performant SSH tunnel management application for Linux with GUI and CL
 - SSE client for real-time updates
 - GNOME notification system
 
-#### 2c. KDE Plasma Applet (QML + JavaScript)
+#### 2e. KDE Plasma Applet (QML + JavaScript)
 
 **Purpose**: Native KDE panel/system tray integration
 

@@ -52,6 +52,7 @@
 - Uses `start_tunnel_with_events` and `stop_tunnel` helpers from common module
 - Integrates gui-core for profile management, validation, and view models
 - **Profile management UI** - Full CRUD with shared common crate functions
+- See [crates/gui-gtk/README.md](../crates/gui-gtk/README.md) for complete feature list
   - Create, edit, delete profiles via unified dialog interface
   - "New Profile" button on profiles list page
   - Edit/Delete buttons on profile details page
@@ -72,6 +73,15 @@
 - **SSE event integration**: All tunnel events update profile status dots in real-time, with initial status query on connection.
 - **Navigation UI**: Split view with sidebar navigation between Profiles and Daemon pages, burger menu with Help/About.
 - **Help and About dialogs**: Markdown-rendered documentation accessible from burger menu using `pulldown-cmark`.
+
+### 🚧 GUI Qt (`crates/gui-qt`)
+- **Qt6/QML implementation** using qmetaobject-rs
+- Basic QML UI with Rust backend (AppBackend QObject)
+- Bridges QML declarative UI with gui-core business logic
+- **Technology**: qmetaobject-rs + Qt6 + QML (Qt Quick)
+- **Architecture**: QML for UI, Rust for logic, gui-core for ~60-70% code reuse
+- **Status**: Placeholder window working, full features being implemented
+- See [crates/gui-qt/README.md](../crates/gui-qt/README.md) for implementation roadmap
 
 ## Current Capabilities
 

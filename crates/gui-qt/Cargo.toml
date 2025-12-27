@@ -1,0 +1,42 @@
+[package]
+name = "ssh-tunnel-gui-qt"
+version = "0.1.8"
+edition = "2021"
+authors = ["SSH Tunnel Manager Contributors"]
+description = "Qt6 desktop GUI for SSH Tunnel Manager"
+license = "Apache-2.0"
+
+[[bin]]
+name = "ssh-tunnel-qt"
+path = "src/main.rs"
+
+[dependencies]
+# Local crates
+ssh-tunnel-common = { path = "../common" }
+ssh-tunnel-gui-core = { path = "../gui-core" }
+
+# Qt6 bindings via qmetaobject-rs
+qmetaobject = "0.2"
+qttypes = "0.2"
+
+# Async runtime
+tokio = { version = "1.35", features = ["full"] }
+
+# HTTP client for daemon communication
+reqwest = { version = "0.11", features = ["json", "stream"] }
+futures-util = "0.3"
+
+# Data structures
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "0.8"
+uuid = { version = "1.6", features = ["serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+anyhow = "1.0"
+
+# Utilities
+dirs = "5.0"
+tracing = "0.1"
+
+[build-dependencies]
+# No special build dependencies needed for qmetaobject-rs

@@ -4,6 +4,7 @@ members = [
     "crates/daemon",
     "crates/cli",
     "crates/gui-gtk",
+    "crates/gui-qt",
     "crates/gui-core",
     "crates/common",
 ]
