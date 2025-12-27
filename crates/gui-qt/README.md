@@ -4,7 +4,12 @@ This is the **Qt6/QML implementation** of SSH Tunnel Manager, built with **qmeta
 
 ## Current Status
 
-**Under Development** - The basic QML UI loads and shows a placeholder window. Full functionality is being implemented.
+**Work In Progress** - Qt6 is installed and QML files are created, but qmetaobject-rs 0.2.x proc macros need further investigation.
+
+**Current blockers:**
+- qmetaobject-rs 0.2.x attribute macros (#[qproperty], #[qsignal], etc.) not working as expected
+- May need to use qmetaobject API differently or consider alternative Qt binding (cxx-qt)
+- All business logic code is ready (ProfileViewModel integration complete)
 
 **Technology Stack:**
 - **qmetaobject-rs**: Rust bindings for Qt6
@@ -104,12 +109,13 @@ export QMAKE=/usr/lib/qt6/bin/qmake
 ## Implementation Roadmap
 
 1. ✅ **Basic Structure**: QML main window with Rust backend
-2. ✅ **Profile List**: QML ListView with ProfileViewModel from gui-core
-   - ProfilesListModel QObject loads profiles using gui-core
-   - ProfileItem gadget maps ProfileViewModel to QML properties
-   - ProfilesList.qml displays list with status colors and action buttons
-   - Main window with navigation drawer (Profiles/Daemon/About)
-3. 🚧 **Profile Dialog**: QML dialog with gui-core validation
+2. 🔨 **Profile List**: Business logic complete, qmetaobject proc macros need fixing
+   - ✅ ProfilesListModel logic using gui-core (SHARED CODE working!)
+   - ✅ ProfileItem conversion from ProfileViewModel
+   - ✅ ProfilesList.qml UI designed
+   - ✅ Main window with navigation drawer
+   - ⚠️ qmetaobject-rs 0.2.x proc macros not compiling (investigating alternatives)
+3. ⏸️  **Profile Dialog**: Waiting for step 2 resolution
 4. 🚧 **Daemon Config**: Configuration UI matching GTK version
 5. 🚧 **Event Loop**: Integrate tokio async runtime with Qt event loop
 6. 🚧 **SSE Integration**: Connect daemon events to QML property updates

@@ -87,7 +87,7 @@ Page {
                     }
 
                     Label {
-                        text: profileData.description
+                        text: profileData.host
                         font.pixelSize: 11
                         color: "#666666"
                         Layout.fillWidth: true

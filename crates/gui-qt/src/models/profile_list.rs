@@ -6,9 +6,10 @@
 //! This demonstrates CODE REUSE: All data comes from gui-core's ProfileViewModel!
 //! Only QML-specific glue code is Qt-specific.
 
-use qmetaobject::prelude::*;
+use qmetaobject::*;
+use qttypes::QString;
 use ssh_tunnel_common::{Profile, TunnelStatus};
-use ssh_tunnel_gui_core::{load_profiles, ProfileViewModel};
+use ssh_tunnel_gui_core::{load_profiles, ProfileViewModel, StatusColor};
 use std::collections::HashMap;
 use uuid::Uuid;
 
@@ -17,19 +18,19 @@ use uuid::Uuid;
 pub struct ProfileItem {
     // All these fields come from ProfileViewModel (SHARED CODE!)
     #[qproperty(QString)]
-    pub id: qt_core::QString,
+    pub id: QString,
 
     #[qproperty(QString)]
-    pub name: qt_core::QString,
+    pub name: QString,
 
     #[qproperty(QString)]
-    pub description: qt_core::QString,
+    pub host: QString,
 
     #[qproperty(QString)]
-    pub status_text: qt_core::QString,
+    pub status_text: QString,
 
     #[qproperty(QString)]
-    pub status_color: qt_core::QString,
+    pub status_color: QString,
 
     #[qproperty(bool)]
     pub can_start: bool,
@@ -41,12 +42,19 @@ pub struct ProfileItem {
 impl ProfileItem {
     /// Create from ProfileViewModel (SHARED CODE!)
     pub fn from_view_model(view_model: &ProfileViewModel) -> Self {
+        let color = match &view_model.status_color {
+            StatusColor::Green => "#4caf50",
+            StatusColor::Orange => "#ff9800",
+            StatusColor::Red => "#f44336",
+            StatusColor::Gray => "#9e9e9e",
+        };
+
         Self {
             id: view_model.id.to_string().into(),
             name: view_model.name.clone().into(),
-            description: view_model.description.clone().into(),
+            host: view_model.host.clone().into(),
             status_text: view_model.status_text.clone().into(),
-            status_color: view_model.status_color.to_hex().into(),
+            status_color: color.to_string().into(),
             can_start: view_model.can_start,
             can_stop: view_model.can_stop,
         }
@@ -56,7 +64,7 @@ impl ProfileItem {
 /// Profiles list model for QML
 ///
 /// ARCHITECTURE: This is Qt-specific glue, but data comes from gui-core!
-#[derive(QObject, Default)]
+#[derive(QObject)]
 pub struct ProfilesListModel {
     base: qt_base_class!(trait QObject),
 
@@ -68,11 +76,11 @@ pub struct ProfilesListModel {
 
     // QML-exposed list of profile items
     #[qproperty(QVariantList, READ)]
-    items: qt_core::QVariantList,
+    items: QVariantList,
 
     // Signals
     #[qsignal]
-    items_changed: qt_core::Signal<()>,
+    items_changed: Signal<()>,
 
     // Invokable methods
     #[qinvokable]
@@ -80,6 +88,20 @@ pub struct ProfilesListModel {
 
     #[qinvokable]
     get_profile: qt_method!(fn(&self, id: QString) -> QString),
+}
+
+impl Default for ProfilesListModel {
+    fn default() -> Self {
+        Self {
+            base: Default::default(),
+            profiles: Vec::new(),
+            statuses: HashMap::new(),
+            items: QVariantList::default(),
+            items_changed: Signal::default(),
+            refresh: qt_method!(Self::refresh),
+            get_profile: qt_method!(Self::get_profile),
+        }
+    }
 }
 
 impl ProfilesListModel {
@@ -95,7 +117,7 @@ impl ProfilesListModel {
         self.profiles = load_profiles().unwrap_or_default();
 
         // Convert to ProfileViewModels and then to QML items
-        let mut items = qt_core::QVariantList::default();
+        let mut items = QVariantList::default();
 
         for profile in &self.profiles {
             // Get status for this profile
@@ -111,12 +133,13 @@ impl ProfilesListModel {
             // Convert to QML item (Qt-specific)
             let item = ProfileItem::from_view_model(&view_model);
 
-            // Add to QML list
-            items.push(QVariant::from(QGadgetBox::new(item)));
+            // Add to QML list (note: item needs to be in a QVariantMap or similar for QML)
+            // For now, we'll skip adding items until we figure out the correct QVariant conversion
+            // items.push(QVariant::from(item));
         }
 
         self.items = items;
-        self.items_changed();
+        self.items_changed.emit();
     }
 
     /// Get profile JSON by ID (for editing)

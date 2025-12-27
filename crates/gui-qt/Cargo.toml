@@ -37,6 +37,7 @@ anyhow = "1.0"
 # Utilities
 dirs = "5.0"
 tracing = "0.1"
+cstr = "0.2"
 
 [build-dependencies]
 # No special build dependencies needed for qmetaobject-rs
