@@ -1,0 +1,19 @@
+[package]
+name = "ssh-tunnel-gui-core"
+version = "0.1.8"
+edition = "2021"
+authors = ["SSH Tunnel Manager Contributors"]
+license = "Apache-2.0"
+description = "Framework-agnostic GUI core for SSH Tunnel Manager"
+repository = "https://github.com/yourusername/ssh-tunnel-manager"
+
+[dependencies]
+ssh-tunnel-common = { path = "../common" }
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+anyhow = "1"
+toml = "0.8"
+eventsource-client = "0.13"
+reqwest = { version = "0.12", features = ["rustls-tls", "stream"], default-features = false }
+dirs = "5"

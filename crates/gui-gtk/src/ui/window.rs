@@ -6,7 +6,6 @@
 use gtk4::{prelude::*, gio};
 use libadwaita as adw;
 use adw::prelude::*;
-use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use std::cell::RefCell;
 
@@ -14,10 +13,14 @@ use super::{navigation, profiles_list, daemon_settings, help_dialog, about_dialo
 use super::auth_dialog;
 use crate::models::profile_model::ProfileModel;
 use crate::daemon::DaemonClient;
-use ssh_tunnel_common::AuthRequest;
+use ssh_tunnel_gui_core::AppCore;
 
 /// Shared application state
 pub struct AppState {
+    // Business logic (from gui-core) - framework-agnostic
+    pub core: RefCell<AppCore>,
+
+    // GTK-specific UI state below
     pub selected_profile: RefCell<Option<ProfileModel>>,
     pub details_widget: RefCell<Option<gtk4::Box>>,
     pub window: RefCell<Option<adw::ApplicationWindow>>,
@@ -32,9 +35,6 @@ pub struct AppState {
     pub profile_details_banner: RefCell<Option<adw::Banner>>,
     pub profile_details_start_btn: RefCell<Option<gtk4::Button>>,
     pub profile_details_stop_btn: RefCell<Option<gtk4::Button>>,
-    pub auth_dialog_open: RefCell<HashSet<uuid::Uuid>>,
-    pub pending_auth_requests: RefCell<HashMap<uuid::Uuid, AuthRequest>>,
-    pub active_auth_requests: RefCell<HashMap<uuid::Uuid, AuthRequest>>,
     // Callback to refresh daemon page content
     pub daemon_page_refresh: RefCell<Option<Box<dyn Fn()>>>,
 }
@@ -51,6 +51,9 @@ impl AppState {
         };
 
         Rc::new(Self {
+            // Initialize core business logic
+            core: RefCell::new(AppCore::new()),
+            // GTK-specific state
             selected_profile: RefCell::new(None),
             details_widget: RefCell::new(None),
             window: RefCell::new(None),
@@ -64,38 +67,15 @@ impl AppState {
             profile_details_banner: RefCell::new(None),
             profile_details_start_btn: RefCell::new(None),
             profile_details_stop_btn: RefCell::new(None),
-            auth_dialog_open: RefCell::new(HashSet::new()),
-            pending_auth_requests: RefCell::new(HashMap::new()),
-            active_auth_requests: RefCell::new(HashMap::new()),
         })
     }
 
     /// Load daemon client configuration from cli.toml
     fn load_daemon_client() -> anyhow::Result<DaemonClient> {
-        use ssh_tunnel_common::DaemonClientConfig;
-        use std::path::PathBuf;
+        // Use gui-core's helper to load daemon config
+        let config = ssh_tunnel_gui_core::load_daemon_config()?;
 
-        // Get config path (same as CLI)
-        let config_dir = dirs::config_dir()
-            .ok_or_else(|| anyhow::anyhow!("Could not determine config directory"))?;
-        let config_path: PathBuf = config_dir.join("ssh-tunnel-manager").join("cli.toml");
-
-        eprintln!("Loading daemon config from: {:?}", config_path);
-
-        // Load configuration from file
-        let config = if config_path.exists() {
-            let contents = std::fs::read_to_string(&config_path)
-                .map_err(|e| anyhow::anyhow!("Failed to read config file: {}", e))?;
-            let cfg = toml::from_str::<DaemonClientConfig>(&contents)
-                .map_err(|e| anyhow::anyhow!("Failed to parse config file: {}", e))?;
-
-            eprintln!("Loaded config: connection_mode={:?}, daemon_url={}",
-                     cfg.connection_mode, cfg.daemon_url);
-            cfg
-        } else {
-            eprintln!("Config file not found at {:?}, using defaults", config_path);
-            DaemonClientConfig::default()
-        };
+        eprintln!("Loaded daemon config: connection_mode={:?}", config.connection_mode);
 
         // Create client with loaded config
         DaemonClient::with_config(config)
@@ -325,215 +305,97 @@ fn start_event_listener(state: Rc<AppState>, status_icon: gtk4::Image) {
                         Some(event) = rx.recv() => {
                             eprintln!("Received event: {:?}", event);
 
-                    // Update UI based on event type
-                    match event {
-                        TunnelEvent::Connected { id } => {
-                            eprintln!("Tunnel {} connected", id);
-                            auth_dialog::clear_auth_state(&state, id);
+                            // Use centralized event handler from gui-core
+                            super::event_handler::process_tunnel_event(&state, event.clone());
 
-                            // Update profile list status
-                            if let Some(list_box) = state.profile_list.borrow().as_ref() {
-                                super::profiles_list::update_profile_status(
-                                    list_box,
-                                    id,
-                                    ssh_tunnel_common::TunnelStatus::Connected,
-                                );
-                            }
+                            // Update profile details page if a profile is selected
+                            // (This is GTK-specific UI that's not in the centralized handler)
+                            match event {
+                                TunnelEvent::Connected { id } |
+                                TunnelEvent::Starting { id } |
+                                TunnelEvent::Disconnected { id, .. } |
+                                TunnelEvent::Error { id, .. } => {
+                                    if let Some(selected) = state.selected_profile.borrow().as_ref() {
+                                        if let Some(profile) = selected.profile() {
+                                            if profile.metadata.id == id {
+                                                // Get the status from AppCore
+                                                let status = {
+                                                    let core = state.core.borrow();
+                                                    core.tunnel_statuses.get(&id).cloned()
+                                                        .unwrap_or(ssh_tunnel_common::TunnelStatus::NotConnected)
+                                                };
 
-                            // Update profile details page if this profile is selected
-                            if let Some(selected) = state.selected_profile.borrow().as_ref() {
-                                if let Some(profile) = selected.profile() {
-                                    if profile.metadata.id == id {
-                                        // Update profile details page UI
-                                        super::profile_details::update_tunnel_status(
-                                            &state,
-                                            ssh_tunnel_common::TunnelStatus::Connected,
-                                        );
+                                                // Update profile details page UI
+                                                super::profile_details::update_tunnel_status(&state, status.clone());
 
-                                        // Also refresh old details panel if present
-                                        if let Some(details_widget) = state.details_widget.borrow().as_ref() {
-                                            if let Some(window) = state.window.borrow().as_ref() {
-                                                super::details::update_with_profile(
-                                                    details_widget,
-                                                    selected,
-                                                    state.clone(),
-                                                    window,
-                                                );
+                                                // Also refresh old details panel if present
+                                                if let Some(details_widget) = state.details_widget.borrow().as_ref() {
+                                                    if let Some(window) = state.window.borrow().as_ref() {
+                                                        super::details::update_with_profile(
+                                                            details_widget,
+                                                            selected,
+                                                            state.clone(),
+                                                            window,
+                                                        );
+                                                    }
+                                                }
                                             }
                                         }
                                     }
                                 }
-                            }
-                        }
-                        TunnelEvent::Starting { id } => {
-                            eprintln!("Tunnel {} starting", id);
-                            auth_dialog::clear_auth_state(&state, id);
-
-                            // Update profile list status
-                            if let Some(list_box) = state.profile_list.borrow().as_ref() {
-                                super::profiles_list::update_profile_status(
-                                    list_box,
-                                    id,
-                                    ssh_tunnel_common::TunnelStatus::Connecting,
-                                );
-                            }
-
-                            // Update profile details page if this profile is selected
-                            if let Some(selected) = state.selected_profile.borrow().as_ref() {
-                                if let Some(profile) = selected.profile() {
-                                    if profile.metadata.id == id {
-                                        super::profile_details::update_tunnel_status(
-                                            &state,
-                                            ssh_tunnel_common::TunnelStatus::Connecting,
-                                        );
-                                    }
-                                }
-                            }
-                        }
-                        TunnelEvent::Disconnected { id, reason } => {
-                            eprintln!("Tunnel {} disconnected: {}", id, reason);
-                            auth_dialog::clear_auth_state(&state, id);
-
-                            // Update profile list status
-                            if let Some(list_box) = state.profile_list.borrow().as_ref() {
-                                super::profiles_list::update_profile_status(
-                                    list_box,
-                                    id,
-                                    ssh_tunnel_common::TunnelStatus::Disconnected,
-                                );
-                            }
-
-                            // Update profile details page if this profile is selected
-                            if let Some(selected) = state.selected_profile.borrow().as_ref() {
-                                if let Some(profile) = selected.profile() {
-                                    if profile.metadata.id == id {
-                                        super::profile_details::update_tunnel_status(
-                                            &state,
-                                            ssh_tunnel_common::TunnelStatus::Disconnected,
-                                        );
-
-                                        // Also refresh old details panel if present
-                                        if let Some(details_widget) = state.details_widget.borrow().as_ref() {
-                                            if let Some(window) = state.window.borrow().as_ref() {
-                                                super::details::update_with_profile(
-                                                    details_widget,
-                                                    selected,
-                                                    state.clone(),
-                                                    window,
+                                TunnelEvent::AuthRequired { id, .. } => {
+                                    // Update profile details page if this is the selected profile
+                                    if let Some(selected) = state.selected_profile.borrow().as_ref() {
+                                        if let Some(profile) = selected.profile() {
+                                            if profile.metadata.id == id {
+                                                // Update profile details page UI
+                                                super::profile_details::update_tunnel_status(
+                                                    &state,
+                                                    ssh_tunnel_common::TunnelStatus::WaitingForAuth,
                                                 );
+
+                                                // Also refresh old details panel if present
+                                                if let Some(details_widget) = state.details_widget.borrow().as_ref() {
+                                                    if let Some(window) = state.window.borrow().as_ref() {
+                                                        super::details::update_with_profile(
+                                                            details_widget,
+                                                            selected,
+                                                            state.clone(),
+                                                            window,
+                                                        );
+                                                    }
+                                                }
                                             }
                                         }
                                     }
                                 }
-                            }
-                        }
-                        TunnelEvent::Error { id, error } => {
-                            eprintln!("Tunnel {} error: {}", id, error);
-                            auth_dialog::clear_auth_state(&state, id);
-
-                            // Update profile list status
-                            if let Some(list_box) = state.profile_list.borrow().as_ref() {
-                                super::profiles_list::update_profile_status(
-                                    list_box,
-                                    id,
-                                    ssh_tunnel_common::TunnelStatus::Failed(error.clone()),
-                                );
-                            }
-
-                            // Update profile details page if this profile is selected
-                            if let Some(selected) = state.selected_profile.borrow().as_ref() {
-                                if let Some(profile) = selected.profile() {
-                                    if profile.metadata.id == id {
-                                        super::profile_details::update_tunnel_status(
-                                            &state,
-                                            ssh_tunnel_common::TunnelStatus::Failed(error.clone()),
-                                        );
-
-                                        // Also refresh old details panel if present
-                                        if let Some(details_widget) = state.details_widget.borrow().as_ref() {
-                                            if let Some(window) = state.window.borrow().as_ref() {
-                                                super::details::update_with_profile(
-                                                    details_widget,
-                                                    selected,
-                                                    state.clone(),
-                                                    window,
-                                                );
-                                            }
-                                        }
+                                TunnelEvent::Heartbeat { .. } => {
+                                    // Update heartbeat timestamp
+                                    {
+                                        let mut last = last_heartbeat.lock().unwrap();
+                                        *last = tokio::time::Instant::now();
                                     }
+
+                                    // Update daemon connection state in AppCore
+                                    super::event_handler::handle_daemon_connected(&state, true);
+
+                                    // Use heartbeat to reflect healthy connection
+                                    status_icon.set_icon_name(Some("network-wired-symbolic"));
+                                    status_icon.set_tooltip_text(Some("✓ Connected to daemon"));
+                                    status_icon.remove_css_class("daemon-offline");
+                                    status_icon.remove_css_class("daemon-connecting");
+                                    status_icon.add_css_class("daemon-connected");
                                 }
                             }
-                        }
-                        TunnelEvent::AuthRequired { id, request } => {
-                            eprintln!("Auth required for tunnel {}: {}", id, request.prompt);
-
-                            // Update profile list status
-                            if let Some(list_box) = state.profile_list.borrow().as_ref() {
-                                super::profiles_list::update_profile_status(
-                                    list_box,
-                                    id,
-                                    ssh_tunnel_common::TunnelStatus::WaitingForAuth,
-                                );
-                            }
-
-                            // Update profile details page status
-                            if let Some(selected) = state.selected_profile.borrow().as_ref() {
-                                if let Some(profile) = selected.profile() {
-                                    if profile.metadata.id == id {
-                                        super::profile_details::update_tunnel_status(
-                                            &state,
-                                            ssh_tunnel_common::TunnelStatus::WaitingForAuth,
-                                        );
-                                    }
-                                }
-                            }
-
-                            // Show auth dialog if window is available
-                            if let Some(window) = state.window.borrow().as_ref() {
-                                super::auth_dialog::handle_auth_request(
-                                    window,
-                                    request,
-                                    state.clone(),
-                                );
-                            }
-
-                            // Also refresh old details panel
-                            if let Some(selected) = state.selected_profile.borrow().as_ref() {
-                                if let Some(profile) = selected.profile() {
-                                    if profile.metadata.id == id {
-                                        if let Some(details_widget) = state.details_widget.borrow().as_ref() {
-                                            if let Some(window) = state.window.borrow().as_ref() {
-                                                super::details::update_with_profile(
-                                                    details_widget,
-                                                    selected,
-                                                    state.clone(),
-                                                    window,
-                                                );
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        TunnelEvent::Heartbeat { .. } => {
-                            // Update heartbeat timestamp
-                            {
-                                let mut last = last_heartbeat.lock().unwrap();
-                                *last = tokio::time::Instant::now();
-                            }
-
-                            // Use heartbeat to reflect healthy connection
-                            status_icon.set_icon_name(Some("network-wired-symbolic"));
-                            status_icon.set_tooltip_text(Some("✓ Connected to daemon"));
-                            status_icon.remove_css_class("daemon-offline");
-                            status_icon.remove_css_class("daemon-connecting");
-                            status_icon.add_css_class("daemon-connected");
-                        }
-                    }
                         }
                         _ = timeout_rx.recv() => {
                             // Heartbeat timeout - daemon appears offline
                             eprintln!("✗ Daemon heartbeat timeout");
+
+                            // Update daemon connection state in AppCore
+                            super::event_handler::handle_daemon_connected(&state, false);
+
+                            // Update status icon
                             status_icon.set_icon_name(Some("network-offline-symbolic"));
                             status_icon.set_tooltip_text(Some("✗ Connection timeout"));
                             status_icon.remove_css_class("daemon-connected");

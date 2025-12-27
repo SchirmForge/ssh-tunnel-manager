@@ -6,7 +6,8 @@ Suggested name: `TECHNICAL_REFERENCE.md`. Purpose: internal architecture map of 
 - Common library (`crates/common`): shared config/types, daemon client helpers, TLS pinning, profile I/O.
 - Daemon (`crates/daemon`): long-lived service exposing REST/SSE, manages SSH tunnels and auth, TLS, known_hosts, PID guard.
 - CLI (`crates/cli`): terminal client for profile CRUD and tunnel lifecycle, talks to daemon.
-- GUI (`crates/gui`): GTK/libadwaita desktop app consuming the same daemon API with SSE updates.
+- GUI Core (`crates/gui-core`): framework-agnostic business logic, view models, profile management, event handling trait (~60-70% code reuse).
+- GUI GTK (`crates/gui-gtk`): GTK4/libadwaita desktop app consuming daemon API with SSE updates, uses gui-core for business logic.
 - Config/docs/scripts: `docs/*.md`, `config-files/*.toml`, `quick-setup.sh`, `Makefile`, `daemon.toml.example`, `cli.toml.example`.
 
 ## Source Files & Related Assets
@@ -34,16 +35,30 @@ Suggested name: `TECHNICAL_REFERENCE.md`. Purpose: internal architecture map of 
   - `src/main.rs`: clap command tree (add/list/edit/delete/info/start/stop/restart/status/daemon/watch), profile creation flow, SSE watcher, auth prompts, daemon client wrapper.
   - `config.rs`: wraps `DaemonClientConfig` for cli.toml I/O.
   - Related examples: `cli.toml.example`.
-- GUI
+- GUI Core (`crates/gui-core`)
+  - `src/lib.rs`: public API exports for all GUI implementations.
+  - `state.rs`: `AppCore` struct with profiles, tunnel statuses, daemon connection state, auth tracking.
+  - `profiles.rs`: profile CRUD operations (`load_profiles`, `save_profile`, `delete_profile`, `validate_profile`, `profile_name_exists`).
+  - `view_models.rs`: `ProfileViewModel` with formatted display data, `StatusColor` enum for UI consistency.
+  - `events.rs`: `TunnelEventHandler` trait for framework-agnostic event handling.
+  - `daemon.rs`: daemon configuration helpers (`load_daemon_config`, config path utilities).
+- GUI GTK (`crates/gui-gtk`)
   - `src/main.rs`: GTK/libadwaita bootstrap with Tokio runtime.
-  - `ui/window.rs`: main window, header, connection indicator, event listener hook.
-  - `ui/sidebar.rs`: profile list, refresh/new-profile dialog wiring.
-  - `ui/details.rs`: profile detail pane, start/stop/edit/delete actions, status query.
-  - `ui/profile_dialog.rs`: create/edit profile dialog and persistence.
-  - `daemon/client.rs`: REST client mirroring CLI.
-  - `daemon/sse.rs`: SSE listener/parsing.
-  - `models/profile_model.rs`: GObject wrapper around `Profile`.
-  - `utils/profiles.rs`: profile directory utilities.
+  - `ui/window.rs`: main window, header, connection indicator, event listener hook, `AppState` with `AppCore` integration.
+  - `ui/navigation.rs`: navigation between Client/Daemon pages.
+  - `ui/profiles_list.rs`: profile list with real-time status, uses `ProfileViewModel` for display.
+  - `ui/profile_details.rs`: profile detail pane, start/stop/edit/delete actions.
+  - `ui/profile_dialog.rs`: create/edit profile dialog, uses gui-core validation and save functions.
+  - `ui/auth_dialog.rs`: interactive authentication prompts, integrates with `AppCore` auth state.
+  - `ui/event_handler.rs`: GTK event handling utilities, updates `AppCore` and UI.
+  - `ui/client_config.rs`: client configuration page.
+  - `ui/daemon_settings.rs`: daemon settings page (placeholder).
+  - `ui/help_dialog.rs`: markdown-rendered help documentation.
+  - `ui/about_dialog.rs`: about dialog with version info.
+  - `daemon/client.rs`: REST client for daemon API.
+  - `daemon/sse.rs`: SSE listener/parsing for real-time events.
+  - `models/profile_model.rs`: GObject wrapper around `Profile` for GTK state.
+  - `utils/profiles.rs`: profile directory utilities (mostly superseded by gui-core).
 
 ## Dependencies by Module / File
 - Common
@@ -67,10 +82,16 @@ Suggested name: `TECHNICAL_REFERENCE.md`. Purpose: internal architecture map of 
   - HTTP: `reqwest` (shares config with daemon_client), SSE parsing via `futures` stream.
   - Storage: `keyring` for password/passphrase.
   - Data: `serde`/`toml`, `chrono`, `dirs`.
-- GUI
-  - UI: `gtk4`, `libadwaita`, `glib`, `gio`.
+- GUI Core
+  - Core: `serde`, `toml`, `uuid`, `anyhow`, `dirs`.
+  - Shared: `ssh-tunnel-common` for types and config.
+  - No UI framework dependencies (framework-agnostic).
+- GUI GTK
+  - UI: `gtk4` (≥4.12), `libadwaita` (≥1.5), `glib`, `gio`.
   - Async/HTTP: `tokio` runtime, `reqwest`, `futures-util` for SSE streams.
   - Data: `serde`, `toml`, `uuid`, `chrono`, `dirs`, `tracing`.
+  - Shared: `ssh-tunnel-common`, `ssh-tunnel-gui-core`.
+  - Markdown: `pulldown-cmark` for help/about rendering.
 
 ## Classes (Structs/Enums) by Module
 - Common (mostly public)
@@ -94,16 +115,24 @@ Suggested name: `TECHNICAL_REFERENCE.md`. Purpose: internal architecture map of 
 - CLI
   - `main.rs`: `Cli`, `Commands`, `DaemonCommands`, `TunnelStatusResponse` (local), internal `IncomingEvent` enums.
   - `config.rs`: `CliConfig`.
-- GUI
+- GUI Core
+  - `state.rs`: `AppCore` (public struct with tunnel statuses, auth state, daemon connection), `Page` enum.
+  - `profiles.rs`: helper functions only (load/save/delete/validate).
+  - `view_models.rs`: `ProfileViewModel` (formatted display data), `StatusColor` enum (Green/Orange/Red/Gray).
+  - `events.rs`: `TunnelEventHandler` trait, `GuiEvent` enum.
+  - `daemon.rs`: helper functions only.
+- GUI GTK
   - `main.rs`: constants only.
-  - `ui/window.rs`: `AppState`.
-  - `ui/sidebar.rs`: functions only.
-  - `ui/details.rs`: functions only.
+  - `ui/window.rs`: `AppState` (contains `AppCore` via RefCell).
+  - `ui/navigation.rs`: `NavigationPage` enum, helper functions.
+  - `ui/profiles_list.rs`: functions only, uses `ProfileViewModel`.
+  - `ui/profile_details.rs`: functions only.
   - `ui/profile_dialog.rs`: functions only.
+  - `ui/event_handler.rs`: helper functions for event processing (`handle_status_changed`, `handle_auth_required`, etc.).
   - `daemon/client.rs`: `DaemonClient`, `OperationResponse`, `ErrorResponse`, `TunnelStatusResponse`, `TunnelsListResponse`.
   - `daemon/sse.rs`: `TunnelEvent`, `EventListener`.
   - `models/profile_model.rs`: GObject `ProfileModel` (public methods for profile fields).
-  - `utils/profiles.rs`: helpers only.
+  - `utils/profiles.rs`: helpers only (mostly superseded by gui-core).
 
 ## Data Model
 - Profiles (`Profile`):
@@ -166,9 +195,44 @@ Suggested name: `TECHNICAL_REFERENCE.md`. Purpose: internal architecture map of 
 - Gaps:
   - No automated tests for tunnel lifecycle or GUI; `monitor.rs` unimplemented; remote/dynamic forwarding not yet covered.
 
+## GUI Multi-Framework Architecture
+- **Design Goal**: Support multiple desktop environments (GNOME/GTK and KDE/Qt) with maximum code reuse.
+- **Implementation**:
+  - `gui-core`: Framework-agnostic business logic (~60-70% of GUI code)
+    - Profile management (CRUD, validation)
+    - View models with formatted display data
+    - Application state (`AppCore`)
+    - Event handling trait for framework implementations
+  - `gui-gtk`: GTK4/libadwaita implementation (~30-40% GTK-specific)
+    - Renders UI using GTK widgets
+    - Implements event handlers calling gui-core utilities
+    - Maintains GTK-specific state (GObject wrappers, widget references)
+  - `gui-qt`: Qt6 implementation (planned, future)
+    - Will reuse gui-core for all business logic
+    - Qt-specific UI rendering and state management
+- **Benefits**:
+  - Consistent behavior across GUI implementations
+  - Reduced maintenance burden
+  - Easier testing (business logic separate from UI framework)
+  - Clear separation of concerns
+
+## Build Requirements
+- **All modules**: Rust 1.75+, standard build tools
+- **CLI/Daemon**: No additional system dependencies
+- **GUI GTK**:
+  - GTK4 ≥4.12
+  - libadwaita ≥1.5
+  - GLib development files
+  - pkg-config
+  - Platform-specific installation:
+    - Debian/Ubuntu: `libgtk-4-dev libadwaita-1-dev build-essential pkg-config`
+    - Fedora: `gtk4-devel libadwaita-devel gcc pkg-config`
+    - Arch: `gtk4 libadwaita base-devel`
+
 ## Additional Notes / Gaps
 - `monitor.rs` is a stub; tunnel health monitoring beyond port-forward loop is future work.
 - Remote/dynamic forwarding branches in `tunnel.rs` return "not yet implemented".
 - `profile_manager` tests use outdated field names (`username`, `password`); real code paths rely on `ssh-tunnel-common` definitions.
 - Security: passwords/passphrases can be stored in system keychain; auth token persisted with 0600 perms; known_hosts uses custom path by default.
 - Distribution/packaging and systemd integration are not yet represented in code (see README/SETUP for future plans).
+- Qt GUI implementation is planned but not yet started.

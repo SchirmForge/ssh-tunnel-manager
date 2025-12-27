@@ -4,7 +4,7 @@ A secure, performant SSH tunnel management application for Linux with CLI interf
 
 ## Status
 
-🟢 **v0.1.8** — Production-ready CLI/Daemon/GUI with enhanced error handling
+🟢 **v0.1.8** — Production-ready CLI/Daemon/GUI(GTK) with enhanced error handling
 ✅ **Full-featured GUI** with profile management, real-time status, and markdown documentation
 ✅ **Enhanced CLI** with status/restart commands and proactive config validation
 🟢 **Local port forwarding** works end-to-end with interactive auth, keychain storage, and host key verification
@@ -64,21 +64,52 @@ See [SYSTEMD.md](docs/SYSTEMD.md) for system service configuration.
 
 ### Prerequisites
 
+#### Rust Toolchain
 - Rust 1.75+ (install via [rustup](https://rustup.rs/))
 - Linux (primary development platform)
+
+#### System Dependencies
+
+**For CLI and Daemon only:**
+- No additional system dependencies required
+
+**For GTK GUI:**
+- GTK4 (≥4.12)
+- libadwaita (≥1.5)
+- GLib development files
+
+**Installation on Debian/Ubuntu:**
+```bash
+sudo apt install libgtk-4-dev libadwaita-1-dev build-essential pkg-config
+```
+
+**Installation on Fedora:**
+```bash
+sudo dnf install gtk4-devel libadwaita-devel gcc pkg-config
+```
+
+**Installation on Arch:**
+```bash
+sudo pacman -S gtk4 libadwaita base-devel
+```
 
 ### Build
 
 ```bash
 # Clone the repository
-git clone https://github.com/SchirmForge/ssh-tunnel.git
-cd ssh-tunnel
+git clone https://github.com/SchirmForge/ssh-tunnel-manager.git
+cd ssh-tunnel-manager
 
-# Build CLI and daemon
+# Build CLI and daemon only
 cargo build --release --package ssh-tunnel-cli --package ssh-tunnel-daemon
+
+# Build everything including GTK GUI
+cargo build --release
 ```
 
 ### Basic Usage
+
+#### Using the CLI
 
 ```bash
 # Start the daemon (in one terminal)
@@ -96,6 +127,23 @@ RUST_LOG=info ./target/release/ssh-tunnel-daemon
 # Stop the tunnel
 ./target/release/ssh-tunnel stop myprofile
 ```
+
+#### Using the GUI
+
+```bash
+# Start the daemon (if not already running)
+RUST_LOG=info ./target/release/ssh-tunnel-daemon
+
+# Launch the GTK GUI (in another terminal)
+./target/release/ssh-tunnel-gtk
+```
+
+The GUI provides:
+- Visual profile management with create/edit/delete
+- Real-time tunnel status indicators
+- Interactive authentication dialogs
+- Client and daemon configuration
+- Markdown-rendered help documentation
 
 ## Installation
 
@@ -123,17 +171,23 @@ See [docs/SYSTEMD.md](docs/SYSTEMD.md) for detailed installation steps:
 ## Project Structure
 
 ```
-ssh-tunnel/
+ssh-tunnel-manager/
 ├── crates/
 │   ├── common/          # Shared types and utilities (✅ Complete)
 │   ├── daemon/          # Core daemon service (✅ Production-ready)
 │   ├── cli/             # Command-line interface (✅ Production-ready)
-│   └── gui/             # GTK4/Libadwaita desktop application (✅ Functional)
+│   ├── gui-core/        # Framework-agnostic GUI business logic (✅ Complete)
+│   └── gui-gtk/         # GTK4/Libadwaita desktop application (✅ Functional)
 ├── docs/                # Documentation and systemd units
 ├── scripts/             # Installation scripts
 ├── Cargo.toml           # Workspace configuration
 └── README.md
 ```
+
+**GUI Architecture:**
+- `gui-core`: Shared business logic, view models, and validation (~60-70% code reuse)
+- `gui-gtk`: GTK4/Libadwaita-specific UI implementation
+- Future: `gui-qt` for Qt6 implementation (planned)
 
 ## Architecture
 

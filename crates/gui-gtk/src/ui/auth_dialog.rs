@@ -20,32 +20,31 @@ pub fn handle_auth_request(
 ) {
     let tunnel_id = request.tunnel_id;
     {
-        let active = state.active_auth_requests.borrow();
-        if let Some(current) = active.get(&tunnel_id) {
+        let mut core = state.core.borrow_mut();
+
+        // Check if we're already handling this request
+        if let Some(current) = core.active_auth_requests.get(&tunnel_id) {
             if is_same_request(current, &request) {
                 return;
             }
         }
-        drop(active);
 
-        let mut open = state.auth_dialog_open.borrow_mut();
-        if open.contains(&tunnel_id) {
-            let mut pending = state.pending_auth_requests.borrow_mut();
-            if pending
+        // If dialog already open for this tunnel, queue the request
+        if core.is_auth_dialog_open(tunnel_id) {
+            if core.pending_auth_requests
                 .get(&tunnel_id)
                 .map(|existing| is_same_request(existing, &request))
                 .unwrap_or(false)
             {
                 return;
             }
-            pending.insert(tunnel_id, request);
+            core.pending_auth_requests.insert(tunnel_id, request);
             return;
         }
-        open.insert(tunnel_id);
-        state
-            .active_auth_requests
-            .borrow_mut()
-            .insert(tunnel_id, request.clone());
+
+        // Mark dialog as open and track the request
+        core.mark_auth_dialog_open(tunnel_id);
+        core.active_auth_requests.insert(tunnel_id, request.clone());
     }
 
     show_auth_dialog(parent, request, state);
@@ -222,17 +221,17 @@ fn finish_auth_dialog(
     cancelled: bool,
 ) {
     let next_request = {
-        let mut pending = state.pending_auth_requests.borrow_mut();
-        if cancelled {
-            pending.remove(&profile_id);
+        let mut core = state.core.borrow_mut();
+        let next = if cancelled {
+            core.pending_auth_requests.remove(&profile_id);
             None
         } else {
-            pending.remove(&profile_id)
-        }
-    };
+            core.pending_auth_requests.remove(&profile_id)
+        };
 
-    state.auth_dialog_open.borrow_mut().remove(&profile_id);
-    state.active_auth_requests.borrow_mut().remove(&profile_id);
+        core.mark_auth_dialog_closed(profile_id);
+        next
+    };
 
     if let Some(request) = next_request {
         handle_auth_request(parent, request, state.clone());
@@ -240,9 +239,9 @@ fn finish_auth_dialog(
 }
 
 pub fn clear_auth_state(state: &Rc<AppState>, profile_id: Uuid) {
-    state.auth_dialog_open.borrow_mut().remove(&profile_id);
-    state.pending_auth_requests.borrow_mut().remove(&profile_id);
-    state.active_auth_requests.borrow_mut().remove(&profile_id);
+    let mut core = state.core.borrow_mut();
+    core.mark_auth_dialog_closed(profile_id);
+    core.pending_auth_requests.remove(&profile_id);
 }
 
 fn update_status_after_cancel(state: &Rc<AppState>, profile_id: Uuid) {

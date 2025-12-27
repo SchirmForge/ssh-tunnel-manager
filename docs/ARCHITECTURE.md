@@ -17,10 +17,18 @@ A secure, performant SSH tunnel management application for Linux with GUI and CL
 ┌─────────────────────────────────────────────────────────────┐
 │                     User Interfaces                          │
 ├──────────────────────────┬──────────────────────────────────┤
-│   GUI (Not Impl)         │      CLI Client (✅ Working)      │
-│   - Future GTK4 app      │      - Interactive prompts        │
-│                          │      - Real-time status (SSE)     │
-│                          │      - Profile management         │
+│   GUI (✅ Working)        │      CLI Client (✅ Working)      │
+│   ┌──────────────────┐   │      - Interactive prompts        │
+│   │ GTK4/Libadwaita  │   │      - Real-time status (SSE)     │
+│   │ (gui-gtk)        │   │      - Profile management         │
+│   └────────┬─────────┘   │                                   │
+│            │             │                                   │
+│   ┌────────▼─────────┐   │                                   │
+│   │ Framework-       │   │                                   │
+│   │ agnostic Core    │   │                                   │
+│   │ (gui-core)       │   │                                   │
+│   │ 60-70% reuse     │   │                                   │
+│   └──────────────────┘   │                                   │
 └───────────┬──────────────┴──────────────┬───────────────────┘
             │                              │
             │    HTTP REST API (Commands)  │
@@ -95,37 +103,68 @@ A secure, performant SSH tunnel management application for Linux with GUI and CL
 
 **Implementation Status**: ✅ Fully functional
 
-### 2. GUI Clients (Multi-Component Architecture)
+### 2. GUI (`crates/gui-core` + `crates/gui-gtk`)
 
-**New Design**: Three independent components for desktop integration
+**Architecture**: Multi-framework design with shared business logic
 
-#### 2a. Configuration GUI (`ssh-tunnel-gui` - Rust + GTK4)
+**Implementation Status**: ✅ GTK implementation working, Qt planned
 
-**Purpose**: Universal control panel for managing tunnels
+#### 2a. GUI Core (`crates/gui-core`)
 
-**Implementation Status**: 🚧 Planned - Rust implementation chosen
+**Purpose**: Framework-agnostic business logic for all GUI implementations
+
+**Implementation Status**: ✅ Complete
 
 **Features**:
-- Connection profile management (list, create, edit, delete)
-- Tunnel start/stop controls
-- Real-time connection status
-- Logs viewer
-- 2FA prompt handling (interactive)
-- Daemon connection preferences
-- Works on both GNOME and KDE desktops
+- Profile management: load, save, delete, validate, name checking
+- View models: `ProfileViewModel` with formatted display data and status colors
+- Application state: `AppCore` with tunnel statuses, daemon connection, auth tracking
+- Event handling trait: `TunnelEventHandler` for framework implementations
+- Daemon configuration helpers
+
+**Technology**:
+- Pure Rust, no UI framework dependencies
+- Shared types from `ssh-tunnel-common`
+- ~60-70% code reuse across GUI implementations
+
+#### 2b. GTK GUI (`crates/gui-gtk`)
+
+**Purpose**: GNOME/GTK desktop application
+
+**Implementation Status**: ✅ Fully functional
+
+**Features**:
+- Connection profile management (create, edit, delete) with validation
+- Tunnel start/stop controls with real-time status
+- Interactive 2FA/auth prompt handling via dialogs
+- Daemon connection monitoring with auto-reconnect
+- Client and daemon configuration UI
+- Help and About dialogs with markdown rendering
+- Real-time status indicators (colored dots)
+- Split view navigation between Client/Daemon pages
 
 **Technology**:
 - `gtk4-rs`: GTK4 bindings (Rust)
-- `libadwaita`: Modern GNOME styling
+- `libadwaita`: Modern GNOME styling (≥1.5)
 - `reqwest`: HTTP client for daemon API
-- SSE for real-time updates (already implemented in CLI)
-- Code reuse with `ssh-tunnel-common` crate
+- SSE for real-time updates
+- Uses `gui-core` for business logic
 
-**Design Decision**: Rust chosen over Python for:
-- Project consistency (all Rust)
-- Type safety and compile-time verification
-- Code reuse with common crate
-- Long-term maintainability
+#### 2c. Qt GUI (`crates/gui-qt`)
+
+**Purpose**: KDE/Qt desktop application
+
+**Implementation Status**: 🚧 Planned (future)
+
+**Features**:
+- All features from gui-core
+- Qt/KDE Plasma integration
+- Native KDE styling and widgets
+- Same functionality as GTK version
+
+**Technology**:
+- Qt bindings for Rust (TBD - qmetaobject-rs or CXX-Qt)
+- Uses `gui-core` for business logic (~60-70% code reuse)
 
 #### 2b. GNOME Shell Extension (JavaScript)
 

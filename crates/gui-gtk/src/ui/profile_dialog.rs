@@ -16,6 +16,7 @@ use ssh_tunnel_common::config::{
     Profile, ProfileMetadata, ConnectionConfig, ForwardingConfig, PasswordStorage, TunnelOptions,
 };
 use ssh_tunnel_common::types::{AuthType, ForwardingType};
+use ssh_tunnel_gui_core::{validate_profile, profile_name_exists, save_profile};
 
 /// Show profile editor dialog for creating a new profile
 pub fn show_new_profile_dialog(parent: &impl IsA<gtk4::Window>, state: Rc<AppState>) {
@@ -111,6 +112,7 @@ fn create_dialog(
         .build();
     let name_row = adw::ActionRow::builder()
         .title("Profile Name")
+        .focusable(false)
         .build();
     name_row.add_suffix(&name_entry);
 
@@ -120,6 +122,7 @@ fn create_dialog(
     let host_row = adw::ActionRow::builder()
         .title("SSH Host")
         .subtitle("Remote server address")
+        .focusable(false)
         .build();
     host_row.add_suffix(&host_entry);
 
@@ -128,6 +131,7 @@ fn create_dialog(
     let port_row = adw::ActionRow::builder()
         .title("SSH Port")
         .subtitle("Remote SSH port (default: 22)")
+        .focusable(false)
         .build();
     port_row.add_suffix(&port_spin);
 
@@ -137,6 +141,7 @@ fn create_dialog(
     let user_row = adw::ActionRow::builder()
         .title("SSH User")
         .subtitle("Username for SSH connection")
+        .focusable(false)
         .build();
     user_row.add_suffix(&user_entry);
 
@@ -159,6 +164,7 @@ fn create_dialog(
     let key_row = adw::ActionRow::builder()
         .title("Use SSH Key")
         .subtitle("Authenticate with SSH private key")
+        .focusable(false)
         .activatable(true)
         .build();
     key_row.add_suffix(&key_switch);
@@ -185,6 +191,7 @@ fn create_dialog(
     let key_path_row = adw::ActionRow::builder()
         .title("Key Path")
         .subtitle("Path to SSH private key file")
+        .focusable(false)
         .build();
     key_path_row.add_suffix(&key_path_box);
 
@@ -196,6 +203,7 @@ fn create_dialog(
     let store_keychain_row = adw::ActionRow::builder()
         .title("Store Passphrase in Keychain")
         .subtitle("Save passphrase in system keychain for automatic retrieval")
+        .focusable(false)
         .activatable(true)
         .build();
     store_keychain_row.add_suffix(&store_keychain_switch);
@@ -209,6 +217,7 @@ fn create_dialog(
     let key_password_row = adw::ActionRow::builder()
         .title("Key Passphrase")
         .subtitle("Enter passphrase for encrypted SSH key")
+        .focusable(false)
         .visible(false)
         .build();
     key_password_row.add_suffix(&key_password_entry);
@@ -273,6 +282,7 @@ fn create_dialog(
     let local_host_row = adw::ActionRow::builder()
         .title("Local Host")
         .subtitle("Bind address (127.0.0.1, 0.0.0.0, or specific IP)")
+        .focusable(false)
         .build();
     local_host_row.add_suffix(&local_host_entry);
 
@@ -281,6 +291,7 @@ fn create_dialog(
     let local_port_row = adw::ActionRow::builder()
         .title("Local Port")
         .subtitle("Port on your machine (0 = disabled)")
+        .focusable(false)
         .build();
     local_port_row.add_suffix(&local_port_spin);
 
@@ -291,6 +302,7 @@ fn create_dialog(
     let remote_host_row = adw::ActionRow::builder()
         .title("Remote Host")
         .subtitle("Host to forward to (on remote server)")
+        .focusable(false)
         .build();
     remote_host_row.add_suffix(&remote_host_entry);
 
@@ -299,6 +311,7 @@ fn create_dialog(
     let remote_port_row = adw::ActionRow::builder()
         .title("Remote Port")
         .subtitle("Port on remote host")
+        .focusable(false)
         .build();
     remote_port_row.add_suffix(&remote_port_spin);
 
@@ -329,6 +342,7 @@ fn create_dialog(
     let compression_row = adw::ActionRow::builder()
         .title("Compression")
         .subtitle("Enable SSH compression")
+        .focusable(false)
         .activatable(true)
         .build();
     compression_row.add_suffix(&compression_switch);
@@ -340,6 +354,7 @@ fn create_dialog(
     let keepalive_row = adw::ActionRow::builder()
         .title("Keepalive Interval")
         .subtitle("Seconds between keepalive packets (0 = disabled)")
+        .focusable(false)
         .build();
     keepalive_row.add_suffix(&keepalive_spin);
 
@@ -350,6 +365,7 @@ fn create_dialog(
     let auto_reconnect_row = adw::ActionRow::builder()
         .title("Auto-Reconnect")
         .subtitle("Automatically reconnect on connection loss")
+        .focusable(false)
         .activatable(true)
         .build();
     auto_reconnect_row.add_suffix(&auto_reconnect_switch);
@@ -361,6 +377,7 @@ fn create_dialog(
     let reconnect_attempts_row = adw::ActionRow::builder()
         .title("Reconnect Attempts")
         .subtitle("Maximum reconnect attempts (0 = unlimited)")
+        .focusable(false)
         .build();
     reconnect_attempts_row.add_suffix(&reconnect_attempts_spin);
 
@@ -370,6 +387,7 @@ fn create_dialog(
     let reconnect_delay_row = adw::ActionRow::builder()
         .title("Reconnect Delay")
         .subtitle("Seconds to wait before reconnecting")
+        .focusable(false)
         .build();
     reconnect_delay_row.add_suffix(&reconnect_delay_spin);
 
@@ -380,6 +398,7 @@ fn create_dialog(
     let tcp_keepalive_row = adw::ActionRow::builder()
         .title("TCP Keepalive")
         .subtitle("Enable TCP-level keepalive")
+        .focusable(false)
         .activatable(true)
         .build();
     tcp_keepalive_row.add_suffix(&tcp_keepalive_switch);
@@ -391,6 +410,7 @@ fn create_dialog(
     let max_packet_row = adw::ActionRow::builder()
         .title("Max Packet Size")
         .subtitle("Maximum SSH packet size in bytes")
+        .focusable(false)
         .build();
     max_packet_row.add_suffix(&max_packet_spin);
 
@@ -399,6 +419,7 @@ fn create_dialog(
     window_size_spin.set_value(default_opts.window_size as f64);
     let window_size_row = adw::ActionRow::builder()
         .title("Window Size")
+        .focusable(false)
         .subtitle("SSH channel window size in bytes")
         .build();
     window_size_row.add_suffix(&window_size_spin);
@@ -618,13 +639,25 @@ fn create_dialog(
                 },
             };
 
-            // Save profile using shared function from common crate
+            // Validate profile using gui-core
+            if let Err(e) = validate_profile(&profile) {
+                show_error_dialog(&dialog, &format!("Validation error: {}", e));
+                return;
+            }
+
+            // Check for duplicate names (skip check for editing existing profile)
+            if is_new_profile && profile_name_exists(&profile.metadata.name, Some(profile.metadata.id)) {
+                show_error_dialog(&dialog, "A profile with this name already exists");
+                return;
+            }
+
+            // Save profile using gui-core
             // For new profiles: overwrite=false (will error if duplicate)
             // For editing: overwrite=true (allow updating existing profile)
             let overwrite = !is_new_profile;
-            match ssh_tunnel_common::save_profile(&profile, overwrite) {
-                Ok(path) => {
-                    eprintln!("✓ Profile saved successfully: {}", path.display());
+            match save_profile(&profile, overwrite) {
+                Ok(_) => {
+                    eprintln!("✓ Profile saved successfully");
                 }
                 Err(e) => {
                     show_error_dialog(&dialog, &format!("Failed to save profile: {}", e));

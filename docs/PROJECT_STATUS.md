@@ -38,10 +38,19 @@
 - Table/JSON output, colorized UX, validation of key permissions and privileged ports.
 - Start/stop/status using **shared SSE-first flow** from common module; interactive auth handling.
 
-### ✅ GUI (`crates/gui`)
-- Libadwaita/GTK4 application with functional start/stop using **shared SSE-first flow**.
-- GTK event handler (`GtkTunnelEventHandler`) implements `TunnelEventHandler` trait for auth dialogs and status updates.
-- Uses `start_tunnel_with_events` and `stop_tunnel` helpers from common module.
+### ✅ GUI Core (`crates/gui-core`)
+- Framework-agnostic business logic shared across GTK and future Qt implementations (~60-70% code reuse)
+- Profile management: `load_profiles`, `save_profile`, `delete_profile`, `validate_profile`, `profile_name_exists`
+- View models: `ProfileViewModel` with formatted display data, status colors, and action states
+- Application state: `AppCore` with profiles, tunnel statuses, daemon connection state, auth tracking
+- Event handling trait: `TunnelEventHandler` for framework-agnostic event notifications
+- Daemon helpers: `load_daemon_config`, configuration path utilities
+
+### ✅ GUI GTK (`crates/gui-gtk`)
+- Libadwaita/GTK4 application with functional start/stop using **shared SSE-first flow** from common
+- GTK event handler utilities implementing centralized event processing with AppCore integration
+- Uses `start_tunnel_with_events` and `stop_tunnel` helpers from common module
+- Integrates gui-core for profile management, validation, and view models
 - **Profile management UI** - Full CRUD with shared common crate functions
   - Create, edit, delete profiles via unified dialog interface
   - "New Profile" button on profiles list page
@@ -179,7 +188,7 @@
 - Status: **Planned**
 - Description: Auto-selection based on system theme preferences
 - Implementation: Use GTK4 `AdwStyleManager` to detect and follow system theme
-- Files: `crates/gui/src/main.rs`, `crates/gui/src/ui/window.rs`
+- Files: `crates/gui-gtk/src/main.rs`, `crates/gui-gtk/src/ui/window.rs`
 
 #### Daemon Management GUI
 - Status: **Partially planned**
@@ -189,7 +198,7 @@
   - Restart/stop/start daemon (user-only operations)
   - Configure autostart for user (systemctl command integration)
   - Configure profiles that should autostart (via daemon API)
-- Files: `crates/gui/src/ui/daemon_page.rs` (new)
+- Files: `crates/gui-gtk/src/ui/daemon_page.rs` (new)
 
 ### Future Enhancements 📅
 

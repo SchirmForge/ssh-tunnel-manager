@@ -11,8 +11,8 @@ use std::rc::Rc;
 use super::window::AppState;
 use super::auth_dialog;
 use crate::models::profile_model::ProfileModel;
-use ssh_tunnel_common::config::Profile;
 use ssh_tunnel_common::types::TunnelStatus;
+use ssh_tunnel_gui_core::{ProfileViewModel, StatusColor};
 use uuid::Uuid;
 
 /// Create the profiles list view (like apps list in GNOME Settings)
@@ -81,6 +81,7 @@ pub fn create(state: Rc<AppState>) -> adw::NavigationPage {
 
     // Wrap config link in a ListBox with boxed-list style
     let config_list = gtk4::ListBox::new();
+    config_list.set_selection_mode(gtk4::SelectionMode::None);
     config_list.add_css_class("boxed-list");
     config_list.append(&config_link_row);
 
@@ -128,8 +129,8 @@ pub fn populate_profiles(list_box: &gtk4::ListBox, state: Rc<AppState>) {
         list_box.remove(&child);
     }
 
-    // Load profiles from config directory
-    let profiles = match load_profiles() {
+    // Load profiles using gui-core
+    let profiles = match ssh_tunnel_gui_core::load_profiles() {
         Ok(profiles) => profiles,
         Err(e) => {
             eprintln!("Failed to load profiles: {}", e);
@@ -147,8 +148,21 @@ pub fn populate_profiles(list_box: &gtk4::ListBox, state: Rc<AppState>) {
     // Create a row for each profile
     for profile in profiles {
         let profile_id = profile.metadata.id;
+
+        // Get current status from AppCore
+        let status = {
+            let core = state.core.borrow();
+            core.tunnel_statuses.get(&profile_id).cloned().unwrap_or(TunnelStatus::NotConnected)
+        };
+
+        // Create ProfileViewModel using gui-core
+        let view_model = ProfileViewModel::from_profile(&profile, status.clone());
+
+        // Create ProfileModel for GTK state tracking
         let profile_model = ProfileModel::new(profile);
-        let row = create_profile_row(&profile_model, state.clone());
+        profile_model.update_status(status);
+
+        let row = create_profile_row(&view_model, &profile_model, state.clone());
         list_box.append(&row);
 
         // Query initial status from daemon asynchronously
@@ -159,6 +173,11 @@ pub fn populate_profiles(list_box: &gtk4::ListBox, state: Rc<AppState>) {
                 match client.get_tunnel_status(profile_id).await {
                     Ok(Some(status_response)) => {
                         eprintln!("Initial status for profile {}: {:?}", profile_id, status_response.status);
+                        // Update status in AppCore
+                        {
+                            let mut core = state_clone.core.borrow_mut();
+                            core.tunnel_statuses.insert(profile_id, status_response.status.clone());
+                        }
                         update_profile_status(&list_box_clone, profile_id, status_response.status);
                         if let Some(request) = status_response.pending_auth {
                             if let Some(window) = state_clone.window.borrow().as_ref() {
@@ -179,18 +198,16 @@ pub fn populate_profiles(list_box: &gtk4::ListBox, state: Rc<AppState>) {
 }
 
 /// Create a profile row (app-style)
-fn create_profile_row(profile: &ProfileModel, state: Rc<AppState>) -> adw::ActionRow {
+fn create_profile_row(view_model: &ProfileViewModel, profile_model: &ProfileModel, state: Rc<AppState>) -> adw::ActionRow {
     let row = adw::ActionRow::new();
-    row.set_title(&profile.name());
 
-    // Set subtitle with connection info
-    let subtitle = format!("{}@{}", profile.user(), profile.host());
-    row.set_subtitle(&subtitle);
+    // Use ProfileViewModel for display - consistent formatting
+    row.set_title(&view_model.name);
+    row.set_subtitle(&view_model.connection_summary);
 
-    // Add status dot
-    let status = profile.status();
-    eprintln!("Creating profile row for {} with status: {:?}", profile.name(), status);
-    let status_dot = create_status_dot(&status);
+    // Add status dot using ProfileViewModel's status
+    eprintln!("Creating profile row for {} with status: {:?}", view_model.name, view_model.status);
+    let status_dot = create_status_dot_from_color(&view_model.status_color);
     row.add_prefix(&status_dot);
 
     // Add icon
@@ -206,24 +223,22 @@ fn create_profile_row(profile: &ProfileModel, state: Rc<AppState>) -> adw::Actio
     row.set_activatable(true);
 
     // Store profile ID and status dot widget for status updates
-    if let Some(prof) = profile.profile() {
-        unsafe {
-            row.set_data("profile_id", prof.metadata.id.to_string());
-            row.set_data("status_dot", status_dot);
-        }
+    unsafe {
+        row.set_data("profile_id", view_model.id.to_string());
+        row.set_data("status_dot", status_dot);
     }
 
-    // Handle click to show profile details
+    // Handle click to show profile details (still uses ProfileModel for GTK navigation)
     {
-        let profile = profile.clone();
+        let profile_model = profile_model.clone();
         let state = state.clone();
         row.connect_activated(move |_| {
-            eprintln!("Profile selected: {}", profile.name());
-            state.selected_profile.replace(Some(profile.clone()));
+            eprintln!("Profile selected: {}", profile_model.name());
+            state.selected_profile.replace(Some(profile_model.clone()));
 
             // Navigate to profile details page
             if let Some(nav_view) = state.nav_view.borrow().as_ref() {
-                let details_page = super::profile_details::create(state.clone(), &profile);
+                let details_page = super::profile_details::create(state.clone(), &profile_model);
                 nav_view.push(&details_page);
             }
         });
@@ -232,7 +247,23 @@ fn create_profile_row(profile: &ProfileModel, state: Rc<AppState>) -> adw::Actio
     row
 }
 
-/// Create status dot icon based on tunnel status
+/// Create status dot icon using StatusColor from ProfileViewModel
+fn create_status_dot_from_color(color: &StatusColor) -> gtk4::Label {
+    let css_class = match color {
+        StatusColor::Green => "status-connected",
+        StatusColor::Orange => "status-warning",
+        StatusColor::Red => "status-error",
+        StatusColor::Gray => "status-inactive",
+    };
+
+    let dot = gtk4::Label::new(Some("●"));
+    dot.add_css_class(css_class);
+    dot.add_css_class("status-dot");
+    dot.set_margin_end(8);
+    dot
+}
+
+/// Create status dot icon based on tunnel status (legacy, used by update_profile_status)
 fn create_status_dot(status: &TunnelStatus) -> gtk4::Label {
     let (symbol, css_class) = match status {
         TunnelStatus::Connected => ("●", "status-connected"),
@@ -275,40 +306,6 @@ fn create_empty_state() -> gtk4::Box {
     empty_box.append(&sublabel);
 
     empty_box
-}
-
-/// Load profiles from the config directory
-fn load_profiles() -> anyhow::Result<Vec<Profile>> {
-    use std::fs;
-    use std::path::PathBuf;
-
-    let config_dir = dirs::config_dir()
-        .ok_or_else(|| anyhow::anyhow!("Could not determine config directory"))?;
-    let profiles_dir: PathBuf = config_dir.join("ssh-tunnel-manager").join("profiles");
-
-    if !profiles_dir.exists() {
-        return Ok(Vec::new());
-    }
-
-    let mut profiles = Vec::new();
-
-    for entry in fs::read_dir(profiles_dir)? {
-        let entry = entry?;
-        let path = entry.path();
-
-        if path.extension().and_then(|s| s.to_str()) == Some("toml") {
-            let contents = fs::read_to_string(&path)?;
-            match toml::from_str::<Profile>(&contents) {
-                Ok(profile) => profiles.push(profile),
-                Err(e) => eprintln!("Failed to parse profile {:?}: {}", path, e),
-            }
-        }
-    }
-
-    // Sort by name
-    profiles.sort_by(|a, b| a.metadata.name.cmp(&b.metadata.name));
-
-    Ok(profiles)
 }
 
 /// Update a profile's status in the list and refresh its display

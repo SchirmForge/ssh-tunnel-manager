@@ -13,6 +13,7 @@ pub mod sidebar;
 pub mod details;
 pub mod profile_dialog;
 pub mod auth_dialog;
+pub mod event_handler;
 pub mod style;
 pub mod tunnel_handler;
 pub mod help_dialog;

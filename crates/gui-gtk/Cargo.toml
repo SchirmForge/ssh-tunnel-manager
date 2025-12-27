@@ -1,18 +1,20 @@
 [package]
-name = "ssh-tunnel-gui"
+name = "ssh-tunnel-gui-gtk"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
+description = "GTK4/Libadwaita GUI for SSH Tunnel Manager"
 
 [[bin]]
-name = "ssh-tunnel-gui"
+name = "ssh-tunnel-gtk"
 path = "src/main.rs"
 
 [dependencies]
 # Workspace crates
 ssh-tunnel-common = { path = "../common" }
+ssh-tunnel-gui-core = { path = "../gui-core" }
 
 # GTK and libadwaita (Phase 1: Basic UI only)
 gtk4 = { workspace = true }
