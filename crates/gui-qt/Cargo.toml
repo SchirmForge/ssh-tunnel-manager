@@ -15,9 +15,9 @@ path = "src/main.rs"
 ssh-tunnel-common = { path = "../common" }
 ssh-tunnel-gui-core = { path = "../gui-core" }
 
-# Qt6 bindings via qmetaobject-rs
-qmetaobject = "0.2"
-qttypes = "0.2"
+# Qt6 bindings via cxx-qt (from GitHub for latest features)
+cxx-qt = { git = "https://github.com/KDAB/cxx-qt", tag = "v0.8.0" }
+cxx-qt-lib = { git = "https://github.com/KDAB/cxx-qt", tag = "v0.8.0" }
 
 # Async runtime
 tokio = { version = "1.35", features = ["full"] }
@@ -40,4 +40,5 @@ tracing = "0.1"
 cstr = "0.2"
 
 [build-dependencies]
-# No special build dependencies needed for qmetaobject-rs
+# Temporarily disabled until cxx-qt bridge macro issues are resolved
+# cxx-qt-build = { git = "https://github.com/KDAB/cxx-qt", tag = "v0.8.0" }

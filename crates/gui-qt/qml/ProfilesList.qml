@@ -4,10 +4,16 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import com.ssh_tunnel_manager 1.0
 
 Page {
     id: profilesPage
     title: "SSH Tunnel Profiles"
+
+    // Create the profiles model
+    ProfilesListModel {
+        id: profilesModel
+    }
 
     header: ToolBar {
         RowLayout {
@@ -53,7 +59,8 @@ Page {
             height: 80
 
             // Profile data from model (comes from ProfileViewModel!)
-            property var profileData: modelData
+            // Parse JSON string from model
+            property var profileData: JSON.parse(modelData)
 
             background: Rectangle {
                 color: parent.hovered ? "#f0f0f0" : "white"

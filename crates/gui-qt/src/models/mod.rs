@@ -5,7 +5,5 @@
 //!
 //! These models bridge QML UI with gui-core business logic, demonstrating
 //! the ~60-70% code reuse architecture.
-
-pub mod profile_list;
-
-pub use profile_list::ProfilesListModel;
+//!
+//! Temporarily empty until cxx-qt bridge macro issues are resolved.

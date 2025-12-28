@@ -6,158 +6,130 @@
 //! This demonstrates CODE REUSE: All data comes from gui-core's ProfileViewModel!
 //! Only QML-specific glue code is Qt-specific.
 
-use qmetaobject::*;
-use qttypes::QString;
 use ssh_tunnel_common::{Profile, TunnelStatus};
 use ssh_tunnel_gui_core::{load_profiles, ProfileViewModel, StatusColor};
 use std::collections::HashMap;
 use uuid::Uuid;
 
-/// Individual profile item for QML
-#[derive(QGadget, Clone, Default)]
-pub struct ProfileItem {
-    // All these fields come from ProfileViewModel (SHARED CODE!)
-    #[qproperty(QString)]
-    pub id: QString,
+#[cxx_qt::bridge]
+mod ffi {
+    unsafe extern "RustQt" {
+        #[qobject]
+        #[qml_element]
+        #[qproperty(i32, count)]
+        type ProfilesListModel = super::ProfilesListModelRust;
+    }
 
-    #[qproperty(QString)]
-    pub name: QString,
+    unsafe extern "RustQt" {
+        #[qinvokable]
+        fn refresh(self: Pin<&mut ProfilesListModel>);
 
-    #[qproperty(QString)]
-    pub host: QString,
+        #[qinvokable]
+        fn getName(self: &ProfilesListModel, index: i32) -> String;
 
-    #[qproperty(QString)]
-    pub status_text: QString,
+        #[qinvokable]
+        fn getHost(self: &ProfilesListModel, index: i32) -> String;
 
-    #[qproperty(QString)]
-    pub status_color: QString,
+        #[qinvokable]
+        fn getStatusText(self: &ProfilesListModel, index: i32) -> String;
 
-    #[qproperty(bool)]
-    pub can_start: bool,
+        #[qinvokable]
+        fn getStatusColor(self: &ProfilesListModel, index: i32) -> String;
 
-    #[qproperty(bool)]
-    pub can_stop: bool,
-}
+        #[qinvokable]
+        fn canStart(self: &ProfilesListModel, index: i32) -> bool;
 
-impl ProfileItem {
-    /// Create from ProfileViewModel (SHARED CODE!)
-    pub fn from_view_model(view_model: &ProfileViewModel) -> Self {
-        let color = match &view_model.status_color {
-            StatusColor::Green => "#4caf50",
-            StatusColor::Orange => "#ff9800",
-            StatusColor::Red => "#f44336",
-            StatusColor::Gray => "#9e9e9e",
-        };
-
-        Self {
-            id: view_model.id.to_string().into(),
-            name: view_model.name.clone().into(),
-            host: view_model.host.clone().into(),
-            status_text: view_model.status_text.clone().into(),
-            status_color: color.to_string().into(),
-            can_start: view_model.can_start,
-            can_stop: view_model.can_stop,
-        }
+        #[qinvokable]
+        fn canStop(self: &ProfilesListModel, index: i32) -> bool;
     }
 }
 
-/// Profiles list model for QML
-///
-/// ARCHITECTURE: This is Qt-specific glue, but data comes from gui-core!
-#[derive(QObject)]
-pub struct ProfilesListModel {
-    base: qt_base_class!(trait QObject),
+use std::pin::Pin;
 
-    // Profiles data (loaded from gui-core)
+/// Rust implementation of ProfilesListModel
+#[derive(Default)]
+pub struct ProfilesListModelRust {
     profiles: Vec<Profile>,
-
-    // Tunnel statuses (from AppCore)
     statuses: HashMap<Uuid, TunnelStatus>,
-
-    // QML-exposed list of profile items
-    #[qproperty(QVariantList, READ)]
-    items: QVariantList,
-
-    // Signals
-    #[qsignal]
-    items_changed: Signal<()>,
-
-    // Invokable methods
-    #[qinvokable]
-    refresh: qt_method!(fn(&mut self)),
-
-    #[qinvokable]
-    get_profile: qt_method!(fn(&self, id: QString) -> QString),
+    view_models: Vec<ProfileViewModel>,
+    count: i32,
 }
 
-impl Default for ProfilesListModel {
-    fn default() -> Self {
-        Self {
-            base: Default::default(),
-            profiles: Vec::new(),
-            statuses: HashMap::new(),
-            items: QVariantList::default(),
-            items_changed: Signal::default(),
-            refresh: qt_method!(Self::refresh),
-            get_profile: qt_method!(Self::get_profile),
-        }
-    }
-}
+impl ffi::ProfilesListModel {
+    pub fn refresh(mut self: Pin<&mut Self>) {
+        let profiles = load_profiles().unwrap_or_default();
+        let mut view_models = Vec::new();
 
-impl ProfilesListModel {
-    pub fn new() -> Self {
-        let mut model = Self::default();
-        model.refresh();
-        model
-    }
-
-    /// Load profiles from gui-core (SHARED CODE!)
-    fn refresh(&mut self) {
-        // Load profiles using gui-core function (SHARED!)
-        self.profiles = load_profiles().unwrap_or_default();
-
-        // Convert to ProfileViewModels and then to QML items
-        let mut items = QVariantList::default();
-
-        for profile in &self.profiles {
-            // Get status for this profile
+        for profile in &profiles {
             let status = self
+                .rust()
                 .statuses
                 .get(&profile.metadata.id)
                 .cloned()
                 .unwrap_or(TunnelStatus::NotConnected);
 
-            // Create ProfileViewModel using gui-core (SHARED!)
             let view_model = ProfileViewModel::from_profile(profile, status);
-
-            // Convert to QML item (Qt-specific)
-            let item = ProfileItem::from_view_model(&view_model);
-
-            // Add to QML list (note: item needs to be in a QVariantMap or similar for QML)
-            // For now, we'll skip adding items until we figure out the correct QVariant conversion
-            // items.push(QVariant::from(item));
+            view_models.push(view_model);
         }
 
-        self.items = items;
-        self.items_changed.emit();
+        let count = profiles.len() as i32;
+        self.rust_mut().profiles = profiles;
+        self.rust_mut().view_models = view_models;
+        self.as_mut().set_count(count);
     }
 
-    /// Get profile JSON by ID (for editing)
-    fn get_profile(&self, id: QString) -> QString {
-        let id_str = id.to_string();
-        if let Ok(uuid) = Uuid::parse_str(&id_str) {
-            if let Some(profile) = self.profiles.iter().find(|p| p.metadata.id == uuid) {
-                if let Ok(json) = serde_json::to_string_pretty(profile) {
-                    return json.into();
-                }
-            }
-        }
-        "{}".into()
+    pub fn getName(&self, index: i32) -> String {
+        self.rust()
+            .view_models
+            .get(index as usize)
+            .map(|vm| vm.name.clone())
+            .unwrap_or_default()
     }
 
-    /// Update tunnel status for a profile
-    pub fn update_status(&mut self, profile_id: Uuid, status: TunnelStatus) {
-        self.statuses.insert(profile_id, status);
-        self.refresh();
+    pub fn getHost(&self, index: i32) -> String {
+        self.rust()
+            .view_models
+            .get(index as usize)
+            .map(|vm| vm.host.clone())
+            .unwrap_or_default()
+    }
+
+    pub fn getStatusText(&self, index: i32) -> String {
+        self.rust()
+            .view_models
+            .get(index as usize)
+            .map(|vm| vm.status_text.clone())
+            .unwrap_or_default()
+    }
+
+    pub fn getStatusColor(&self, index: i32) -> String {
+        self.rust()
+            .view_models
+            .get(index as usize)
+            .map(|vm| {
+                match &vm.status_color {
+                    StatusColor::Green => "#4caf50",
+                    StatusColor::Orange => "#ff9800",
+                    StatusColor::Red => "#f44336",
+                    StatusColor::Gray => "#9e9e9e",
+                }.to_string()
+            })
+            .unwrap_or_default()
+    }
+
+    pub fn canStart(&self, index: i32) -> bool {
+        self.rust()
+            .view_models
+            .get(index as usize)
+            .map(|vm| vm.can_start)
+            .unwrap_or(false)
+    }
+
+    pub fn canStop(&self, index: i32) -> bool {
+        self.rust()
+            .view_models
+            .get(index as usize)
+            .map(|vm| vm.can_stop)
+            .unwrap_or(false)
     }
 }

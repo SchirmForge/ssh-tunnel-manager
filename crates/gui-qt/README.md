@@ -1,18 +1,22 @@
 # SSH Tunnel Manager - Qt6 GUI with QML
 
-This is the **Qt6/QML implementation** of SSH Tunnel Manager, built with **qmetaobject-rs**. It demonstrates the multi-framework GUI architecture with ~60-70% code reuse from gui-core.
+This is the **Qt6/QML implementation** of SSH Tunnel Manager, built with **cxx-qt**. It demonstrates the multi-framework GUI architecture with ~60-70% code reuse from gui-core.
 
 ## Current Status
 
-**Work In Progress** - Qt6 is installed and QML files are created, but qmetaobject-rs 0.2.x proc macros need further investigation.
+**On Hold** - Qt6 is installed and QML files are created, but cxx-qt 0.8.0 bridge macro has parsing issues.
 
-**Current blockers:**
-- qmetaobject-rs 0.2.x attribute macros (#[qproperty], #[qsignal], etc.) not working as expected
-- May need to use qmetaobject API differently or consider alternative Qt binding (cxx-qt)
-- All business logic code is ready (ProfileViewModel integration complete)
+**Status:**
+- ✅ All business logic code ready (ProfileViewModel integration complete)
+- ✅ QML UI designed and ready
+- ✅ Migrated from qmetaobject-rs to cxx-qt 0.8.0 (from GitHub)
+- ⏸️  cxx_qt::bridge macro parsing errors preventing compilation
+- 🔄 Future: Debug cxx-qt bridge syntax or wait for cxx-qt updates
+
+**Note:** The GTK GUI is fully functional and demonstrates the same ~60-70% code reuse architecture. Use that for now while Qt binding issues are resolved.
 
 **Technology Stack:**
-- **qmetaobject-rs**: Rust bindings for Qt6
+- **cxx-qt 0.8.0**: Modern Rust bindings for Qt6 (from GitHub)
 - **QML**: Declarative UI (Qt Quick)
 - **gui-core**: Shared business logic (~60-70% code reuse)
 
@@ -65,15 +69,16 @@ crates/gui-qt/
 └── Cargo.toml
 ```
 
-## Why qmetaobject-rs?
+## Why cxx-qt?
 
-We chose **qmetaobject-rs** for Qt6 integration:
+We chose **cxx-qt** for Qt6 integration:
 
-✅ **Simpler Build**: Pure Rust approach without C++ build complexity
+✅ **Modern & Maintained**: Actively developed by KDAB with regular updates
 ✅ **QML Perfect Fit**: UI is forms/lists - QML excels at this
 ✅ **Clear Separation**: QML for UI, Rust for business logic
-✅ **Qt6 Support**: Works with Qt6 (documentation focuses on Qt5 but supports both)
+✅ **Full Qt6 Support**: First-class Qt6 support with comprehensive bindings
 ✅ **Rapid Iteration**: QML changes without recompiling Rust
+✅ **Type Safety**: Strong type safety at Rust/C++ boundary via cxx
 
 ## Prerequisites
 
@@ -109,17 +114,17 @@ export QMAKE=/usr/lib/qt6/bin/qmake
 ## Implementation Roadmap
 
 1. ✅ **Basic Structure**: QML main window with Rust backend
-2. 🔨 **Profile List**: Business logic complete, qmetaobject proc macros need fixing
+2. 🔨 **Profile List**: Business logic complete, cxx-qt bridge syntax needs debugging
    - ✅ ProfilesListModel logic using gui-core (SHARED CODE working!)
-   - ✅ ProfileItem conversion from ProfileViewModel
+   - ✅ ProfileViewModel integration complete
    - ✅ ProfilesList.qml UI designed
    - ✅ Main window with navigation drawer
-   - ⚠️ qmetaobject-rs 0.2.x proc macros not compiling (investigating alternatives)
+   - ⚠️ cxx_qt::bridge macro parsing errors (investigating syntax)
 3. ⏸️  **Profile Dialog**: Waiting for step 2 resolution
-4. 🚧 **Daemon Config**: Configuration UI matching GTK version
-5. 🚧 **Event Loop**: Integrate tokio async runtime with Qt event loop
-6. 🚧 **SSE Integration**: Connect daemon events to QML property updates
-7. 🚧 **Testing**: Ensure feature parity with GTK GUI
+4. ⏸️  **Daemon Config**: Configuration UI matching GTK version
+5. ⏸️  **Event Loop**: Integrate tokio async runtime with Qt event loop
+6. ⏸️  **SSE Integration**: Connect daemon events to QML property updates
+7. ⏸️  **Testing**: Ensure feature parity with GTK GUI
 
 ## Example Code Reuse
 

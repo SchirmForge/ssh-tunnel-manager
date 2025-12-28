@@ -4,6 +4,8 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+// Temporarily disabled until cxx-qt bridge issues resolved
+// import com.ssh_tunnel_manager 1.0
 
 ApplicationWindow {
     id: mainWindow
@@ -110,7 +112,7 @@ ApplicationWindow {
                 }
 
                 Label {
-                    text: "Qt6/QML GUI using qmetaobject-rs"
+                    text: "Qt6/QML GUI using cxx-qt"
                     font.pixelSize: 12
                     Layout.alignment: Qt.AlignHCenter
                 }
