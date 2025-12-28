@@ -9,8 +9,6 @@ use pulldown_cmark::{Parser, Event, Tag, TagEnd, HeadingLevel};
 pub fn markdown_to_pango(markdown: &str) -> String {
     let parser = Parser::new(markdown);
     let mut output = String::new();
-    let mut in_heading = false;
-    let mut heading_level = 1;
     let mut in_code_block = false;
     let mut in_list_item = false;
     let mut list_depth: usize = 0;
@@ -19,8 +17,7 @@ pub fn markdown_to_pango(markdown: &str) -> String {
         match event {
             Event::Start(tag) => match tag {
                 Tag::Heading { level, .. } => {
-                    in_heading = true;
-                    heading_level = match level {
+                    let heading_level = match level {
                         HeadingLevel::H1 => 1,
                         HeadingLevel::H2 => 2,
                         HeadingLevel::H3 => 3,
@@ -75,7 +72,6 @@ pub fn markdown_to_pango(markdown: &str) -> String {
             Event::End(tag_end) => match tag_end {
                 TagEnd::Heading(_) => {
                     output.push_str("</span>\n");
-                    in_heading = false;
                 }
                 TagEnd::Paragraph => {
                     if !in_list_item {

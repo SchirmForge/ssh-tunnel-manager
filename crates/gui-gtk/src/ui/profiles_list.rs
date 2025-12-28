@@ -263,27 +263,6 @@ fn create_status_dot_from_color(color: &StatusColor) -> gtk4::Label {
     dot
 }
 
-/// Create status dot icon based on tunnel status (legacy, used by update_profile_status)
-fn create_status_dot(status: &TunnelStatus) -> gtk4::Label {
-    let (symbol, css_class) = match status {
-        TunnelStatus::Connected => ("●", "status-connected"),
-        TunnelStatus::Connecting | TunnelStatus::WaitingForAuth |
-        TunnelStatus::Reconnecting | TunnelStatus::Disconnecting =>
-            ("●", "status-warning"),
-        TunnelStatus::Failed(_) =>
-            ("●", "status-error"),
-        TunnelStatus::Disconnected | TunnelStatus::NotConnected =>
-            ("●", "status-inactive"),
-    };
-
-    let dot = gtk4::Label::new(Some(symbol));
-    dot.add_css_class(css_class);
-    dot.add_css_class("status-dot");
-    // Add some margin for spacing
-    dot.set_margin_end(8);
-    dot
-}
-
 /// Create empty state placeholder
 fn create_empty_state() -> gtk4::Box {
     let empty_box = gtk4::Box::new(gtk4::Orientation::Vertical, 12);

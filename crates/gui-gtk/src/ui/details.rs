@@ -14,19 +14,6 @@ use super::profile_dialog;
 use super::window::AppState;
 use super::sidebar;
 
-/// Create the details/content widget
-pub fn create() -> GtkBox {
-    let details = GtkBox::new(Orientation::Vertical, 0);
-    details.set_vexpand(true);
-    details.set_hexpand(true);
-
-    // Placeholder: No profile selected
-    let placeholder = create_placeholder();
-    details.append(&placeholder);
-
-    details
-}
-
 /// Update the details panel with a selected profile
 pub fn update_with_profile(
     details_widget: &GtkBox,
@@ -457,21 +444,6 @@ fn show_error_dialog(parent: &impl IsA<gtk4::Window>, message: &str) {
     let dialog = adw::MessageDialog::builder()
         .transient_for(parent)
         .heading("Error")
-        .body(message)
-        .build();
-
-    dialog.add_response("ok", "OK");
-    dialog.set_default_response(Some("ok"));
-    dialog.set_close_response("ok");
-
-    dialog.present();
-}
-
-/// Show an info dialog
-fn show_info_dialog(parent: &impl IsA<gtk4::Window>, heading: &str, message: &str) {
-    let dialog = adw::MessageDialog::builder()
-        .transient_for(parent)
-        .heading(heading)
         .body(message)
         .build();
 

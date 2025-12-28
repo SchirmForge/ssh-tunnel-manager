@@ -222,13 +222,8 @@ impl DaemonConfig {
             .context("Failed to write daemon configuration")?;
 
         // Set restrictive permissions on config file (Unix only)
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let permissions = fs::Permissions::from_mode(0o600);
-            fs::set_permissions(&config_path, permissions)
-                .context("Failed to set config file permissions")?;
-        }
+        // Set restrictive permissions
+        crate::permissions::set_file_permissions_private(&config_path)?;
 
         info!("Saved daemon configuration to: {}", config_path.display());
         Ok(())
@@ -548,13 +543,7 @@ pub fn write_cli_config_snippet(
         .context("Failed to write CLI config snippet")?;
 
     // Set restrictive permissions on snippet file (contains auth token and TLS fingerprint)
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let permissions = fs::Permissions::from_mode(0o600);
-        fs::set_permissions(&snippet_path, permissions)
-            .context("Failed to set CLI config snippet permissions")?;
-    }
+    crate::permissions::set_file_permissions_private(&snippet_path)?;
 
     info!("");
     info!("═══════════════════════════════════════════════════════════");

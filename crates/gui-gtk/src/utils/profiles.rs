@@ -31,14 +31,3 @@ pub fn get_profiles_dir() -> Result<PathBuf> {
 
     Ok(profiles_dir)
 }
-
-/// Check if profiles directory exists and create if needed
-pub fn ensure_profiles_dir() -> Result<PathBuf> {
-    let profiles_dir = get_profiles_dir()?;
-
-    if !profiles_dir.exists() {
-        std::fs::create_dir_all(&profiles_dir)?;
-    }
-
-    Ok(profiles_dir)
-}
