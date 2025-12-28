@@ -4,13 +4,16 @@
 //! Qt6 desktop application for SSH Tunnel Manager
 //!
 //! Minimal Qt application to demonstrate basic functionality.
-//! Full QML integration pending cxx-qt bridge macro resolution.
 
 mod daemon;
 mod models;
 mod ui;
 
 fn main() {
+    // TODO: Implement full Qt GUI with cxx-qt using the qml files from gui-qt/qml.
+
+
+    // TODO: Remove messages below when GUI is implemented.
     println!("SSH Tunnel Manager - Qt GUI (Placeholder)");
     println!();
     println!("The Qt GUI is currently being developed.");
