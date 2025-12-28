@@ -127,7 +127,7 @@ pub fn process_tunnel_event(state: &Rc<AppState>, event: TunnelEvent) {
         TunnelEvent::Error { id, error } => {
             handle_error(state, Some(id), error);
         }
-        TunnelEvent::AuthRequired { id, request } => {
+        TunnelEvent::AuthRequired { id: _, request } => {
             handle_auth_required(state, request);
         }
         TunnelEvent::Heartbeat { .. } => {

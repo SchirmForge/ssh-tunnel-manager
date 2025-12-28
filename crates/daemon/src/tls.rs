@@ -57,16 +57,9 @@ pub fn generate_self_signed_cert(
     fs::write(key_path, key_pair.serialize_pem())
         .context("Failed to write private key file")?;
 
-    // Set restrictive permissions on both files (Unix only)
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let permissions = fs::Permissions::from_mode(0o600);
-        fs::set_permissions(cert_path, permissions.clone())
-            .context("Failed to set certificate permissions")?;
-        fs::set_permissions(key_path, permissions)
-            .context("Failed to set private key permissions")?;
-    }
+    // Set restrictive permissions on both files
+    crate::permissions::set_file_permissions_private(cert_path)?;
+    crate::permissions::set_file_permissions_private(key_path)?;
 
     // Calculate and display certificate fingerprint
     let fingerprint = calculate_fingerprint(&cert.der());

@@ -117,16 +117,11 @@ impl KnownHostEntry {
 pub struct KnownHosts {
     path: PathBuf,
     entries: Vec<KnownHostEntry>,
-    hash_hostnames: bool,
+    /// Whether to hash hostnames when adding new entries (future feature)
+    _hash_hostnames: bool,
 }
 
 impl KnownHosts {
-    /// Load known_hosts from the default location
-    pub fn load() -> Result<Self> {
-        let path = Self::default_path()?;
-        Self::load_from(&path, false)
-    }
-
     /// Load known_hosts from a PathBuf
     pub fn load_from_pathbuf(path: PathBuf, hash_hostnames: bool) -> Result<Self> {
         Self::load_from(&path, hash_hostnames)
@@ -157,7 +152,7 @@ impl KnownHosts {
         Ok(KnownHosts {
             path: path.to_path_buf(),
             entries,
-            hash_hostnames,
+            _hash_hostnames: hash_hostnames,
         })
     }
 
@@ -166,13 +161,6 @@ impl KnownHosts {
         let config_dir = dirs::config_dir()
             .ok_or_else(|| anyhow::anyhow!("Could not determine config directory"))?;
         Ok(config_dir.join("ssh-tunnel-manager").join("known_hosts"))
-    }
-
-    /// Get the system SSH known_hosts path: ~/.ssh/known_hosts
-    pub fn ssh_known_hosts_path() -> Result<PathBuf> {
-        let home_dir = dirs::home_dir()
-            .ok_or_else(|| anyhow::anyhow!("Could not determine home directory"))?;
-        Ok(home_dir.join(".ssh").join("known_hosts"))
     }
 
     /// Verify a host key against known_hosts
@@ -252,14 +240,8 @@ impl KnownHosts {
             writeln!(file, "{}", entry.format())?;
         }
 
-        // Set restrictive permissions (Unix only)
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let permissions = fs::Permissions::from_mode(0o600);
-            fs::set_permissions(&self.path, permissions)
-                .context("Failed to set known_hosts file permissions")?;
-        }
+        // Set restrictive permissions
+        crate::permissions::set_file_permissions_private(&self.path)?;
 
         info!("Saved {} entries to known_hosts: {}", self.entries.len(), self.path.display());
 
@@ -392,7 +374,7 @@ mod tests {
         let mut known_hosts = KnownHosts {
             path: path.clone(),
             entries: vec![],
-            hash_hostnames: false,
+            _hash_hostnames: false,
         };
 
         // Add a dummy entry

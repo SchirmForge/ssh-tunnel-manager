@@ -106,7 +106,7 @@ pub fn create(state: Rc<AppState>, profile: &ProfileModel) -> adw::NavigationPag
 }
 
 /// Create connection status banner (informational only, no action button)
-fn create_status_banner(profile: &ProfileModel) -> adw::Banner {
+fn create_status_banner(_profile: &ProfileModel) -> adw::Banner {
     let banner = adw::Banner::new("Not connected");
     banner.set_revealed(true);
     banner.add_css_class("info");

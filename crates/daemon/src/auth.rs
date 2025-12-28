@@ -82,13 +82,8 @@ fn save_token(token_path: &PathBuf, token: &str) -> Result<()> {
     fs::write(token_path, token).context("Failed to write token file")?;
 
     // Set restrictive permissions (Unix only)
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let permissions = fs::Permissions::from_mode(0o600);
-        fs::set_permissions(token_path, permissions)
-            .context("Failed to set token file permissions")?;
-    }
+    // Set restrictive permissions (600 = owner read/write only)
+    crate::permissions::set_file_permissions_private(token_path)?;
 
     Ok(())
 }

@@ -10,7 +10,6 @@ use std::rc::Rc;
 use std::cell::RefCell;
 
 use super::{navigation, profiles_list, daemon_settings, help_dialog, about_dialog};
-use super::auth_dialog;
 use crate::models::profile_model::ProfileModel;
 use crate::daemon::DaemonClient;
 use ssh_tunnel_gui_core::AppCore;
