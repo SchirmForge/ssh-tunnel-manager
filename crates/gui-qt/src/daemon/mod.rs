@@ -6,5 +6,6 @@
 //! All daemon communication code (DaemonClient, EventListener, TunnelEvent)
 //! is now in gui-core for maximum code reuse across GTK and Qt GUIs.
 
-// Re-export daemon types from gui-core
+// Re-export daemon types from gui-core (for future use)
+#[allow(unused_imports)]
 pub use ssh_tunnel_gui_core::{DaemonClient, EventListener, TunnelEvent};

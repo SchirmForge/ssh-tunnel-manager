@@ -23,7 +23,7 @@ cxx-qt-lib = { git = "https://github.com/KDAB/cxx-qt", tag = "v0.8.0" }
 tokio = { version = "1.35", features = ["full"] }
 
 # HTTP client for daemon communication
-reqwest = { version = "0.11", features = ["json", "stream"] }
+reqwest = { workspace = true }
 futures-util = "0.3"
 
 # Data structures
