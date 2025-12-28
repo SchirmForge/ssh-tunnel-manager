@@ -93,6 +93,14 @@ sudo dnf install gtk4-devel libadwaita-devel gcc pkg-config
 sudo pacman -S gtk4 libadwaita base-devel
 ```
 
+**For Qt GUI (Optional, under development):**
+- Qt6 base and declarative modules (required for building gui-qt)
+- **Ubuntu/Debian:**
+  ```bash
+  sudo apt install qt6-base-dev qt6-declarative-dev qml6-module-qtquick qml6-module-qtquick-controls qml6-module-qtquick-layouts
+  ```
+- See [crates/gui-qt/README.md](crates/gui-qt/README.md) for other distributions
+
 ### Build
 
 ```bash
@@ -103,7 +111,13 @@ cd ssh-tunnel-manager
 # Build CLI and daemon only
 cargo build --release --package ssh-tunnel-cli --package ssh-tunnel-daemon
 
-# Build everything including GTK GUI
+# Build GTK GUI (no Qt6 needed)
+cargo build --release --package ssh-tunnel-gui-gtk
+
+# Build Qt GUI (requires Qt6 - see above)
+cargo build --release --package ssh-tunnel-gui-qt
+
+# Build everything including both GUIs (requires both GTK4 and Qt6)
 cargo build --release
 ```
 
@@ -136,6 +150,9 @@ RUST_LOG=info ./target/release/ssh-tunnel-daemon
 
 # Launch the GTK GUI (in another terminal)
 ./target/release/ssh-tunnel-gtk
+
+# Or launch the Qt GUI (requires Qt6 installation)
+./target/release/ssh-tunnel-qt
 ```
 
 The GUI provides:
@@ -177,7 +194,8 @@ ssh-tunnel-manager/
 │   ├── daemon/          # Core daemon service (✅ Production-ready)
 │   ├── cli/             # Command-line interface (✅ Production-ready)
 │   ├── gui-core/        # Framework-agnostic GUI business logic (✅ Complete)
-│   └── gui-gtk/         # GTK4/Libadwaita desktop application (✅ Functional)
+│   ├── gui-gtk/         # GTK4/Libadwaita desktop application (✅ Functional)
+│   └── gui-qt/          # Qt6 desktop application (🔨 Skeleton - Qt binding needed)
 ├── docs/                # Documentation and systemd units
 ├── scripts/             # Installation scripts
 ├── Cargo.toml           # Workspace configuration
@@ -186,8 +204,8 @@ ssh-tunnel-manager/
 
 **GUI Architecture:**
 - `gui-core`: Shared business logic, view models, and validation (~60-70% code reuse)
-- `gui-gtk`: GTK4/Libadwaita-specific UI implementation
-- Future: `gui-qt` for Qt6 implementation (planned)
+- `gui-gtk`: GTK4/Libadwaita-specific UI implementation (✅ fully functional)
+- `gui-qt`: Qt6/QML implementation using qmetaobject-rs (🚧 under development, profile list working)
 
 ## Architecture
 

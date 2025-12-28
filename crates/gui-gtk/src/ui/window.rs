@@ -175,8 +175,7 @@ pub fn build(app: &adw::Application) -> adw::ApplicationWindow {
 
 /// Start listening to daemon events for real-time updates
 fn start_event_listener(state: Rc<AppState>, status_icon: gtk4::Image) {
-    use crate::daemon::sse::EventListener;
-    use crate::daemon::sse::TunnelEvent;
+    use crate::daemon::{EventListener, TunnelEvent};
 
     // Get daemon config
     let config = match AppState::load_daemon_client() {

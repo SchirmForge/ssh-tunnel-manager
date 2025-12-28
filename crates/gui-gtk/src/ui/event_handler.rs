@@ -15,7 +15,7 @@ use uuid::Uuid;
 
 use super::window::AppState;
 use super::{profiles_list, auth_dialog};
-use crate::daemon::sse::TunnelEvent;
+use crate::daemon::TunnelEvent;
 
 /// Handle a status change event
 pub fn handle_status_changed(state: &Rc<AppState>, profile_id: Uuid, status: TunnelStatus) {

@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2025 SSH Tunnel Manager Contributors
 
-// Daemon HTTP client for tunnel control operations
+//! Daemon client for tunnel control operations
+//!
+//! Supports multiple connection modes:
+//! - Unix socket (default, local-only)
+//! - HTTP (testing/localhost, no TLS)
+//! - HTTPS (network-ready with TLS and optional certificate pinning)
 
 use anyhow::{Context, Result};
 use reqwest::Client;

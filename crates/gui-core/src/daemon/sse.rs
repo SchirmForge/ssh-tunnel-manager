@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2025 SSH Tunnel Manager Contributors
 
-// Server-Sent Events listener for real-time tunnel status updates
+//! Server-Sent Events listener for real-time tunnel status updates
+//!
+//! Framework-agnostic SSE client that works with any async runtime (tokio).
 
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};

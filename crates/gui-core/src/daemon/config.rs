@@ -1,11 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2025 SSH Tunnel Manager Contributors
 
-//! Daemon connection helpers
-//!
-//! This module provides helper functions for daemon operations.
-//! The actual DaemonClient implementation remains in the GUI crates
-//! to handle framework-specific async runtime integration.
+//! Daemon connection configuration helpers
 
 use anyhow::{Result, Context};
 use ssh_tunnel_common::DaemonClientConfig;
