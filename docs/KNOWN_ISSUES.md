@@ -116,18 +116,19 @@ None listed yet
 
 ### ❌ System Integration
 
-**No Autostart on Login**
-- **Status**: systemd service exists but manual setup required
-- **Impact**: Daemon doesn't start automatically after login
-- **Workaround**: Enable systemd service:
+**No Autostart Enabled by Default**
+- **Status**: systemd services exist but manual setup required
+- **Impact**: Daemon doesn't start automatically
+- **Workaround**: Enable systemd service based on your needs:
   ```bash
+  # User service (ports 1024+, starts on login)
   systemctl --user enable ssh-tunnel-daemon
 
-  or
-
-  sudo systemctl enable ssh-tunnel-daemon
+  # System service (all ports including <1024, starts at boot)
+  sudo systemctl enable ssh-tunnel-daemon@$USER
+  # Or for specific user: sudo systemctl enable ssh-tunnel-daemon@username
   ```
-Note the system wide daemon requires additional configuration
+- See [Installation Guide](INSTALLATION.md) for details on choosing between user and system service
 
 ## Documentation Gaps
 
