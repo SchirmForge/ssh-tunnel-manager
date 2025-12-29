@@ -38,6 +38,7 @@ sudo dpkg -i ssh-tunnel-daemon_0.1.8-4_amd64.deb \
 **ssh-tunnel-daemon** package:
 - `/usr/bin/ssh-tunnel-daemon` - Background daemon
 - `/usr/lib/systemd/user/ssh-tunnel-daemon.service` - systemd user service
+- `/usr/lib/systemd/system/ssh-tunnel-daemon@.service` - systemd system service (template)
 
 **ssh-tunnel-cli** package:
 - `/usr/bin/ssh-tunnel` - CLI tool
@@ -89,35 +90,83 @@ systemctl --user daemon-reload
 
 ## Post-Installation Setup
 
-### 1. Start the Daemon
+### 1. Choose Daemon Mode
 
-**Using systemd (recommended):**
+The daemon can run in two modes depending on your port forwarding needs:
+
+**Option A: User Service**
+- Runs as your user account
+- Starts when you log in
+- **Cannot forward privileged ports (ports below 1024)**
+- Use this if you only need ports 1024 and above
+
+**Option B: System Service**
+- Runs as a specific user account (typically your account or a dedicated service account)
+- Starts at boot (before login)
+- **Can forward all ports including privileged ports (80, 443, etc.)**
+- Use this if you need to forward ports like 80 (HTTP) or 443 (HTTPS)
+- Requires specifying which user account to run as
+
+### 2. Start the Daemon
+
+**Option A: User Service (Ports 1024+)**
+
 ```bash
+# Start now and enable on login
 systemctl --user enable --now ssh-tunnel-daemon
+
+# Check status
+systemctl --user status ssh-tunnel-daemon
 ```
 
-**Manual start:**
+**Option B: System Service (All Ports Including <1024)**
+
+The system service uses a template that requires specifying a username:
+
+```bash
+# Run as your current user
+sudo systemctl enable --now ssh-tunnel-daemon@$USER
+
+# Or run as a specific user (must have a home directory for config storage)
+sudo systemctl enable --now ssh-tunnel-daemon@username
+
+# Check status
+sudo systemctl status ssh-tunnel-daemon@$USER
+```
+
+**Important notes for system service:**
+- The specified user must exist and have a home directory
+- Configuration will be stored in that user's home: `~/.config/ssh-tunnel-manager/`
+- The daemon runs with that user's permissions
+- Can forward privileged ports (below 1024) when run as system service
+
+**Manual start (testing only):**
 ```bash
 ssh-tunnel-daemon &
 ```
 
-### 2. Verify Installation
+### 3. Verify Installation
 
 ```bash
 # Check daemon status
 ssh-tunnel info
 
-# Launch GUI
+# Launch GUI (if installed)
 ssh-tunnel-gtk
 ```
 
-### 3. Optional: Enable Autostart
+## Uninstallation
+
+**Stop the daemon first:**
 
 ```bash
-systemctl --user enable ssh-tunnel-daemon
-```
+# If using user service
+systemctl --user disable --now ssh-tunnel-daemon
 
-## Uninstallation
+# If using system service
+sudo systemctl disable --now ssh-tunnel-daemon@$USER
+# Or for specific user: sudo systemctl disable --now ssh-tunnel-daemon@username
+```
 
 **Debian/Ubuntu:**
 ```bash
@@ -163,7 +212,12 @@ sudo pacman -S gtk4 libadwaita
 
 Check systemd logs:
 ```bash
+# For user service
 journalctl --user -u ssh-tunnel-daemon -f
+
+# For system service
+sudo journalctl -u ssh-tunnel-daemon@$USER -f
+# Or: sudo journalctl -u ssh-tunnel-daemon@username -f
 ```
 
 Or check if already running:
