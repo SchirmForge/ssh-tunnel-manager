@@ -248,7 +248,6 @@ fn create_action_buttons(state: Rc<AppState>, profile: &ProfileModel) -> (gtk4::
         eprintln!("Starting tunnel for profile: {}", profile_clone.name());
 
         if let Some(prof) = profile_clone.profile() {
-            let tunnel_id = prof.metadata.id;
             let state = state_clone.clone();
             let button = button.clone();
 
@@ -266,7 +265,7 @@ fn create_action_buttons(state: Rc<AppState>, profile: &ProfileModel) -> (gtk4::
                     }
                 };
 
-                match daemon_client.start_tunnel(tunnel_id).await {
+                match daemon_client.start_tunnel(&prof).await {
                     Ok(_) => {
                         eprintln!("✓ Tunnel start request accepted");
                         // Keep button disabled; SSE updates will set final state.

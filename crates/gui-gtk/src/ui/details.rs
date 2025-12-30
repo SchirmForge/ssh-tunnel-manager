@@ -218,34 +218,97 @@ fn create_action_buttons(
         let state = state.clone();
         let window = window.clone();
         start_button.connect_clicked(move |button| {
-            // Disable button during operation
-            button.set_sensitive(false);
-            button.set_label("Starting...");
-
-            let profile = profile.clone();
-            let state = state.clone();
-            let window = window.clone();
-            let button = button.clone();
-
-            // Spawn async task to start tunnel
-            glib::MainContext::default().spawn_local(async move {
-                let result = start_tunnel_async(&profile, &state).await;
-
-                // Re-enable button
-                button.set_sensitive(true);
-                button.set_label("Start Tunnel");
-
-                // Show result - only show errors, success will be reflected in status updates
-                match result {
-                    Ok(()) => {
-                        eprintln!("✓ Tunnel start request accepted by daemon");
-                        // Status will update via SSE events
-                    }
-                    Err(e) => {
-                        show_error_dialog(&window, &format!("Failed to start tunnel: {}", e));
-                    }
+            // Check if we need to show SSH key warning
+            let inner_profile = match profile.profile() {
+                Some(p) => p,
+                None => {
+                    eprintln!("✗ Profile data not available");
+                    return;
                 }
-            });
+            };
+
+            // Check if daemon client needs SSH key warning
+            let warning_message = state
+                .daemon_client
+                .borrow()
+                .as_ref()
+                .and_then(|client| client.needs_ssh_key_warning(&inner_profile));
+
+            if let Some(warning_msg) = warning_message {
+                // Show warning dialog with Continue/Cancel
+                let dialog = adw::MessageDialog::builder()
+                    .transient_for(&window)
+                    .heading("SSH Key Setup Required")
+                    .body(&warning_msg)
+                    .build();
+
+                dialog.add_response("cancel", "Cancel");
+                dialog.add_response("continue", "Continue");
+                dialog.set_response_appearance("continue", adw::ResponseAppearance::Suggested);
+                dialog.set_default_response(Some("continue"));
+                dialog.set_close_response("cancel");
+
+                let profile = profile.clone();
+                let state = state.clone();
+                let window = window.clone();
+                let button = button.clone();
+
+                dialog.connect_response(None, move |_, response| {
+                    if response == "continue" {
+                        // User clicked Continue - proceed with starting tunnel
+                        button.set_sensitive(false);
+                        button.set_label("Starting...");
+
+                        let profile = profile.clone();
+                        let state = state.clone();
+                        let window = window.clone();
+                        let button = button.clone();
+
+                        glib::MainContext::default().spawn_local(async move {
+                            let result = start_tunnel_async(&profile, &state).await;
+
+                            button.set_sensitive(true);
+                            button.set_label("Start Tunnel");
+
+                            match result {
+                                Ok(()) => {
+                                    eprintln!("✓ Tunnel start request accepted by daemon");
+                                }
+                                Err(e) => {
+                                    show_error_dialog(&window, &format!("Failed to start tunnel: {}", e));
+                                }
+                            }
+                        });
+                    }
+                });
+
+                dialog.present();
+            } else {
+                // No warning needed - proceed directly
+                button.set_sensitive(false);
+                button.set_label("Starting...");
+
+                let profile = profile.clone();
+                let state = state.clone();
+                let window = window.clone();
+                let button = button.clone();
+
+                glib::MainContext::default().spawn_local(async move {
+                    let result = start_tunnel_async(&profile, &state).await;
+
+                    button.set_sensitive(true);
+                    button.set_label("Start Tunnel");
+
+                    match result {
+                        Ok(()) => {
+                            eprintln!("✓ Tunnel start request accepted by daemon");
+                        }
+                        Err(e) => {
+                            show_error_dialog(&window, &format!("Failed to start tunnel: {}", e));
+                        }
+                    }
+                });
+            }
         });
     }
 
@@ -397,7 +460,6 @@ async fn start_tunnel_async(profile: &ProfileModel, state: &Rc<AppState>) -> any
     let inner_profile = profile
         .profile()
         .ok_or_else(|| anyhow::anyhow!("Profile data not available"))?;
-    let tunnel_id = inner_profile.metadata.id;
 
     // Send start request; daemon SSE events will drive auth prompts and UI updates
     let daemon_client = state
@@ -407,7 +469,7 @@ async fn start_tunnel_async(profile: &ProfileModel, state: &Rc<AppState>) -> any
         .ok_or_else(|| anyhow::anyhow!("Daemon client not available"))?
         .clone();
 
-    daemon_client.start_tunnel(tunnel_id).await?;
+    daemon_client.start_tunnel(&inner_profile).await?;
     Ok(())
 }
 

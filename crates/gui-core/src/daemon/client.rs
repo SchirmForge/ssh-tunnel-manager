@@ -14,8 +14,9 @@ use serde::Deserialize;
 use uuid::Uuid;
 
 use ssh_tunnel_common::{
-    add_auth_header, create_daemon_client, AuthRequest, AuthResponse, DaemonClientConfig,
-    DaemonInfo, TunnelStatus,
+    add_auth_header, create_daemon_client, prepare_profile_for_remote, AuthRequest, AuthResponse,
+    ConnectionMode, DaemonClientConfig, DaemonInfo, Profile, ProfileSourceMode,
+    StartTunnelRequest, TunnelStatus,
 };
 
 /// Daemon client for tunnel operations
@@ -84,13 +85,63 @@ impl DaemonClient {
         }
     }
 
-    /// Start a tunnel by profile ID
-    pub async fn start_tunnel(&self, profile_id: Uuid) -> Result<()> {
+    /// Check if a profile requires SSH key setup warning for remote daemon
+    pub fn needs_ssh_key_warning(&self, profile: &Profile) -> Option<String> {
+        use ssh_tunnel_common::get_remote_key_setup_message;
+
+        // Only show warning for remote daemons
+        let is_remote_daemon = matches!(
+            self.config.connection_mode,
+            ConnectionMode::Http | ConnectionMode::Https
+        );
+
+        if !is_remote_daemon {
+            return None;
+        }
+
+        // Only show warning if profile uses SSH key authentication
+        if let Some(key_path) = &profile.connection.key_path {
+            let daemon_host = Some(self.config.daemon_host.as_str());
+            Some(get_remote_key_setup_message(key_path, daemon_host))
+        } else {
+            None
+        }
+    }
+
+    /// Start a tunnel by profile
+    pub async fn start_tunnel(&self, profile: &Profile) -> Result<()> {
+        let profile_id = profile.metadata.id;
+
+        // Determine if daemon is remote (HTTP/HTTPS) vs local (Unix socket)
+        let is_remote_daemon = matches!(
+            self.config.connection_mode,
+            ConnectionMode::Http | ConnectionMode::Https
+        );
+
+        // Prepare the start tunnel request
+        let (mode, profile_opt) = if is_remote_daemon {
+            // Remote daemon - send profile via API
+            let remote_profile = prepare_profile_for_remote(profile)
+                .context("Failed to prepare profile for remote daemon")?;
+
+            (ProfileSourceMode::Hybrid, Some(remote_profile))
+        } else {
+            // Local daemon (Unix socket) - load from filesystem
+            (ProfileSourceMode::Local, None)
+        };
+
+        let start_request = StartTunnelRequest {
+            profile_id: profile_id.to_string(),
+            mode,
+            profile: profile_opt,
+        };
+
         let url = format!("{}/api/tunnels/{}/start", self.base_url()?, profile_id);
         let request = self.client.post(&url);
         let request = add_auth_header(request, &self.config)?;
 
         let response = request
+            .json(&start_request)
             .send()
             .await
             .context("Failed to send start request")?;
