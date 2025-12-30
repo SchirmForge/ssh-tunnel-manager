@@ -208,9 +208,9 @@ Suggested name: `TECHNICAL_REFERENCE.md`. Purpose: internal architecture map of 
     - Renders UI using GTK widgets
     - Implements event handlers calling gui-core utilities
     - Maintains GTK-specific state (GObject wrappers, widget references)
-  - `gui-qt`: Qt6 implementation (planned, future)
-    - Will reuse gui-core for all business logic
-    - Qt-specific UI rendering and state management
+  - `gui-qt`: Qt6 implementation (skeleton running)
+    - Current state: cxx-qt/QML shell launches, lands on About page with skeleton notice; profiles page uses static placeholder data
+    - Planned: reuse gui-core for all business logic, Qt-specific UI rendering/state management
 - **Benefits**:
   - Consistent behavior across GUI implementations
   - Reduced maintenance burden
@@ -229,6 +229,9 @@ Suggested name: `TECHNICAL_REFERENCE.md`. Purpose: internal architecture map of 
     - Debian/Ubuntu: `libgtk-4-dev libadwaita-1-dev build-essential pkg-config`
     - Fedora: `gtk4-devel libadwaita-devel gcc pkg-config`
     - Arch: `gtk4 libadwaita base-devel`
+- **GUI Qt (skeleton)**:
+  - Qt6 base/declarative/dev tools (qmake6 available)
+  - cxx-qt crate (build script currently no-op; QML uses static placeholders)
 
 ## Additional Notes / Gaps
 - `monitor.rs` is a stub; tunnel health monitoring beyond port-forward loop is future work.
@@ -236,4 +239,4 @@ Suggested name: `TECHNICAL_REFERENCE.md`. Purpose: internal architecture map of 
 - `profile_manager` tests use outdated field names (`username`, `password`); real code paths rely on `ssh-tunnel-common` definitions.
 - Security: passwords/passphrases can be stored in system keychain; auth token persisted with 0600 perms; known_hosts uses custom path by default.
 - Distribution/packaging and systemd integration are not yet represented in code (see README/SETUP for future plans).
-- Qt GUI implementation is planned but not yet started.
+- Qt GUI implementation is a running skeleton; daemon/data wiring remains pending.

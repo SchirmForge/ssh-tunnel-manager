@@ -49,6 +49,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - TLS fingerprint validation enforced for HTTPS mode
   - Enter key support in IP address dialog for quick submission
   - IP validation with helpful error messages showing valid examples
+- **Qt6 GUI skeleton** - Minimal runnable Qt/QML shell (cxx-qt) landing on About page with a skeleton notice and static placeholder profiles; daemon wiring and real data are still in progress.
 
 ### Fixed
 - **IP address validation accepting invalid octets** - Now properly rejects IPs like `10.1.2.256`

@@ -75,13 +75,13 @@
 - **Help and About dialogs**: Markdown-rendered documentation accessible from burger menu using `pulldown-cmark`.
 
 ### 🚧 GUI Qt (`crates/gui-qt`)
-- **Qt6/QML implementation** using qmetaobject-rs
-- Basic QML UI with Rust backend (AppBackend QObject)
-- Bridges QML declarative UI with gui-core business logic
-- **Technology**: qmetaobject-rs + Qt6 + QML (Qt Quick)
-- **Architecture**: QML for UI, Rust for logic, gui-core for ~60-70% code reuse
-- **Status**: Placeholder window working, full features being implemented
-- See [crates/gui-qt/README.md](../crates/gui-qt/README.md) for implementation roadmap
+- **Qt6/QML skeleton** using cxx-qt; launches and lands on About page with a skeleton notice
+- Profiles page uses static placeholder data; daemon/event wiring not yet implemented
+- Bridges QML declarative UI with gui-core business logic (planned; wiring pending)
+- **Technology**: cxx-qt + Qt6 + QML (Qt Quick)
+- **Architecture**: QML for UI, Rust for logic, gui-core for ~60-70% code reuse (planned)
+- **Status**: Skeleton build running; real data, dialogs, and daemon integration are in progress
+- See [crates/gui-qt/README.md](../crates/gui-qt/README.md) and `local-docs/GUI-QT-SKELETON.md` for current state/roadmap
 
 ## Current Capabilities
 
