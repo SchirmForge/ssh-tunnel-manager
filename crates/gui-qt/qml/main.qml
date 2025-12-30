@@ -71,7 +71,7 @@ ApplicationWindow {
     StackView {
         id: stackView
         anchors.fill: parent
-        initialItem: profilesPage
+        initialItem: aboutPage
     }
 
     // Pages
@@ -90,6 +90,18 @@ ApplicationWindow {
             ColumnLayout {
                 anchors.centerIn: parent
                 spacing: 20
+
+                // Skeleton notice
+                Label {
+                    text: "This is a skeleton build.\nQt6 implementation is under investigation."
+                    font.pixelSize: 16
+                    font.bold: true
+                    color: "#22b222"
+                    wrapMode: Text.WordWrap
+                    horizontalAlignment: Text.AlignHCenter
+                    Layout.fillWidth: true
+                    Layout.maximumWidth: 480
+                }
 
                 Label {
                     text: "SSH Tunnel Manager"

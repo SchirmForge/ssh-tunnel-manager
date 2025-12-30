@@ -99,12 +99,13 @@
 ✅ Full profile CRUD UI (create/edit/delete) with validation
 ✅ Profile dialog with advanced options accordion
 ✅ GNOME Settings-style UI with proper switch styling
+✅ DEB packaging
 
 ❌ Remote forwarding
 ❌ Dynamic/SOCKS forwarding
 ❌ Auto-reconnect/health monitoring (options exist but not wired)
 ❌ System tray/notifications/systemd integration
-❌ Packaging (Flatpak/AUR/deb)
+❌ Packaging (Flatpak/AUR)
 ❌ Stale tests in `crates/common` need fixing
 
 ## Security Notes
@@ -154,7 +155,16 @@
 - ✅ **Enhance GUI status updates** - Real-time colored status dots on profile list
 - ✅ **Add Help and About windows** - Markdown-rendered documentation in burger menu
 
+
 ### High Priority 🚧
+
+#### Packaging
+- Status: **in progress**
+- Targets:
+  - ✅ DEB = Done
+  - 🚧 RPM = in progress
+  - 🚧 AUR (PKGBUILD needed)
+  - 🚧 Flatpak (to be confirned)
 
 #### Remote Port Forwarding (`ssh -R`)
 - Status: **Planned** - Infrastructure ready, implementation needed
@@ -194,12 +204,6 @@
 
 ### Medium Priority 🔵
 
-#### GUI Dark Mode
-- Status: **Planned**
-- Description: Auto-selection based on system theme preferences
-- Implementation: Use GTK4 `AdwStyleManager` to detect and follow system theme
-- Files: `crates/gui-gtk/src/main.rs`, `crates/gui-gtk/src/ui/window.rs`
-
 #### Daemon Management GUI
 - Status: **Partially planned**
 - Description: Graphical interface for daemon configuration and monitoring
@@ -210,6 +214,22 @@
   - Configure profiles that should autostart (via daemon API)
 - Files: `crates/gui-gtk/src/ui/daemon_page.rs` (new)
 
+#### Client using multiple daemon connections (GUI/CLI)
+- Status: **Partially planned**
+- Description: Allow users to have more than one cli.toml 
+- Features:
+  - By default, ~/.config/ssh-tunnel-manager/cli.toml is used, but user can select another configuration in the Client configuration page
+  - Create a *preferences* file in ~/.config/ssh-tunnel-manager/ where to store the config files location
+  - Reload the configuration upon cli.toml selection
+  - Note: Only one daemon can be monitored at a time, but multiple GUI instances can be launched
+- Files: TBC
+
+#### Desktop Notifications
+- Status: **Planned**
+- Description: System notifications for tunnel status changes
+- Library: `notify-rust` (already in dependencies)
+- Events: Connected, Disconnected, Failed, Authentication Required
+
 ### Future Enhancements 📅
 
 #### Auto-Reconnect/Health Monitoring
@@ -218,28 +238,14 @@
 - Current: Options exist in profile config but not implemented
 - Files: `crates/daemon/src/tunnel.rs`
 
-#### Desktop Notifications
-- Status: **Planned**
-- Description: System notifications for tunnel status changes
-- Library: `notify-rust` (already in dependencies)
-- Events: Connected, Disconnected, Failed, Authentication Required
-
 #### System Integration
-- Status: **Partial** - systemd units exist, tray/notifications pending
+- Status: **Partial** - systemd units exist - other might not be implemented
 - Components:
   - ✅ Systemd user service templates
   - 🚧 System tray integration
   - 🚧 Desktop notifications
-  - 🚧 Autostart on login
-
-#### Packaging
-- Status: **Planned**
-- Targets:
-  - 🚧 Flatpak (manifest needed)
-  - 🚧 AUR (PKGBUILD needed)
-  - 🚧 Debian package (.deb)
-  - 🚧 AppImage
-
+  - 🚧 Autostart for profiles (autostart option is already present but not wired)
+  
 ### Known Issues / Technical Debt 🔧
 
 - ❌ Fix outdated tests in `crates/common` (profile manager schema drift)

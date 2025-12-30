@@ -17,6 +17,12 @@ listener_mode = "unix-socket"
 # SECURITY: Non-loopback addresses (anything other than 127.x.x.x or localhost)
 # are ONLY allowed with tcp-https mode. tcp-http mode is restricted to loopback
 # addresses only to prevent unencrypted network traffic.
+#
+# NOTE: When binding to 0.0.0.0 or ::, the auto-generated client configuration
+# snippet (cli-config.snippet) will have an empty daemon_host field. This is
+# intentional because 0.0.0.0 is a server-side bind-all address and cannot be
+# used by clients to connect. Both CLI and GUI will prompt for the actual IP
+# address when importing the snippet (e.g., 192.168.1.100).
 bind_address = "127.0.0.1:3443"
 
 # TLS certificate paths (for tcp-https mode)

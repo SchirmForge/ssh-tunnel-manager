@@ -461,6 +461,27 @@ mod tests {
 }
 
 /// Write CLI config snippet to help users configure their CLI
+/// Get the daemon_host value for client config snippet
+/// Returns empty string if bind_host is 0.0.0.0 or :: (bind-all addresses)
+/// Otherwise returns the bind_host value
+fn get_snippet_daemon_host(bind_host: &str) -> String {
+    if bind_host == "0.0.0.0" || bind_host == "::" {
+        String::new()
+    } else {
+        bind_host.to_string()
+    }
+}
+
+/// Get help comment for empty daemon_host
+fn get_empty_host_comment(bind_host: &str) -> String {
+    if bind_host == "0.0.0.0" || bind_host == "::" {
+        "# Note: daemon_host is empty because daemon listens on all interfaces (0.0.0.0)\n\
+         # You must specify the actual IP address to connect to (e.g., 192.168.1.100)\n".to_string()
+    } else {
+        String::new()
+    }
+}
+
 pub fn write_cli_config_snippet(
     listener_mode: &ListenerMode,
     bind_host: &str,
@@ -504,6 +525,7 @@ pub fn write_cli_config_snippet(
             content
         }
         ListenerMode::TcpHttp => {
+            let host_value = get_snippet_daemon_host(bind_host);
             let mut content = format!(
                 "# CLI Configuration for SSH Tunnel Manager\n\
                  # Copy this to ~/.config/ssh-tunnel-manager/cli.toml\n\
@@ -511,14 +533,16 @@ pub fn write_cli_config_snippet(
                  connection_mode = \"http\"\n\
                  daemon_host = \"{}\"\n\
                  daemon_port = {}\n",
-                bind_host, bind_port
+                host_value, bind_port
             );
+            content.push_str(&get_empty_host_comment(bind_host));
             if let Some(token) = auth_token {
                 content.push_str(&format!("auth_token = \"{}\"\n", token));
             }
             content
         }
         ListenerMode::TcpHttps => {
+            let host_value = get_snippet_daemon_host(bind_host);
             let mut content = format!(
                 "# CLI Configuration for SSH Tunnel Manager\n\
                  # Copy this to ~/.config/ssh-tunnel-manager/cli.toml\n\
@@ -526,8 +550,9 @@ pub fn write_cli_config_snippet(
                  connection_mode = \"https\"\n\
                  daemon_host = \"{}\"\n\
                  daemon_port = {}\n",
-                bind_host, bind_port
+                host_value, bind_port
             );
+            content.push_str(&get_empty_host_comment(bind_host));
             if let Some(token) = auth_token {
                 content.push_str(&format!("auth_token = \"{}\"\n", token));
             }
