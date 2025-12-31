@@ -37,7 +37,7 @@ A secure, performant SSH tunnel management application for Linux with CLI interf
 
 ## Installation
 
-See **[docs/INSTALLATION.md](docs/INSTALLATION.md)** for complete installation instructions including:
+See **[docs/INSTALLATION.md](docs/INSTALLATION.md)** for complete installation instructions.
 
 ### Quick Install
 - **Debian/Ubuntu**: `.deb` packages available for daemon, CLI, and GUI
