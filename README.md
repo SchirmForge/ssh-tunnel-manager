@@ -3,7 +3,6 @@
 A secure, performant SSH tunnel management application for Linux with CLI interface and event-driven architecture.
 
 ## Status
-
 🟢 **v0.1.9** — Production-ready CLI/Daemon/GUI(GTK) with remote daemon support
 ✅ **First-launch configuration wizard** - Interactive GUI setup with automatic snippet detection
 ✅ **Remote daemon support** - Connect to daemons over HTTPS on other machines
