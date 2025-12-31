@@ -1,19 +1,33 @@
 # Installation Guide
 
+**Version**: v0.1.9
+**Last Updated**: 2025-12-31
+
+## Quick Start
+
+For most users, the easiest installation method is:
+
+1. **Install** .deb packages (Ubuntu/Debian) or build from source
+2. **Start** the daemon as a user service (`systemctl --user enable --now ssh-tunnel-daemon`)
+3. **Launch** the GUI (`ssh-tunnel-gtk`) - configuration wizard runs automatically on first launch
+4. **Create** profiles and start tunnels
+
+See detailed instructions below for your platform.
+
 ## Debian/Ubuntu (Recommended)
 
 Pre-built .deb packages are available for Ubuntu/Debian systems. Three separate packages are available:
 
 ```bash
-# Download packages from releases
-wget https://github.com/SchirmForge/ssh-tunnel-manager/releases/download/v0.1.8/ssh-tunnel-daemon_0.1.8-4_amd64.deb
-wget https://github.com/SchirmForge/ssh-tunnel-manager/releases/download/v0.1.8/ssh-tunnel-cli_0.1.8-4_amd64.deb
-wget https://github.com/SchirmForge/ssh-tunnel-manager/releases/download/v0.1.8/ssh-tunnel-gui-gtk_0.1.8-4_amd64.deb
+# Download packages from releases (v0.1.9)
+wget https://github.com/SchirmForge/ssh-tunnel-manager/releases/download/v0.1.9/ssh-tunnel-daemon_0.1.9-0_amd64.deb
+wget https://github.com/SchirmForge/ssh-tunnel-manager/releases/download/v0.1.9/ssh-tunnel-cli_0.1.9-0_amd64.deb
+wget https://github.com/SchirmForge/ssh-tunnel-manager/releases/download/v0.1.9/ssh-tunnel-gui-gtk_0.1.9-0_amd64.deb
 
 # Install all components:
-sudo dpkg -i ssh-tunnel-daemon_0.1.8-4_amd64.deb \
-                ssh-tunnel-cli_0.1.8-4_amd64.deb \
-                ssh-tunnel-gui-gtk_0.1.8-4_amd64.deb
+sudo dpkg -i ssh-tunnel-daemon_0.1.9-0_amd64.deb \
+                ssh-tunnel-cli_0.1.9-0_amd64.deb \
+                ssh-tunnel-gui-gtk_0.1.9-0_amd64.deb
 sudo apt-get install -f  # Install dependencies if needed
 ```
 
@@ -21,16 +35,16 @@ sudo apt-get install -f  # Install dependencies if needed
 
 ```bash
 # Minimal: Daemon only (for headless servers)
-sudo dpkg -i ssh-tunnel-daemon_0.1.8-4_amd64.deb
+sudo dpkg -i ssh-tunnel-daemon_0.1.9-0_amd64.deb
 
 # CLI: Daemon + CLI tool
-sudo dpkg -i ssh-tunnel-daemon_0.1.8-4_amd64.deb \
-                ssh-tunnel-cli_0.1.8-4_amd64.deb
+sudo dpkg -i ssh-tunnel-daemon_0.1.9-0_amd64.deb \
+                ssh-tunnel-cli_0.1.9-0_amd64.deb
 
 # GUI: All components
-sudo dpkg -i ssh-tunnel-daemon_0.1.8-4_amd64.deb \
-                ssh-tunnel-cli_0.1.8-4_amd64.deb \
-                ssh-tunnel-gui-gtk_0.1.8-4_amd64.deb
+sudo dpkg -i ssh-tunnel-daemon_0.1.9-0_amd64.deb \
+                ssh-tunnel-cli_0.1.9-0_amd64.deb \
+                ssh-tunnel-gui-gtk_0.1.9-0_amd64.deb
 ```
 
 ### What Gets Installed
@@ -184,14 +198,49 @@ See the "Enabling Network Access (HTTPS Mode)" section below for detailed instru
 ssh-tunnel-daemon &
 ```
 
-### 3. Verify Installation
+### 3. First-Time Setup
+
+#### Option A: Using the GUI (Easiest)
 
 ```bash
-# Check daemon status
+# Launch the GUI
+ssh-tunnel-gtk
+```
+
+The **configuration wizard** runs automatically on first launch (v0.1.9):
+- Detects daemon-generated configuration snippet and offers to import it
+- For network access (daemon on `0.0.0.0`), prompts for actual IP address
+- Falls back to manual configuration dialog if snippet not found
+- Validates all settings before saving
+
+After setup, you can:
+- Create profiles using the "New Profile" button
+- Start/stop tunnels with one click
+- View real-time status with colored indicators
+
+#### Option B: Using the CLI
+
+```bash
+# Verify daemon is running
 ssh-tunnel info
 
-# Launch GUI (if installed)
-ssh-tunnel-gtk
+# Create your first profile (interactive prompts)
+ssh-tunnel add myprofile
+
+# Or non-interactive
+ssh-tunnel add myprofile \
+  --host ssh.example.com \
+  --user myuser \
+  --key ~/.ssh/id_ed25519 \
+  --local-port 8080 \
+  --remote-host localhost \
+  --remote-port 80
+
+# Start the tunnel
+ssh-tunnel start myprofile
+
+# Check status
+ssh-tunnel status myprofile
 ```
 
 ## Advanced Configuration
@@ -397,6 +446,68 @@ rm -rf ~/.config/ssh-tunnel-manager
 
 ## Troubleshooting
 
+### CLI Configuration Missing (401 Unauthorized)
+
+**Error**: `Failed to establish SSE connection: Daemon returned non-success status for events: 401 Unauthorized`
+
+This means your CLI configuration file is missing. The CLI will automatically detect this and offer to copy the daemon-generated config snippet.
+
+**Automatic Solution**: Just run any daemon command and follow the prompts:
+```bash
+ssh-tunnel start <any-profile>
+# You'll be prompted to copy the config snippet automatically
+```
+
+**Manual Solution**: Copy the daemon-generated snippet:
+```bash
+cp ~/.config/ssh-tunnel-manager/cli-config.snippet ~/.config/ssh-tunnel-manager/cli.toml
+```
+
+### Authentication Fails with "Server requires: publickey"
+
+Your profile is configured for password authentication, but the server only accepts SSH keys.
+
+**Solution**: Recreate the profile with an SSH key:
+```bash
+ssh-tunnel delete myprofile
+ssh-tunnel add myprofile
+# Enter your SSH key path when prompted
+```
+
+Or use the GUI to edit the profile and switch to SSH key authentication.
+
+### Can't Bind to Privileged Port (≤1024)
+
+**Error**: `Permission denied binding to 0.0.0.0:443. Port 443 is privileged`
+
+**Solution**: Use system service instead of user service (see "Post-Installation Setup" above), or run daemon with sudo:
+```bash
+# Option 1: Use system service (recommended)
+sudo systemctl enable --now ssh-tunnel-daemon@$USER
+
+# Option 2: Run with sudo (not recommended for production)
+sudo RUST_LOG=info ssh-tunnel-daemon
+
+# Option 3: Grant capability (one-time, for manual runs)
+sudo setcap cap_net_bind_service=+ep /usr/bin/ssh-tunnel-daemon
+```
+
+### Keychain Not Working
+
+**Error**: `Failed to store password in keychain`
+
+**Solution**: Ensure a keychain service is running:
+```bash
+# GNOME
+gnome-keyring-daemon --start
+
+# KDE
+kwalletd5
+
+# Or skip keyring (passwords won't be stored)
+export SSH_TUNNEL_SKIP_KEYRING=1
+```
+
 ### Missing Dependencies
 
 If you get errors about missing libraries:
@@ -421,25 +532,53 @@ journalctl --user -u ssh-tunnel-daemon -f
 
 # For system service
 sudo journalctl -u ssh-tunnel-daemon@$USER -f
-# Or: sudo journalctl -u ssh-tunnel-daemon@username -f
 ```
 
-Or check if already running:
-```bash
-ps aux | grep ssh-tunnel-daemon
-```
+Common issues:
+- Another instance already running: Check `ps aux | grep ssh-tunnel-daemon`
+- Permission issues: Check file permissions in `~/.config/ssh-tunnel-manager/`
+- Missing config: Daemon creates default config on first run
 
 ### GUI Won't Connect to Daemon
 
-Ensure daemon is running:
+**Symptoms**: GUI shows "Daemon Disconnected" or can't start tunnels
+
+**Solution**:
+1. Ensure daemon is running:
+   ```bash
+   systemctl --user status ssh-tunnel-daemon
+   # Or: ssh-tunnel info
+   ```
+
+2. If daemon is on a different host (HTTPS mode), ensure configuration is correct:
+   ```bash
+   # GUI will prompt with configuration wizard on first launch
+   # Or manually check:
+   cat ~/.config/ssh-tunnel-manager/cli.toml
+   ```
+
+3. For remote daemons, check firewall allows port 3443
+
+### Remote Daemon: SSH Keys Not Found
+
+**Error**: `SSH key not found: /home/daemon/.ssh/id_rsa`
+
+This occurs when connecting to a remote daemon - SSH keys must be on the daemon host, not your local machine.
+
+**Solution**:
 ```bash
-ssh-tunnel info
+# On daemon host, ensure SSH key exists
+ssh daemon-host "ls -la ~/.ssh/"
+
+# Copy your key to daemon host if needed
+scp ~/.ssh/id_rsa daemon-host:~/.ssh/
+scp ~/.ssh/id_rsa.pub daemon-host:~/.ssh/
+
+# Set correct permissions
+ssh daemon-host "chmod 600 ~/.ssh/id_rsa"
 ```
 
-If daemon is on a different host, configure CLI:
-```bash
-# Copy the config snippet generated by daemon
-ssh-tunnel start <any-profile>  # Will prompt for config
-```
-
-See [Troubleshooting](TROUBLESHOOTING.md) for more help.
+For more help, check:
+- [Architecture Documentation](ARCHITECTURE.md)
+- [Project Status](PROJECT_STATUS.md)
+- [GitHub Issues](https://github.com/SchirmForge/ssh-tunnel-manager/issues)
