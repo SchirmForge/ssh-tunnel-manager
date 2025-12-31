@@ -3,12 +3,23 @@
 A secure, performant SSH tunnel management application for Linux with CLI interface and event-driven architecture.
 
 ## Status
-🟢 **v0.1.9** — Production-ready CLI/Daemon/GUI(GTK) with remote daemon support
-✅ **First-launch configuration wizard** - Interactive GUI setup with automatic snippet detection
-✅ **Remote daemon support** - Connect to daemons over HTTPS on other machines
-✅ **Full-featured GUI** with profile management, real-time status, and markdown documentation
-✅ **Enhanced CLI** with status/restart commands and proactive config validation
-🟢 **Local port forwarding** works end-to-end with interactive auth, keychain storage, and host key verification
+
+**Version**: v0.1.9
+**Status**: Production-ready CLI/Daemon/GUI(GTK) with remote daemon support
+
+### Highlights
+
+- ✅ **First-launch configuration wizard** - Interactive GUI setup with automatic snippet detection
+- ✅ **Remote daemon support** - Connect to daemons over HTTPS on other machines
+- ✅ **Full-featured GUI** - Profile management, real-time status, and markdown documentation
+- ✅ **Enhanced CLI** - Status/restart commands and proactive config validation
+- ✅ **Local port forwarding** - Works end-to-end with interactive auth, keychain storage, and host key verification
+
+### Limitations
+
+- 🚧 Remote/dynamic forwarding not implemented yet
+- 🚧 Auto-reconnect wiring pending
+- ⚠️ Some `crates/common` tests are stale
 
 ## Features
 
@@ -34,8 +45,6 @@ A secure, performant SSH tunnel management application for Linux with CLI interf
 - Packaging (Flatpak, AUR, deb)
 
 ## Installation
-
-See **[docs/INSTALLATION.md](docs/INSTALLATION.md)** for complete installation instructions.
 
 ### Quick Install
 - **Debian/Ubuntu**: `.deb` packages available for daemon, CLI, and GUI
@@ -66,9 +75,8 @@ ssh-tunnel status [name]       # Check status (--all for table)
 ssh-tunnel stop --all          # Stop all tunnels
 ```
 
-For detailed usage examples, advanced CLI options, and remote daemon setup, see:
-- **[docs/INSTALLATION.md](docs/INSTALLATION.md)** - Getting started guide with examples
-- CLI help: `ssh-tunnel --help` and `ssh-tunnel <command> --help`
+- **More information**: See **[CLI Usage Guide](docs/INSTALLATION.md#option-b-using-the-cli)** for command-line operations, automation, and scripting
+- **Help**: Run `ssh-tunnel --help` for built-in documentation
 
 ## Configuration
 
