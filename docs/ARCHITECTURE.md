@@ -1,15 +1,79 @@
 # SSH Tunnel Manager - Architecture
 
+**Version**: v0.1.9
+**Status**: Production-ready with remote daemon support
+
 ## Overview
 
-A secure, performant SSH tunnel management application for Linux with GUI and CLI interfaces, focusing on security, 2FA support, and ease of use.
+A secure, performant SSH tunnel management application for Linux with GUI and CLI interfaces, focusing on security, interactive authentication, and ease of use. The application supports both local Unix socket connections and remote HTTPS connections to daemons running on other machines.
 
 ## Core Principles
 
-1. **Security First**: Memory-safe code, secure credential storage, minimal privilege
+1. **Security First**: Memory-safe code, secure credential storage, minimal privilege, HTTPS enforcement for network access
 2. **Unix Philosophy**: Daemon does one thing well, communicate via well-defined API
 3. **User Choice**: Both GUI and CLI interfaces for different workflows
-4. **Portability**: Flatpak distribution with all dependencies bundled
+4. **Remote Capability**: Connect to daemons over HTTPS while keeping SSH keys secure on daemon host
+5. **Event-Driven**: Real-time updates via Server-Sent Events (SSE)
+
+## Key Design Decisions
+
+### 1. Event-Driven Authentication
+**Decision**: Daemon emits events when it needs credentials; CLI/GUI prompts interactively
+
+**Rationale**:
+- Supports complex multi-factor authentication flows (key + password, keyboard-interactive)
+- Daemon remains non-interactive and can run as a service
+- Client applications control the user experience
+- Works identically for CLI and GUI
+
+**Implementation**: SSE stream carries `AuthRequired` events with prompt details
+
+### 2. HTTP REST + SSE Communication
+**Decision**: Simple REST API for commands, Server-Sent Events for real-time updates
+
+**Rationale**:
+- REST is simple, well-understood, and easy to debug
+- SSE provides real-time push updates without WebSocket complexity
+- Works over Unix socket, HTTP, and HTTPS
+- Browser-compatible (future web UI possible)
+
+**Alternatives Considered**:
+- gRPC: Overkill for this use case, harder to debug
+- WebSocket: Bidirectional not needed, SSE simpler
+- D-Bus: Linux-only, complex for async Rust
+
+### 3. Hybrid Profile Mode for Remote Daemons
+**Decision**: Profile data sent via API, SSH keys stay on daemon filesystem
+
+**Rationale**:
+- **Security**: SSH private keys never transmitted over network
+- **Simplicity**: No key synchronization or encrypted transfer needed
+- **Trust Model**: User responsible for copying keys to daemon host
+- **Power User Oriented**: Expects manual key setup, provides clear guidance
+
+**Implementation**: `ProfileSourceMode` enum with Local/Hybrid/Remote variants
+
+### 4. One Tokio Task Per Tunnel
+**Decision**: Single async runtime, one `tokio::spawn` task per active tunnel
+
+**Rationale**:
+- Efficient: Tokio multiplexes thousands of tasks on thread pool
+- Isolated: Each tunnel has independent state and shutdown channel
+- Scalable: No thread-per-tunnel overhead
+- Idiomatic: Standard Rust async pattern
+
+**Alternative Considered**: Thread per tunnel - unnecessary overhead, harder to manage
+
+### 5. Keychain Integration (Optional)
+**Decision**: Use system keychain for password storage with graceful fallback
+
+**Rationale**:
+- Secure: OS-provided encryption at rest
+- Headless-friendly: Works without keyring (manual auth each time)
+- Cross-platform: Same API for GNOME Keyring, KWallet, macOS Keychain
+- User Choice: Can disable via environment variable
+
+**Implementation**: Test-based availability detection, no environment variable guessing
 
 ## System Architecture
 
@@ -92,16 +156,23 @@ A secure, performant SSH tunnel management application for Linux with GUI and CL
 - `monitor`: Health checks and metrics
 
 **Process Model**:
-- Single process, multi-threaded (Tokio async runtime)
-- Runs as user service (can be systemd --user in future)
-- Listener selection:
-  - Default: Unix domain socket in the user runtime dir (owner-only permissions)
-  - Local dev: TCP HTTP for testing only
-  - Remote/any non-localhost host: TCP HTTPS only (self-signed cert with pinning support)
-- Server-Sent Events (SSE) for real-time updates to CLI/GUI (`/api/events`)
+- Single Tokio async runtime (`#[tokio::main]`)
+- One async task spawned per tunnel (`tokio::spawn`)
+- Each task runs independently with isolated state and shutdown channel
+- Efficient concurrent execution via Tokio's work-stealing thread pool
 - Graceful shutdown with tunnel cleanup
 
-**Implementation Status**: ✅ Fully functional
+**Listener Modes**:
+- **Unix Socket** (default): User runtime dir with owner-only permissions (0600)
+- **TCP HTTP**: Localhost-only testing (restricted to 127.x.x.x)
+- **TCP HTTPS**: Network access with self-signed TLS certificate and fingerprint pinning
+
+**Profile Source Modes** (v0.1.9):
+- **Local Mode**: Profiles loaded from filesystem (Unix socket daemon)
+- **Hybrid Mode**: Profile data sent via API, SSH keys on daemon filesystem (HTTP/HTTPS daemon)
+- **Remote Mode**: Future enhancement for fully remote profiles
+
+**Implementation Status**: ✅ Fully functional with remote daemon support
 
 ### 2. GUI (`crates/gui-core` + `crates/gui-gtk`)
 
@@ -131,22 +202,25 @@ A secure, performant SSH tunnel management application for Linux with GUI and CL
 
 **Purpose**: GNOME/GTK desktop application
 
-**Implementation Status**: ✅ Fully functional
+**Implementation Status**: ✅ Fully functional with v0.1.9 enhancements
 
 **Features**:
+- **First-launch configuration wizard** (v0.1.9): Automatic snippet detection, manual config dialog, IP address prompts
 - Connection profile management (create, edit, delete) with validation
 - Tunnel start/stop controls with real-time status
 - Interactive 2FA/auth prompt handling via dialogs
+- **Remote daemon support** (v0.1.9): Connect to HTTPS daemons with SSH key setup warnings
 - Daemon connection monitoring with auto-reconnect
 - Client and daemon configuration UI
 - Help and About dialogs with markdown rendering
 - Real-time status indicators (colored dots)
 - Split view navigation between Client/Daemon pages
+- **User preference controls** (v0.1.9): "Don't show this again" for SSH key warnings
 
 **Technology**:
 - `gtk4-rs`: GTK4 bindings (Rust)
 - `libadwaita`: Modern GNOME styling (≥1.5)
-- `reqwest`: HTTP client for daemon API
+- `reqwest`: HTTP client for daemon API (supports Unix socket, HTTP, HTTPS)
 - SSE for real-time updates
 - Uses `gui-core` for business logic
 
@@ -154,24 +228,27 @@ A secure, performant SSH tunnel management application for Linux with GUI and CL
 
 **Purpose**: KDE/Qt6 desktop application with QML
 
-**Implementation Status**: 🚧 Under Development (qmetaobject-rs + Qt6/QML)
+**Implementation Status**: 🚧 Skeleton implementation (cxx-qt + Qt6/QML)
 
 **Current State**:
-- Basic QML UI with Rust backend using qmetaobject-rs
-- AppBackend QObject bridging QML and gui-core
-- Placeholder window showing technology stack
-- Full functionality being implemented
+- Basic Qt6/QML UI using cxx-qt bindings
+- Skeleton notice on About page
+- Profiles page with static placeholder data
+- Daemon/event wiring pending
 
 **Planned Features**:
+- Configuration wizard (like GTK version)
+- Full profile CRUD with validation
+- Remote daemon support
+- Real-time status updates via SSE
+- Interactive authentication dialogs
 - All features from gui-core
-- Qt6/QML declarative UI
 - Native KDE Plasma integration
-- Same functionality as GTK version
 
 **Technology**:
-- **qmetaobject-rs**: Rust bindings for Qt6
+- **cxx-qt**: Rust ↔ Qt6 bindings
 - **QML**: Declarative UI (Qt Quick)
-- **gui-core**: Shared business logic (~60-70% code reuse)
+- **gui-core**: Shared business logic (~60-70% code reuse planned)
 - See [crates/gui-qt/README.md](../crates/gui-qt/README.md) for implementation details
 
 #### 2d. GNOME Shell Extension (JavaScript)
