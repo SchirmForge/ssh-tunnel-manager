@@ -225,6 +225,7 @@ pub struct DaemonInfo {
     // Runtime info
     pub config_file_path: String,
     pub known_hosts_path: String,
+    pub ssh_key_dir: String, // Directory where daemon looks for SSH keys (e.g., /home/user/.ssh)
     pub active_tunnels_count: usize,
 
     // Process info

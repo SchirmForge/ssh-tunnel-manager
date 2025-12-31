@@ -2,8 +2,8 @@
 
 ## Current State
 
-**Version**: v0.1.8
-**Status**: ✅ Production-ready CLI/Daemon/GUI with enhanced error handling and tunnel management  
+**Version**: v0.1.9
+**Status**: ✅ Production-ready CLI/Daemon/GUI with remote daemon support and enhanced UX  
 
 - CLI and daemon work end-to-end for **local port forwarding** with interactive auth.  
 - **SSE** powers real-time updates (`/api/events`); REST covers start/stop/status/auth.  
@@ -127,6 +127,25 @@
 
 ### Recently Completed ✅
 
+- ✅ **Remote daemon profile support** (v0.1.9) - Profiles work with HTTP/HTTPS remote daemons
+  - New `ProfileSourceMode` enum: Local (filesystem), Hybrid (API + daemon filesystem), Remote (future)
+  - `StartTunnelRequest` sent via API includes profile data for remote daemon compatibility
+  - SSH private keys remain secure on daemon filesystem - never sent over network
+  - Enhanced error messages show daemon's actual SSH directory paths instead of generic `~/.ssh`
+  - Daemon calculates and reports SSH directory via `DaemonInfo.ssh_key_dir` API field
+  - Simplified SSH key setup instructions - removed specific scp/chmod commands
+  - Added ssh-agent recommendation for encrypted keys
+- ✅ **SSH Key Setup Warning opt-out** (v0.1.9) - User-controllable warning dialog
+  - "Don't show this again" checkbox on SSH key setup warning dialog
+  - Preference persists in `cli.toml` as `skip_ssh_setup_warning` field
+  - Respects user choice across application restarts
+- ✅ **Daemon settings improvements** (v0.1.9) - Better UI for remote daemon scenarios
+  - Hides "Restart Daemon" button when using HTTPS mode (remote daemon)
+  - Prevents confusion about local-only daemon operations
+  - Restart row only shown for unix-socket mode
+- ✅ **Debug logging migration** (v0.1.9) - Proper structured logging
+  - Converted all `eprintln!` debug output to `tracing::debug!` and `tracing::warn!`
+  - Consistent logging framework across all GUI code
 - ✅ **Enhanced 401 authentication error handling** (v0.1.8) - Proactive config validation with interactive snippet copy
   - Config validation before daemon connection attempts prevents confusing 401 errors
   - Interactive prompt to copy daemon-generated config snippet when missing

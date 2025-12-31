@@ -253,11 +253,16 @@ pub fn prepare_profile_for_remote(profile: &Profile) -> Result<Profile> {
 ///
 /// let msg = get_remote_key_setup_message(
 ///     Path::new("/home/user/.ssh/id_ed25519"),
-///     Some("example.com")
+///     Some("example.com"),
+///     Some("/var/lib/daemon_user/.ssh")
 /// );
-/// // Returns message with: scp /home/user/.ssh/id_ed25519 example.com:~/.ssh/
+/// // Returns message with: scp /home/user/.ssh/id_ed25519 example.com:/var/lib/daemon_user/.ssh/id_ed25519
 /// ```
-pub fn get_remote_key_setup_message(key_path: &std::path::Path, daemon_host: Option<&str>) -> String {
+pub fn get_remote_key_setup_message(
+    key_path: &std::path::Path,
+    daemon_host: Option<&str>,
+    daemon_ssh_dir: Option<&str>,
+) -> String {
     let host = daemon_host.unwrap_or("DAEMON_HOST");
     let key_display = key_path.display();
 
@@ -266,15 +271,18 @@ pub fn get_remote_key_setup_message(key_path: &std::path::Path, daemon_host: Opt
         .and_then(|f| f.to_str())
         .unwrap_or("SSH_KEY");
 
+    // Use daemon's actual SSH directory if provided, otherwise fall back to ~/.ssh
+    let ssh_dir = daemon_ssh_dir.unwrap_or("~/.ssh");
+    let full_remote_path = format!("{}/{}", ssh_dir, filename);
+
     format!(
         "SSH key must be available on the daemon host.\n\n\
-        To copy your SSH key to the daemon:\n\
-        1. Copy the private key:\n   \
-           scp {} {}:~/.ssh/\n\n\
-        2. Set correct permissions:\n   \
-           ssh {} chmod 600 ~/.ssh/{}\n\n\
-        Note: The daemon will look for the key at ~/.ssh/{} on its filesystem.",
-        key_display, host, host, filename, filename
+        Copy the SSH key '{}' to the daemon's .ssh directory:\n   \
+           {} → {}:{}\n\n\
+        Then ensure correct permissions (if needed):\n   \
+           chmod 600 {}\n\n\
+        The daemon will look for the key at: {}",
+        filename, key_display, host, ssh_dir, full_remote_path, full_remote_path
     )
 }
 

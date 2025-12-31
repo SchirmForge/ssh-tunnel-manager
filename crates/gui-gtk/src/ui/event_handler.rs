@@ -75,31 +75,36 @@ pub fn handle_daemon_connected(state: &Rc<AppState>, connected: bool) {
 
 /// Handle an error event
 pub fn handle_error(state: &Rc<AppState>, profile_id: Option<Uuid>, error: String) {
-    eprintln!("Event: Error{}: {}",
-        profile_id.map(|id| format!(" for profile {}", id)).unwrap_or_default(),
-        error
-    );
+    tracing::debug!("handle_error called - profile_id: {:?}, error: {}", profile_id, error);
 
     // If error is for a specific profile, update its status
     if let Some(id) = profile_id {
+        tracing::debug!("Updating status for profile {} to Failed", id);
         let status = TunnelStatus::Failed(error.clone());
 
         // Update status in AppCore
         {
             let mut core = state.core.borrow_mut();
             core.tunnel_statuses.insert(id, status.clone());
+            tracing::debug!("Status updated in AppCore");
         }
 
         // Clear auth state for this profile
+        tracing::debug!("Clearing auth state");
         auth_dialog::clear_auth_state(state, id);
 
         // Update profiles list UI
+        tracing::debug!("Updating profiles list UI");
         if let Some(list_box) = state.profile_list.borrow().as_ref() {
             profiles_list::update_profile_status(list_box, id, status.clone());
+            tracing::debug!("Profiles list UI updated");
+        } else {
+            tracing::debug!("No profile list available to update");
         }
     }
 
     // Show error toast/notification
+    tracing::debug!("Attempting to show error toast");
     if let Some(window) = state.window.borrow().as_ref() {
         let toast = adw::Toast::new(&error);
         toast.set_timeout(5);
@@ -107,31 +112,47 @@ pub fn handle_error(state: &Rc<AppState>, profile_id: Option<Uuid>, error: Strin
         // Try to get toast overlay from window
         if let Some(overlay) = window.child().and_then(|c| c.downcast::<adw::ToastOverlay>().ok()) {
             overlay.add_toast(toast);
+            tracing::debug!("Toast shown successfully");
+        } else {
+            tracing::debug!("Could not get toast overlay from window");
         }
+    } else {
+        tracing::debug!("No window available to show toast");
     }
+
+    tracing::debug!("handle_error completed");
 }
 
 /// Process a TunnelEvent from the SSE stream
 pub fn process_tunnel_event(state: &Rc<AppState>, event: TunnelEvent) {
+    tracing::debug!("process_tunnel_event called with: {:?}", event);
+
     match event {
         TunnelEvent::Connected { id } => {
+            tracing::debug!("Processing Connected event for {}", id);
             handle_status_changed(state, id, TunnelStatus::Connected);
         }
         TunnelEvent::Starting { id } => {
+            tracing::debug!("Processing Starting event for {}", id);
             handle_status_changed(state, id, TunnelStatus::Connecting);
         }
         TunnelEvent::Disconnected { id, reason } => {
-            eprintln!("Tunnel {} disconnected: {}", id, reason);
+            tracing::debug!("Processing Disconnected event for {}: {}", id, reason);
             handle_status_changed(state, id, TunnelStatus::Disconnected);
         }
         TunnelEvent::Error { id, error } => {
+            tracing::debug!("Processing Error event for {}: {}", id, error);
             handle_error(state, Some(id), error);
         }
         TunnelEvent::AuthRequired { id: _, request } => {
+            tracing::debug!("Processing AuthRequired event for {}", request.tunnel_id);
             handle_auth_required(state, request);
         }
         TunnelEvent::Heartbeat { .. } => {
             // Heartbeat events are handled by the event listener for connection monitoring
+            // Don't log these - too noisy
         }
     }
+
+    tracing::debug!("process_tunnel_event completed");
 }

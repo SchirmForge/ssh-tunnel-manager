@@ -862,28 +862,41 @@ async fn authenticate_with_key(
     auth_ctx: &AuthContext,
     profile: &Profile,
 ) -> Result<bool> {
+    // For remote profiles (Hybrid mode), key_path is just a filename
+    // Expand it to the full path in ~/.ssh
+    let full_key_path = if key_path.is_relative() {
+        let ssh_dir = dirs::home_dir()
+            .ok_or_else(|| anyhow::anyhow!("Could not determine home directory"))?
+            .join(".ssh");
+        ssh_dir.join(key_path)
+    } else {
+        key_path.to_path_buf()
+    };
+
+    info!("Loading SSH key from: {}", full_key_path.display());
+
     // Try to load with stored passphrase first if available
     let key = if profile.connection.password_storage == PasswordStorage::Keychain {
         match crate::security::get_stored_password(&profile.metadata.id) {
             Ok(passphrase) => {
                 info!("Using stored passphrase from keychain");
-                match load_secret_key(key_path, Some(&passphrase)) {
+                match load_secret_key(&full_key_path, Some(&passphrase)) {
                     Ok(k) => k,
                     Err(e) => {
                         warn!("Stored passphrase failed, requesting new one: {}", e);
                         // Fall through to interactive prompt
-                        request_passphrase_and_load(key_path, auth_ctx).await?
+                        request_passphrase_and_load(&full_key_path, auth_ctx).await?
                     }
                 }
             }
             Err(e) => {
                 warn!("Failed to retrieve stored passphrase: {}", e);
-                request_passphrase_and_load(key_path, auth_ctx).await?
+                request_passphrase_and_load(&full_key_path, auth_ctx).await?
             }
         }
     } else {
         // Try without passphrase first, then prompt if needed
-        match load_secret_key(key_path, None) {
+        match load_secret_key(&full_key_path, None) {
             Ok(key) => key,
             Err(e) => {
                 let err_str = e.to_string().to_lowercase();
@@ -892,11 +905,21 @@ async fn authenticate_with_key(
                     || err_str.contains("decrypt")
                 {
                     info!("Key is encrypted, requesting passphrase");
-                    request_passphrase_and_load(key_path, auth_ctx).await?
+                    request_passphrase_and_load(&full_key_path, auth_ctx).await?
                 } else {
-                    return Err(e).context(format!(
-                        "Failed to load SSH key from {}",
-                        key_path.display()
+                    // Key file not found or unreadable - provide simplified helpful error
+                    return Err(anyhow::anyhow!(
+                        "Failed to load SSH key: {}\n\n\
+                        Please ensure:\n\
+                        1. The SSH key file exists in the daemon user's ~/.ssh/ directory\n\
+                        2. File permissions are correct (chmod 600 ~/.ssh/{})\n\
+                        3. If the key is encrypted, use ssh-agent on the daemon host:\n   \
+                           eval $(ssh-agent) && ssh-add ~/.ssh/{}\n\n\
+                        Original error: {}",
+                        full_key_path.display(),
+                        key_path.display(),
+                        key_path.display(),
+                        e
                     ));
                 }
             }

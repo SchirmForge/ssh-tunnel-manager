@@ -20,7 +20,7 @@ pub use view_models::{ProfileViewModel, StatusColor};
 pub use daemon::{
     DaemonClient, EventListener, TunnelEvent,
     load_daemon_config, get_cli_config_path,
-    config::{ConfigStatus, check_config_status, load_snippet_config, save_daemon_config, daemon_config_snippet_exists},
+    config::{ConfigStatus, check_config_status, load_snippet_config, save_daemon_config, save_skip_ssh_warning_preference, daemon_config_snippet_exists},
 };
 
 // Re-export types from common crate for convenience

@@ -509,6 +509,11 @@ async fn get_daemon_info(State(state): State<Arc<AppState>>) -> impl IntoRespons
         .and_then(|s| s.into_string().ok())
         .unwrap_or_else(|| "unknown".to_string());
 
+    // Calculate SSH key directory (where daemon looks for keys)
+    let ssh_key_dir = dirs::home_dir()
+        .map(|home| home.join(".ssh").display().to_string())
+        .unwrap_or_else(|| "~/.ssh".to_string());
+
     let info = DaemonInfo {
         version: env!("CARGO_PKG_VERSION").to_string(),
         uptime_seconds: uptime,
@@ -529,6 +534,7 @@ async fn get_daemon_info(State(state): State<Arc<AppState>>) -> impl IntoRespons
         group_access: config.group_access,
         config_file_path,
         known_hosts_path: config.known_hosts_path.display().to_string(),
+        ssh_key_dir,
         active_tunnels_count: active_count,
         pid: std::process::id(),
         user: username,

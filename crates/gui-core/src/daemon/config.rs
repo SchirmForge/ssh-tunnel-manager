@@ -145,3 +145,16 @@ pub fn save_daemon_config(config: &DaemonClientConfig) -> Result<()> {
 
     Ok(())
 }
+
+/// Save the skip SSH setup warning preference to config file
+/// This updates only the skip_ssh_setup_warning field while preserving other settings
+pub async fn save_skip_ssh_warning_preference(skip: bool) -> Result<()> {
+    // Load current config
+    let mut config = load_daemon_config()?;
+
+    // Update the preference
+    config.skip_ssh_setup_warning = skip;
+
+    // Save back to file
+    save_daemon_config(&config)
+}

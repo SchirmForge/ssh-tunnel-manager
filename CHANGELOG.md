@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+---
+
+## [0.1.9] - 2025-12-31
+
 ### Added
 - **Remote daemon profile support** - Profiles now work with HTTP/HTTPS remote daemons
   - New `ProfileSourceMode` enum: Local (filesystem), Hybrid (API + daemon filesystem), Remote (future)
@@ -50,6 +54,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Enter key support in IP address dialog for quick submission
   - IP validation with helpful error messages showing valid examples
 - **Qt6 GUI skeleton** - Minimal runnable Qt/QML shell (cxx-qt) landing on About page with a skeleton notice and static placeholder profiles; daemon wiring and real data are still in progress.
+- **SSH Key Setup Warning opt-out** - Added "Don't show this again" checkbox to SSH key setup dialog
+  - New `skip_ssh_setup_warning` field in `DaemonClientConfig` stored in `cli.toml`
+  - Checkbox appears in both sidebar details panel and full profile details page
+  - Preference persists across application restarts
+  - Users can manually edit `cli.toml` to re-enable warnings
+  - Files: `crates/common/src/daemon_client.rs`, `crates/gui-core/src/daemon/client.rs`, `crates/gui-core/src/daemon/config.rs`, `crates/gui-gtk/src/ui/details.rs`, `crates/gui-gtk/src/ui/profile_details.rs`
+- **Daemon settings page improvements** - Hides "Restart Daemon" button when using HTTPS mode
+  - Restart row only shown for unix-socket mode (local daemon)
+  - Prevents confusion for remote daemon scenarios where restart would need to happen on remote host
+  - File: `crates/gui-gtk/src/ui/daemon_settings.rs`
+- **Enhanced SSH key error messages** - Improved clarity and accuracy for remote daemon scenarios
+  - Daemon calculates and reports actual SSH directory via `DaemonInfo.ssh_key_dir`
+  - Warning messages show daemon's actual paths instead of generic `~/.ssh`
+  - Simplified copy instructions - removed specific scp/chmod commands that assume same usernames
+  - Added recommendation to use ssh-agent for encrypted SSH keys
+  - Daemon expands relative key paths (e.g., `id_reverse`) to full `~/.ssh/id_reverse`
+  - Files: `crates/common/src/types.rs`, `crates/common/src/profile_manager.rs`, `crates/daemon/src/api.rs`, `crates/daemon/src/tunnel.rs`
 
 ### Fixed
 - **IP address validation accepting invalid octets** - Now properly rejects IPs like `10.1.2.256`

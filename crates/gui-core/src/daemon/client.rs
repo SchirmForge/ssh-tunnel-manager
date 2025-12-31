@@ -68,6 +68,11 @@ impl DaemonClient {
         Ok(Self { client, config })
     }
 
+    /// Update the skip SSH setup warning preference
+    pub fn set_skip_ssh_warning(&mut self, skip: bool) {
+        self.config.skip_ssh_setup_warning = skip;
+    }
+
     /// Get the base URL for API requests
     fn base_url(&self) -> Result<String> {
         self.config.daemon_base_url()
@@ -86,8 +91,13 @@ impl DaemonClient {
     }
 
     /// Check if a profile requires SSH key setup warning for remote daemon
-    pub fn needs_ssh_key_warning(&self, profile: &Profile) -> Option<String> {
+    pub async fn needs_ssh_key_warning(&self, profile: &Profile) -> Option<String> {
         use ssh_tunnel_common::get_remote_key_setup_message;
+
+        // Skip if user has opted out of this warning
+        if self.config.skip_ssh_setup_warning {
+            return None;
+        }
 
         // Only show warning for remote daemons
         let is_remote_daemon = matches!(
@@ -102,7 +112,17 @@ impl DaemonClient {
         // Only show warning if profile uses SSH key authentication
         if let Some(key_path) = &profile.connection.key_path {
             let daemon_host = Some(self.config.daemon_host.as_str());
-            Some(get_remote_key_setup_message(key_path, daemon_host))
+
+            // Try to fetch daemon info to get the actual SSH key directory
+            let daemon_ssh_dir = self.get_daemon_info().await
+                .ok()
+                .map(|info| info.ssh_key_dir);
+
+            Some(get_remote_key_setup_message(
+                key_path,
+                daemon_host,
+                daemon_ssh_dir.as_deref(),
+            ))
         } else {
             None
         }

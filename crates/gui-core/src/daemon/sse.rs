@@ -123,12 +123,17 @@ impl EventListener {
                             let message = buffer[..pos].to_string();
                             buffer = buffer[pos + 2..].to_string();
 
+                            tracing::debug!("Raw SSE message: {:?}", message);
+
                             // Parse SSE message
                             if let Some(event) = Self::parse_sse_message(&message) {
+                                tracing::debug!("Sending event to channel: {:?}", event);
                                 if tx.send(event).await.is_err() {
+                                    tracing::debug!("Receiver dropped, stopping event listener");
                                     // Receiver dropped, stop listening
                                     return Ok(());
                                 }
+                                tracing::debug!("Event sent to channel successfully");
                             }
                         }
                     }
@@ -151,10 +156,14 @@ impl EventListener {
         for line in message.lines() {
             if let Some(data) = line.strip_prefix("data: ") {
                 // Parse JSON
-                if let Ok(event) = serde_json::from_str::<TunnelEvent>(data) {
-                    return Some(event);
-                } else {
-                    tracing::warn!("Failed to parse SSE event: {}", data);
+                match serde_json::from_str::<TunnelEvent>(data) {
+                    Ok(event) => {
+                        tracing::debug!("Parsed SSE event: {:?}", event);
+                        return Some(event);
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to parse SSE event: {} (error: {})", data, e);
+                    }
                 }
             }
         }

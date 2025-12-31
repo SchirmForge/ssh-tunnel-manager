@@ -333,6 +333,7 @@ fn show_manual_config_dialog(parent: Option<&impl IsA<gtk4::Window>>) -> Option<
                 daemon_url: String::new(),
                 auth_token,
                 tls_cert_fingerprint: String::new(),
+                skip_ssh_setup_warning: false,
             }
         } else {
             // HTTPS mode - also requires fingerprint
@@ -361,6 +362,7 @@ fn show_manual_config_dialog(parent: Option<&impl IsA<gtk4::Window>>) -> Option<
                 daemon_url: String::new(),
                 auth_token,
                 tls_cert_fingerprint: fingerprint,
+                skip_ssh_setup_warning: false,
             }
         };
 

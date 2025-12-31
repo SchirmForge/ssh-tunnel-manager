@@ -60,6 +60,11 @@ pub struct DaemonClientConfig {
     /// TLS certificate fingerprint for HTTPS mode (optional, enables cert pinning)
     #[serde(default)]
     pub tls_cert_fingerprint: String,
+
+    /// Skip SSH key setup warning for remote daemon connections
+    /// When true, the warning dialog about copying SSH keys to remote daemon is not shown
+    #[serde(default)]
+    pub skip_ssh_setup_warning: bool,
 }
 
 fn default_daemon_host() -> String {
@@ -79,6 +84,7 @@ impl Default for DaemonClientConfig {
             daemon_url: String::new(),
             auth_token: String::new(),
             tls_cert_fingerprint: String::new(),
+            skip_ssh_setup_warning: false,
         }
     }
 }
@@ -576,7 +582,7 @@ pub async fn start_tunnel_with_events<H: TunnelEventHandler>(
                 }
                 _ => None,
             };
-            let warning_msg = get_remote_key_setup_message(key_path, daemon_host);
+            let warning_msg = get_remote_key_setup_message(key_path, daemon_host, None);
             eprintln!("\n{}\n", warning_msg);
         }
 
