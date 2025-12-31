@@ -1,6 +1,6 @@
 [package]
 name = "ssh-tunnel-gui-qt"
-version = "0.1.8"
+version = "0.1.9"
 edition = "2021"
 authors = ["SSH Tunnel Manager Contributors"]
 description = "Qt6 desktop GUI for SSH Tunnel Manager"
@@ -17,7 +17,7 @@ ssh-tunnel-gui-core = { path = "../gui-core" }
 
 # Qt6 bindings via cxx-qt (from GitHub for latest features)
 cxx-qt = { git = "https://github.com/KDAB/cxx-qt", tag = "v0.8.0" }
-cxx-qt-lib = { git = "https://github.com/KDAB/cxx-qt", tag = "v0.8.0" }
+cxx-qt-lib = { git = "https://github.com/KDAB/cxx-qt", tag = "v0.8.0", features = ["qt_gui", "qt_qml"] }
 
 # Async runtime
 tokio = { version = "1.35", features = ["full"] }
@@ -40,5 +40,4 @@ tracing = "0.1"
 cstr = "0.2"
 
 [build-dependencies]
-# Temporarily disabled until cxx-qt bridge macro issues are resolved
-# cxx-qt-build = { git = "https://github.com/KDAB/cxx-qt", tag = "v0.8.0" }
+cxx-qt-build = { git = "https://github.com/KDAB/cxx-qt", tag = "v0.8.0" }

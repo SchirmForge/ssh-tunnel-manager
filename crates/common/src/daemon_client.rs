@@ -60,6 +60,11 @@ pub struct DaemonClientConfig {
     /// TLS certificate fingerprint for HTTPS mode (optional, enables cert pinning)
     #[serde(default)]
     pub tls_cert_fingerprint: String,
+
+    /// Skip SSH key setup warning for remote daemon connections
+    /// When true, the warning dialog about copying SSH keys to remote daemon is not shown
+    #[serde(default)]
+    pub skip_ssh_setup_warning: bool,
 }
 
 fn default_daemon_host() -> String {
@@ -79,6 +84,7 @@ impl Default for DaemonClientConfig {
             daemon_url: String::new(),
             auth_token: String::new(),
             tls_cert_fingerprint: String::new(),
+            skip_ssh_setup_warning: false,
         }
     }
 }
@@ -165,6 +171,44 @@ impl DaemonClientConfig {
 
 /// Create an HTTP client configured to connect to the daemon
 ///
+/// Check if daemon configuration needs IP address for connection
+/// Returns true if daemon_host is empty for HTTP/HTTPS modes
+pub fn config_needs_ip_address(config: &DaemonClientConfig) -> bool {
+    matches!(config.connection_mode, ConnectionMode::Http | ConnectionMode::Https)
+        && config.daemon_host.is_empty()
+}
+
+/// Validate daemon client configuration completeness
+/// Returns error if configuration is incomplete or invalid
+pub fn validate_client_config(config: &DaemonClientConfig) -> Result<()> {
+    // Check if IP address is needed but missing
+    if config_needs_ip_address(config) {
+        anyhow::bail!(
+            "daemon_host is required for {} mode but is empty. \
+             The daemon is configured to listen on all interfaces (0.0.0.0). \
+             Please specify the actual IP address to connect to (e.g., 127.0.0.1 or 192.168.1.100)",
+            match config.connection_mode {
+                ConnectionMode::Http => "HTTP",
+                ConnectionMode::Https => "HTTPS",
+                _ => "this"
+            }
+        );
+    }
+
+    // Validate auth token is present (daemon requires auth by default)
+    if config.auth_token.is_empty() {
+        anyhow::bail!("Authentication token is required but is empty");
+    }
+
+    // For HTTPS, validate TLS fingerprint (recommended for security)
+    if matches!(config.connection_mode, ConnectionMode::Https)
+        && config.tls_cert_fingerprint.is_empty() {
+        anyhow::bail!("TLS certificate fingerprint is required for HTTPS mode but is empty");
+    }
+
+    Ok(())
+}
+
 /// # Arguments
 /// * `config` - Daemon client configuration
 ///
@@ -387,8 +431,11 @@ pub async fn start_tunnel_with_events<H: TunnelEventHandler>(
     client: &Client,
     config: &DaemonClientConfig,
     tunnel_id: Uuid,
+    profile: &crate::Profile,
     handler: &mut H,
 ) -> Result<()> {
+    use crate::{prepare_profile_for_remote, get_remote_key_setup_message, ProfileSourceMode, StartTunnelRequest};
+
     let base_url = config.daemon_base_url()?;
 
     // Subscribe to SSE events BEFORE sending start request
@@ -517,9 +564,44 @@ pub async fn start_tunnel_with_events<H: TunnelEventHandler>(
         }
     }
 
+    // Determine if daemon is remote (HTTP/HTTPS) vs local (Unix socket)
+    let is_remote_daemon = matches!(config.connection_mode, ConnectionMode::Http | ConnectionMode::Https);
+
+    // Prepare the start tunnel request
+    let (mode, profile_opt) = if is_remote_daemon {
+        // Remote daemon - send profile via API
+        let remote_profile = prepare_profile_for_remote(profile)
+            .context("Failed to prepare profile for remote daemon")?;
+
+        // Show SSH key warning if using key authentication
+        if let Some(key_path) = &profile.connection.key_path {
+            let daemon_host = match &config.connection_mode {
+                ConnectionMode::Http | ConnectionMode::Https => {
+                    // Use daemon_host from config
+                    Some(config.daemon_host.as_str())
+                }
+                _ => None,
+            };
+            let warning_msg = get_remote_key_setup_message(key_path, daemon_host, None);
+            eprintln!("\n{}\n", warning_msg);
+        }
+
+        (ProfileSourceMode::Hybrid, Some(remote_profile))
+    } else {
+        // Local daemon (Unix socket) - load from filesystem
+        (ProfileSourceMode::Local, None)
+    };
+
+    let start_request = StartTunnelRequest {
+        profile_id: tunnel_id.to_string(),
+        mode,
+        profile: profile_opt,
+    };
+
     // Now send start request (SSE is ready to receive events)
     let url = format!("{}/api/tunnels/{}/start", base_url, tunnel_id);
     let resp = add_auth_header(client.post(&url), config)?
+        .json(&start_request)
         .send()
         .await
         .context("Failed to send start request to daemon. Is the daemon running?")?;

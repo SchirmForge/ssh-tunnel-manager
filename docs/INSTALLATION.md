@@ -123,16 +123,55 @@ systemctl --user status ssh-tunnel-daemon
 
 The system service uses a template that requires specifying a username:
 
+#### Run as your current user
 ```bash
-# Run as your current user
+# Run and enable at user login
 sudo systemctl enable --now ssh-tunnel-daemon@$USER
+```
+#### Or run as a specific user (the example below assumes *tunneld* runs the daemon)
+```bash
+# Create tunneld user 
+sudo useradd --system --home-dir /var/lib/tunneld --create-home --shell /usr/sbin/nologin --comment "Tunnel daemon" tunneld
+# Or if your distro uses adduser:
+sudo adduser --system --home /var/lib/tunneld --shell /usr/sbin/nologin --group tunneld
 
-# Or run as a specific user (must have a home directory for config storage)
-sudo systemctl enable --now ssh-tunnel-daemon@username
+# Run and enable at system start
+sudo systemctl enable --now ssh-tunnel-daemon@tunneld
 
 # Check status
-sudo systemctl status ssh-tunnel-daemon@$USER
+sudo systemctl status ssh-tunnel-daemon@tunneld
+
+# Check logs
+sudo journalctl -u ssh-tunnel-daemon@tunneld -f
 ```
+
+**Allowing other users to access the daemon:**
+
+By default, the daemon socket has restrictive permissions (0600/0700) that only allow the daemon user to connect. To allow other users on the same machine to access the daemon, you have two options:
+
+**Option 1: Enable group access (recommended for local access)**
+
+```bash
+# 1. Add users to the daemon's group
+sudo usermod -aG tunneld otheruser1
+sudo usermod -aG tunneld otheruser2
+
+# 2. Enable group access in daemon config
+sudo nano /var/lib/tunneld/.config/ssh-tunnel-manager/daemon.toml
+# Add or change: group_access = true
+
+# 3. Restart the daemon
+sudo systemctl restart ssh-tunnel-daemon@tunneld
+
+# 4. Users need to log out and back in, or run:
+newgrp tunneld
+```
+
+This changes socket permissions from 0600/0700 to 0660/0770, allowing group members to access the socket.
+
+**Option 2: Use HTTPS mode (for network or cross-user access)**
+
+See the "Enabling Network Access (HTTPS Mode)" section below for detailed instructions.
 
 **Important notes for system service:**
 - The specified user must exist and have a home directory
@@ -154,6 +193,171 @@ ssh-tunnel info
 # Launch GUI (if installed)
 ssh-tunnel-gtk
 ```
+
+## Advanced Configuration
+
+### Enabling Network Access (HTTPS Mode)
+
+By default, the daemon uses a Unix socket for local-only access. To enable network access (e.g., to connect from a remote machine or different user account), you need to switch to HTTPS mode.
+
+**Step 1: Configure the daemon for HTTPS**
+
+Edit the daemon configuration file:
+```bash
+# Location depends on which service mode you're using
+# For user service:
+nano ~/.config/ssh-tunnel-manager/daemon.toml
+
+# For system service running as specific user:
+sudo nano /home/username/.config/ssh-tunnel-manager/daemon.toml
+```
+
+Change the listener mode and bind settings:
+```toml
+# Change from unix-socket to tcp-https
+listener_mode = "tcp-https"
+
+# Bind to all interfaces (or use specific IP)
+bind_host = "0.0.0.0"  # or "192.168.1.100" for specific interface
+bind_port = 3443
+
+# Authentication is required for network access (already enabled by default)
+require_auth = true
+```
+
+**Step 2: Restart the daemon**
+
+```bash
+# For user service
+systemctl --user restart ssh-tunnel-daemon
+
+# For system service
+sudo systemctl restart ssh-tunnel-daemon@$USER
+```
+
+**Step 3: Use the auto-generated configuration snippet (Recommended)**
+
+The daemon automatically generates a configuration snippet for clients when configured for network access. This is the easiest and most secure way to configure your client.
+
+**Configuration snippet location:**
+```bash
+# For user service:
+cat ~/.config/ssh-tunnel-manager/cli-config.snippet
+
+# For system service:
+sudo cat /home/username/.config/ssh-tunnel-manager/cli-config.snippet
+```
+
+**Automatic import:**
+
+Both CLI and GUI will automatically detect and offer to import this snippet on first use:
+
+```bash
+# CLI - Run any command and you'll be prompted
+ssh-tunnel start <any-profile>
+# Will prompt to import the configuration snippet
+
+# GUI - Launch the application
+ssh-tunnel-gtk
+# Will show configuration wizard on first launch
+```
+
+**Understanding empty `daemon_host` (network access scenarios):**
+
+When the daemon binds to `0.0.0.0` (all network interfaces), the configuration snippet will contain an empty `daemon_host` field:
+
+```toml
+connection_mode = "https"
+daemon_host = ""  # Empty - daemon listens on all interfaces
+daemon_port = 3443
+auth_token = "..."
+tls_cert_fingerprint = "..."
+# Note: daemon_host is empty because daemon is configured to listen on
+# all interfaces (0.0.0.0). You must specify the actual IP address to
+# connect to (e.g., 192.168.1.100)
+```
+
+This is intentional because:
+- `0.0.0.0` is a bind-all address (server-side) and cannot be used as a connection target (client-side)
+- The actual IP address depends on which network interface you want to connect through
+
+**What happens when you import:**
+
+Both CLI and GUI will automatically detect the empty `daemon_host` and prompt you for the actual IP address:
+
+1. **CLI**: Interactive prompt asking for the daemon's IP address
+   ```bash
+   ssh-tunnel start myprofile
+   > Configuration snippet detected. Import it? (y/n): y
+   > Daemon IP address required. Enter the IP to connect to: 192.168.1.100
+   > Configuration saved successfully
+   ```
+
+2. **GUI**: Dialog box requesting the daemon's IP address
+   - Shows suggested default (e.g., 192.168.1.100)
+   - Validates the input before saving
+
+The configuration is then saved with your specified IP address to `~/.config/ssh-tunnel-manager/cli.toml`.
+
+**Step 4: Manual client configuration (Advanced)**
+
+If you prefer to manually configure the client without using the snippet:
+
+```bash
+nano ~/.config/ssh-tunnel-manager/cli.toml
+```
+
+Create configuration matching this format:
+```toml
+# Daemon connection settings
+connection_mode = "https"
+daemon_host = "192.168.1.100"  # Replace with your daemon's actual IP
+daemon_port = 3443
+auth_token = "paste-token-here"  # Get from daemon.token file
+tls_cert_fingerprint = "paste-fingerprint-here"  # Get from tls-cert.fingerprint
+```
+
+**Get the authentication token:**
+```bash
+# On daemon machine
+cat ~/.config/ssh-tunnel-manager/daemon.token
+```
+
+**Get the TLS certificate fingerprint:**
+```bash
+# For user service:
+cat ~/.config/ssh-tunnel-manager/tls-cert.fingerprint
+
+# For system service:
+sudo cat /home/username/.config/ssh-tunnel-manager/tls-cert.fingerprint
+```
+
+The fingerprint looks like:
+```
+A1:B2:C3:D4:E5:F6:G7:H8:I9:J0:K1:L2:M3:N4:O5:P6:Q7:R8:S9:T0:U1:V2:W3:X4:Y5:Z6:A7:B8:C9:D0:E1:F2
+```
+
+**Alternative method** - Calculate from certificate file:
+```bash
+openssl x509 -in ~/.config/ssh-tunnel-manager/daemon.crt -noout -fingerprint -sha256 | cut -d'=' -f2
+```
+
+**Step 6: Configure firewall (if needed)**
+
+```bash
+# Allow incoming connections on port 3443
+sudo firewall-cmd --permanent --add-port=3443/tcp
+sudo firewall-cmd --reload
+
+# Or using ufw:
+sudo ufw allow 3443/tcp
+```
+
+**Security Notes:**
+- HTTPS mode uses self-signed certificates with fingerprint pinning for security
+- Authentication tokens are required for all network access
+- Never use HTTP mode over the network (it's restricted to localhost only)
+- The daemon config file and token have 0600 permissions (readable only by owner)
 
 ## Uninstallation
 

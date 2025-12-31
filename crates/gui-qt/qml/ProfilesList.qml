@@ -4,15 +4,32 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import com.ssh_tunnel_manager 1.0
 
 Page {
     id: profilesPage
     title: "SSH Tunnel Profiles"
 
-    // Create the profiles model
-    ProfilesListModel {
+    // Static placeholder data (Qt model wiring will replace this)
+    ListModel {
         id: profilesModel
+        ListElement {
+            idStr: "11111111-1111-1111-1111-111111111111"
+            name: "Example Tunnel"
+            host: "example.com"
+            statusText: "Not connected"
+            statusColor: "#9e9e9e"
+            canStart: true
+            canStop: false
+        }
+        ListElement {
+            idStr: "22222222-2222-2222-2222-222222222222"
+            name: "Database Tunnel"
+            host: "db.internal"
+            statusText: "Connected"
+            statusColor: "#4caf50"
+            canStart: false
+            canStop: true
+        }
     }
 
     header: ToolBar {
@@ -52,15 +69,22 @@ Page {
         spacing: 8
         clip: true
 
-        model: profilesModel.items
+        model: profilesModel
 
         delegate: ItemDelegate {
             width: profilesListView.width - 16
             height: 80
 
-            // Profile data from model (comes from ProfileViewModel!)
-            // Parse JSON string from model
-            property var profileData: JSON.parse(modelData)
+            // Profile data from model (placeholder JSON for now)
+            property var profileData: ({
+                id: idStr,
+                name: name,
+                host: host,
+                statusText: statusText,
+                statusColor: statusColor,
+                canStart: canStart,
+                canStop: canStop
+            })
 
             background: Rectangle {
                 color: parent.hovered ? "#f0f0f0" : "white"

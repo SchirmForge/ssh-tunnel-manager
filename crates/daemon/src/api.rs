@@ -25,7 +25,10 @@ use serde::Serialize;
 use tracing::{error, info};
 use uuid::Uuid;
 
-use ssh_tunnel_common::{load_profile_by_id, AuthRequest, AuthResponse, TunnelStatus};
+use ssh_tunnel_common::{
+    load_profile_by_id, AuthRequest, AuthResponse, ProfileSourceMode, StartTunnelRequest,
+    TunnelStatus,
+};
 use chrono::{DateTime, Utc};
 use std::time::{Duration, SystemTime};
 
@@ -125,18 +128,91 @@ async fn list_tunnels(State(state): State<Arc<AppState>>) -> impl IntoResponse {
 async fn start_tunnel(
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
+    Json(request): Json<StartTunnelRequest>,
 ) -> impl IntoResponse {
-    info!("API: Start tunnel request for {}", id);
+    info!("API: Start tunnel request for {} (mode: {:?})", id, request.mode);
 
-    // Load the profile
-    let profile = match load_profile_by_id(&id) {
-        Ok(p) => p,
-        Err(e) => {
-            error!("Failed to load profile {}: {}", id, e);
+    // Validate that the profile_id in the request matches the URL path
+    if request.profile_id != id.to_string() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: format!(
+                    "Profile ID mismatch: URL has {} but request has {}",
+                    id, request.profile_id
+                ),
+            }),
+        )
+            .into_response();
+    }
+
+    // Get the profile based on the source mode
+    let profile = match request.mode {
+        ProfileSourceMode::Local => {
+            // Load from daemon's filesystem
+            match load_profile_by_id(&id) {
+                Ok(p) => p,
+                Err(e) => {
+                    error!("Failed to load profile {} from filesystem: {}", id, e);
+                    return (
+                        StatusCode::NOT_FOUND,
+                        Json(ErrorResponse {
+                            error: format!("Profile not found on daemon filesystem: {}", e),
+                        }),
+                    )
+                        .into_response();
+                }
+            }
+        }
+        ProfileSourceMode::Hybrid => {
+            // Use profile from request
+            match request.profile {
+                Some(p) => {
+                    // Validate SSH key exists if specified
+                    if let Some(key_path) = &p.connection.key_path {
+                        // Expand ~ to home directory
+                        let home_dir = dirs::home_dir().unwrap_or_else(|| "/root".into());
+                        let ssh_dir = home_dir.join(".ssh");
+                        let full_key_path = ssh_dir.join(key_path);
+
+                        if !full_key_path.exists() {
+                            let key_filename = key_path.display();
+                            let error_msg = format!(
+                                "SSH key not found on daemon: ~/.ssh/{}\n\n\
+                                To copy your SSH key to the daemon:\n\
+                                1. Copy the private key:\n   \
+                                   scp <local-key-path> <daemon-host>:~/.ssh/{}\n\n\
+                                2. Set correct permissions:\n   \
+                                   ssh <daemon-host> chmod 600 ~/.ssh/{}",
+                                key_filename, key_filename, key_filename
+                            );
+                            error!("{}", error_msg);
+                            return (
+                                StatusCode::BAD_REQUEST,
+                                Json(ErrorResponse { error: error_msg }),
+                            )
+                                .into_response();
+                        }
+                    }
+                    p
+                }
+                None => {
+                    return (
+                        StatusCode::BAD_REQUEST,
+                        Json(ErrorResponse {
+                            error: "Hybrid mode requires profile data in request".to_string(),
+                        }),
+                    )
+                        .into_response();
+                }
+            }
+        }
+        ProfileSourceMode::Remote => {
+            // Not yet implemented
             return (
-                StatusCode::NOT_FOUND,
+                StatusCode::NOT_IMPLEMENTED,
                 Json(ErrorResponse {
-                    error: format!("Profile not found: {}", e),
+                    error: "Remote mode not yet implemented".to_string(),
                 }),
             )
                 .into_response();
@@ -433,6 +509,11 @@ async fn get_daemon_info(State(state): State<Arc<AppState>>) -> impl IntoRespons
         .and_then(|s| s.into_string().ok())
         .unwrap_or_else(|| "unknown".to_string());
 
+    // Calculate SSH key directory (where daemon looks for keys)
+    let ssh_key_dir = dirs::home_dir()
+        .map(|home| home.join(".ssh").display().to_string())
+        .unwrap_or_else(|| "~/.ssh".to_string());
+
     let info = DaemonInfo {
         version: env!("CARGO_PKG_VERSION").to_string(),
         uptime_seconds: uptime,
@@ -453,6 +534,7 @@ async fn get_daemon_info(State(state): State<Arc<AppState>>) -> impl IntoRespons
         group_access: config.group_access,
         config_file_path,
         known_hosts_path: config.known_hosts_path.display().to_string(),
+        ssh_key_dir,
         active_tunnels_count: active_count,
         pid: std::process::id(),
         user: username,

@@ -19,22 +19,28 @@ pub fn create(state: Rc<AppState>) -> adw::NavigationPage {
     let header_bar = adw::HeaderBar::new();
     main_box.append(&header_bar);
 
-    // Load current configuration
-    let config = load_client_config();
-
     // Create preferences page with groups
     let prefs_page = adw::PreferencesPage::new();
 
-    // 1. Connection Information Group
-    add_connection_group(&prefs_page, &config);
+    // Check if there's a pending configuration
+    if let Some(pending_config) = state.pending_daemon_config.borrow().as_ref() {
+        // Show pending configuration with save button
+        add_pending_config_group(&prefs_page, &state, pending_config);
+    } else {
+        // Load and show saved configuration
+        let config = load_client_config();
 
-    // 2. Authentication Group
-    add_auth_group(&prefs_page, &config);
+        // 1. Connection Information Group
+        add_connection_group(&prefs_page, &config);
 
-    // 3. File Locations Group
-    add_file_locations_group(&prefs_page);
+        // 2. Authentication Group
+        add_auth_group(&prefs_page, &config);
 
-    // 4. Connection Status Group
+        // 3. File Locations Group
+        add_file_locations_group(&prefs_page, &state);
+    }
+
+    // 4. Connection Status Group (always shown)
     add_status_group(&prefs_page, &state);
 
     // Wrap in clamp for centered content
@@ -158,8 +164,149 @@ fn add_auth_group(prefs_page: &adw::PreferencesPage, config: &DaemonClientConfig
     prefs_page.add(&group);
 }
 
+/// Add pending configuration group with save button
+fn add_pending_config_group(prefs_page: &adw::PreferencesPage, state: &Rc<AppState>, config: &DaemonClientConfig) {
+    let group = adw::PreferencesGroup::builder()
+        .title("Pending Configuration")
+        .description("This configuration has not been saved yet. Review and save to apply.")
+        .build();
+
+    // Connection mode
+    let mode_text = match config.connection_mode {
+        ConnectionMode::UnixSocket => "Unix Socket (local)",
+        ConnectionMode::Http => "HTTP (localhost)",
+        ConnectionMode::Https => "HTTPS (network)",
+    };
+
+    let mode_row = adw::ActionRow::builder()
+        .title("Connection Mode")
+        .subtitle(mode_text)
+        .build();
+    group.add(&mode_row);
+
+    // Daemon endpoint
+    let endpoint = match config.connection_mode {
+        ConnectionMode::UnixSocket => {
+            config.daemon_base_url()
+                .unwrap_or_else(|_| "Unix socket".to_string())
+        }
+        ConnectionMode::Http | ConnectionMode::Https => {
+            format!("{}:{}", config.daemon_host, config.daemon_port)
+        }
+    };
+
+    let endpoint_row = adw::ActionRow::builder()
+        .title("Daemon Endpoint")
+        .subtitle(&endpoint)
+        .build();
+    group.add(&endpoint_row);
+
+    // Auth token status
+    let token_status = if config.auth_token.is_empty() {
+        "Not configured"
+    } else {
+        "Configured"
+    };
+
+    let token_row = adw::ActionRow::builder()
+        .title("Authentication Token")
+        .subtitle(token_status)
+        .build();
+    group.add(&token_row);
+
+    // TLS fingerprint (if HTTPS mode)
+    if matches!(config.connection_mode, ConnectionMode::Https) {
+        let fingerprint_status = if config.tls_cert_fingerprint.is_empty() {
+            "Not configured"
+        } else {
+            "Configured"
+        };
+
+        let fp_row = adw::ActionRow::builder()
+            .title("TLS Certificate Fingerprint")
+            .subtitle(fingerprint_status)
+            .build();
+        group.add(&fp_row);
+    }
+
+    // Save button row
+    let button_box = gtk4::Box::new(gtk4::Orientation::Horizontal, 12);
+    button_box.set_halign(gtk4::Align::Center);
+    button_box.set_margin_top(12);
+    button_box.set_margin_bottom(12);
+
+    let save_button = gtk4::Button::with_label("Save Configuration");
+    save_button.add_css_class("suggested-action");
+    save_button.set_size_request(200, -1);
+    button_box.append(&save_button);
+
+    let button_row = adw::ActionRow::builder()
+        .activatable(false)
+        .build();
+    button_row.set_child(Some(&button_box));
+    group.add(&button_row);
+
+    // Connect save button handler
+    let state_clone = state.clone();
+    save_button.connect_clicked(move |button| {
+        // Clone the pending config to avoid borrow conflicts
+        let pending_config = state_clone.pending_daemon_config.borrow().clone();
+
+        if let Some(config) = pending_config {
+            match ssh_tunnel_gui_core::save_daemon_config(&config) {
+                Ok(()) => {
+                    // Clear pending config and modified flag
+                    state_clone.pending_daemon_config.replace(None);
+                    state_clone.config_modified.replace(false);
+
+                    // Update daemon client with saved configuration
+                    match ssh_tunnel_gui_core::DaemonClient::with_config(config) {
+                        Ok(client) => {
+                            state_clone.daemon_client.replace(Some(client));
+                            eprintln!("Daemon client updated with saved configuration");
+                        }
+                        Err(e) => {
+                            eprintln!("Warning: Failed to create daemon client with saved config: {}", e);
+                        }
+                    }
+
+                    // Show success message
+                    if let Some(window) = button.root().and_then(|r| r.downcast::<gtk4::Window>().ok()) {
+                        let dialog = adw::MessageDialog::new(
+                            Some(&window),
+                            Some("Configuration Saved"),
+                            Some("The daemon configuration has been saved successfully."),
+                        );
+                        dialog.add_response("ok", "OK");
+                        dialog.set_default_response(Some("ok"));
+                        dialog.present();
+                    }
+
+                    // TODO: Refresh the page to show saved config
+                    // This would require rebuilding the NavigationPage
+                }
+                Err(e) => {
+                    // Show error dialog
+                    if let Some(window) = button.root().and_then(|r| r.downcast::<gtk4::Window>().ok()) {
+                        let dialog = adw::MessageDialog::new(
+                            Some(&window),
+                            Some("Save Failed"),
+                            Some(&format!("Failed to save configuration: {}", e)),
+                        );
+                        dialog.add_response("ok", "OK");
+                        dialog.set_default_response(Some("ok"));
+                        dialog.present();
+                    }
+                }
+            }
+        }
+    });
+
+    prefs_page.add(&group);
+}
+
 /// Add file locations group
-fn add_file_locations_group(prefs_page: &adw::PreferencesPage) {
+fn add_file_locations_group(prefs_page: &adw::PreferencesPage, state: &Rc<AppState>) {
     let group = adw::PreferencesGroup::builder()
         .title("Configuration Files")
         .build();
@@ -172,12 +319,62 @@ fn add_file_locations_group(prefs_page: &adw::PreferencesPage) {
         .build();
     group.add(&config_path_row);
 
-    // Config snippet path
+    // Config snippet path with import button if available
     let snippet_info = get_snippet_info();
     let snippet_row = adw::ActionRow::builder()
         .title("Daemon Config Snippet")
         .subtitle(&snippet_info)
         .build();
+
+    // Add Import button if snippet is available
+    if ssh_tunnel_gui_core::daemon_config_snippet_exists() {
+        let import_button = gtk4::Button::with_label("Import Snippet");
+        import_button.add_css_class("flat");
+        import_button.set_valign(gtk4::Align::Center);
+
+        let state_clone = state.clone();
+        import_button.connect_clicked(move |button| {
+            // Load snippet config
+            match ssh_tunnel_gui_core::load_snippet_config() {
+                Ok(config) => {
+                    // Set as pending config
+                    state_clone.pending_daemon_config.replace(Some(config));
+                    state_clone.config_modified.replace(true);
+
+                    // Show success message
+                    if let Some(window) = button.root().and_then(|r| r.downcast::<gtk4::Window>().ok()) {
+                        let dialog = adw::MessageDialog::new(
+                            Some(&window),
+                            Some("Snippet Imported"),
+                            Some("The daemon configuration snippet has been imported. Review it above and click Save to apply."),
+                        );
+                        dialog.add_response("ok", "OK");
+                        dialog.set_default_response(Some("ok"));
+                        dialog.present();
+                    }
+
+                    // TODO: Refresh the page to show pending config
+                    // This would require rebuilding the NavigationPage
+                }
+                Err(e) => {
+                    // Show error dialog
+                    if let Some(window) = button.root().and_then(|r| r.downcast::<gtk4::Window>().ok()) {
+                        let dialog = adw::MessageDialog::new(
+                            Some(&window),
+                            Some("Import Failed"),
+                            Some(&format!("Failed to import configuration snippet: {}", e)),
+                        );
+                        dialog.add_response("ok", "OK");
+                        dialog.set_default_response(Some("ok"));
+                        dialog.present();
+                    }
+                }
+            }
+        });
+
+        snippet_row.add_suffix(&import_button);
+    }
+
     group.add(&snippet_row);
 
     prefs_page.add(&group);

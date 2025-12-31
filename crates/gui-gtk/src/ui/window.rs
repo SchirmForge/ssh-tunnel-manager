@@ -13,6 +13,7 @@ use super::{navigation, profiles_list, daemon_settings, help_dialog, about_dialo
 use crate::models::profile_model::ProfileModel;
 use crate::daemon::DaemonClient;
 use ssh_tunnel_gui_core::AppCore;
+use ssh_tunnel_common::DaemonClientConfig;
 
 /// Shared application state
 pub struct AppState {
@@ -36,19 +37,14 @@ pub struct AppState {
     pub profile_details_stop_btn: RefCell<Option<gtk4::Button>>,
     // Callback to refresh daemon page content
     pub daemon_page_refresh: RefCell<Option<Box<dyn Fn()>>>,
+    // Pending daemon configuration (not yet saved to file)
+    pub pending_daemon_config: RefCell<Option<DaemonClientConfig>>,
+    // Track if configuration has been modified during this session
+    pub config_modified: RefCell<bool>,
 }
 
 impl AppState {
     fn new() -> Rc<Self> {
-        // Load CLI configuration to connect to daemon
-        let daemon_client = match Self::load_daemon_client() {
-            Ok(client) => Some(client),
-            Err(e) => {
-                eprintln!("Warning: Failed to create daemon client: {}", e);
-                None
-            }
-        };
-
         Rc::new(Self {
             // Initialize core business logic
             core: RefCell::new(AppCore::new()),
@@ -57,7 +53,7 @@ impl AppState {
             details_widget: RefCell::new(None),
             window: RefCell::new(None),
             profile_list: RefCell::new(None),
-            daemon_client: RefCell::new(daemon_client),
+            daemon_client: RefCell::new(None), // Will be set after config wizard if needed
             current_nav_page: RefCell::new(navigation::NavigationPage::Client),
             nav_view: RefCell::new(None),
             client_page: RefCell::new(None),
@@ -66,6 +62,8 @@ impl AppState {
             profile_details_banner: RefCell::new(None),
             profile_details_start_btn: RefCell::new(None),
             profile_details_stop_btn: RefCell::new(None),
+            pending_daemon_config: RefCell::new(None),
+            config_modified: RefCell::new(false),
         })
     }
 
@@ -78,6 +76,18 @@ impl AppState {
 
         // Create client with loaded config
         DaemonClient::with_config(config)
+    }
+
+    /// Initialize daemon client with configuration (call after window is created)
+    fn init_daemon_client(&self) {
+        match Self::load_daemon_client() {
+            Ok(client) => {
+                self.daemon_client.replace(Some(client));
+            }
+            Err(e) => {
+                eprintln!("Warning: Failed to create daemon client: {}", e);
+            }
+        }
     }
 }
 
@@ -107,6 +117,35 @@ pub fn build(app: &adw::Application) -> adw::ApplicationWindow {
 
     // Store window reference in state
     state.window.replace(Some(window.clone()));
+
+    // Check for first-launch configuration and run wizard if needed
+    use ssh_tunnel_gui_core::check_config_status;
+    let config_status = check_config_status();
+
+    if config_status != ssh_tunnel_gui_core::ConfigStatus::Exists {
+        // Show configuration wizard
+        if let Some(config) = super::config_wizard::show_config_wizard(Some(&window)) {
+            eprintln!("Configuration provided by wizard");
+            // Store pending configuration
+            state.pending_daemon_config.replace(Some(config.clone()));
+            state.config_modified.replace(true);
+
+            // Create daemon client with this config (but don't save to file yet)
+            match DaemonClient::with_config(config) {
+                Ok(client) => {
+                    state.daemon_client.replace(Some(client));
+                }
+                Err(e) => {
+                    eprintln!("Warning: Failed to create daemon client: {}", e);
+                }
+            }
+        } else {
+            eprintln!("Configuration wizard canceled");
+        }
+    } else {
+        // Configuration exists, load it
+        state.init_daemon_client();
+    }
 
     // Register Help action
     {
@@ -169,6 +208,64 @@ pub fn build(app: &adw::Application) -> adw::ApplicationWindow {
     // Set split view as window content (no toolbar wrapper)
     window.set_content(Some(&split_view));
 
+    // Handle window close - prompt to save config if modified
+    let state_close = state.clone();
+    let window_clone = window.clone();
+    window.connect_close_request(move |_| {
+        if *state_close.config_modified.borrow() {
+            // Config was modified, ask to save
+            let dialog = adw::MessageDialog::new(
+                Some(&window_clone),
+                Some("Save Configuration?"),
+                Some("Your daemon configuration has not been saved. Save it before closing?"),
+            );
+
+            dialog.add_response("discard", "Discard");
+            dialog.add_response("save", "Save");
+            dialog.set_response_appearance("save", adw::ResponseAppearance::Suggested);
+            dialog.set_default_response(Some("save"));
+
+            let state_dialog = state_close.clone();
+            let window_dialog = window_clone.clone();
+            dialog.connect_response(None, move |_, response| {
+                if response == "save" {
+                    if let Some(config) = state_dialog.pending_daemon_config.borrow().clone() {
+                        match ssh_tunnel_gui_core::save_daemon_config(&config) {
+                            Ok(()) => {
+                                eprintln!("Configuration saved successfully");
+                                state_dialog.config_modified.replace(false);
+
+                                // Update daemon client with saved configuration
+                                match ssh_tunnel_gui_core::DaemonClient::with_config(config) {
+                                    Ok(client) => {
+                                        state_dialog.daemon_client.replace(Some(client));
+                                        eprintln!("Daemon client updated with saved configuration");
+                                    }
+                                    Err(e) => {
+                                        eprintln!("Warning: Failed to create daemon client: {}", e);
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                eprintln!("Failed to save configuration: {}", e);
+                            }
+                        }
+                    }
+                } else if response == "discard" {
+                    // User chose to discard changes
+                    state_dialog.config_modified.replace(false);
+                }
+                // Destroy the window directly to avoid triggering close-request again
+                window_dialog.destroy();
+            });
+
+            dialog.present();
+            glib::Propagation::Stop // Prevent immediate close
+        } else {
+            glib::Propagation::Proceed // Allow close
+        }
+    });
+
     window
 }
 
@@ -176,10 +273,24 @@ pub fn build(app: &adw::Application) -> adw::ApplicationWindow {
 fn start_event_listener(state: Rc<AppState>, status_icon: gtk4::Image) {
     use crate::daemon::{EventListener, TunnelEvent};
 
-    // Get daemon config
-    let config = match AppState::load_daemon_client() {
-        Ok(client) => client.config.clone(),
-        Err(_) => return, // Can't connect, skip event listener
+    // Get daemon config from state's daemon_client or pending config
+    let config = {
+        if let Some(client) = state.daemon_client.borrow().as_ref() {
+            // Use existing daemon client config
+            client.config.clone()
+        } else if let Some(pending) = state.pending_daemon_config.borrow().as_ref() {
+            // Use pending config from wizard
+            pending.clone()
+        } else {
+            // Try loading from file as fallback
+            match ssh_tunnel_gui_core::load_daemon_config() {
+                Ok(config) => {
+                    eprintln!("Loaded daemon config: connection_mode={:?}", config.connection_mode);
+                    config
+                }
+                Err(_) => return, // Can't load config, skip event listener
+            }
+        }
     };
 
     // Spawn event listener task with reconnection logic

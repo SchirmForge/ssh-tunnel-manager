@@ -197,6 +197,95 @@ pub fn profile_exists_by_id(id: &Uuid) -> bool {
     load_profile_by_id(id).is_ok()
 }
 
+/// Prepare a profile for remote daemon usage (Hybrid mode)
+///
+/// Converts SSH key path to filename only for sending via API to remote daemon.
+/// The daemon will look for the key in its own ~/.ssh/ directory.
+///
+/// # Arguments
+/// * `profile` - The profile to prepare
+///
+/// # Returns
+/// A cloned profile with SSH key path converted to filename only
+///
+/// # Errors
+/// Returns error if the profile has a key path but extracting filename fails
+///
+/// # Example
+/// ```
+/// use ssh_tunnel_common::{Profile, prepare_profile_for_remote};
+/// // Profile with key_path: Some("/home/user/.ssh/id_ed25519")
+/// // Returns profile with key_path: Some("id_ed25519")
+/// ```
+pub fn prepare_profile_for_remote(profile: &Profile) -> Result<Profile> {
+    let mut remote_profile = profile.clone();
+
+    // Convert SSH key path to filename only
+    if let Some(key_path) = &profile.connection.key_path {
+        let filename = key_path
+            .file_name()
+            .ok_or_else(|| anyhow::anyhow!("Invalid SSH key path: {}", key_path.display()))?
+            .to_str()
+            .ok_or_else(|| anyhow::anyhow!("SSH key filename contains invalid UTF-8"))?;
+
+        remote_profile.connection.key_path = Some(PathBuf::from(filename));
+    }
+
+    Ok(remote_profile)
+}
+
+/// Generate SSH key setup instructions for remote daemon
+///
+/// Creates a user-friendly message with scp commands for copying SSH keys
+/// to the daemon host.
+///
+/// # Arguments
+/// * `key_path` - Path to the SSH private key on local machine
+/// * `daemon_host` - Optional hostname/IP of the daemon (if None, uses "DAEMON_HOST" placeholder)
+///
+/// # Returns
+/// Formatted string with scp and chmod commands
+///
+/// # Example
+/// ```
+/// use std::path::Path;
+/// use ssh_tunnel_common::get_remote_key_setup_message;
+///
+/// let msg = get_remote_key_setup_message(
+///     Path::new("/home/user/.ssh/id_ed25519"),
+///     Some("example.com"),
+///     Some("/var/lib/daemon_user/.ssh")
+/// );
+/// // Returns message with: scp /home/user/.ssh/id_ed25519 example.com:/var/lib/daemon_user/.ssh/id_ed25519
+/// ```
+pub fn get_remote_key_setup_message(
+    key_path: &std::path::Path,
+    daemon_host: Option<&str>,
+    daemon_ssh_dir: Option<&str>,
+) -> String {
+    let host = daemon_host.unwrap_or("DAEMON_HOST");
+    let key_display = key_path.display();
+
+    let filename = key_path
+        .file_name()
+        .and_then(|f| f.to_str())
+        .unwrap_or("SSH_KEY");
+
+    // Use daemon's actual SSH directory if provided, otherwise fall back to ~/.ssh
+    let ssh_dir = daemon_ssh_dir.unwrap_or("~/.ssh");
+    let full_remote_path = format!("{}/{}", ssh_dir, filename);
+
+    format!(
+        "SSH key must be available on the daemon host.\n\n\
+        Copy the SSH key '{}' to the daemon's .ssh directory:\n   \
+           {} → {}:{}\n\n\
+        Then ensure correct permissions (if needed):\n   \
+           chmod 600 {}\n\n\
+        The daemon will look for the key at: {}",
+        filename, key_display, host, ssh_dir, full_remote_path, full_remote_path
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -221,7 +310,7 @@ mod tests {
                 user: "testuser".to_string(),
                 auth_type: crate::AuthType::Key,
                 key_path: Some("/home/user/.ssh/id_rsa".into()),
-                password_stored: false,
+                password_storage: crate::PasswordStorage::None,
             },
             forwarding: ForwardingConfig {
                 forwarding_type: ForwardingType::Local,

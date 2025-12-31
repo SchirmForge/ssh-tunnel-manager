@@ -2,8 +2,8 @@
 
 ## Current State
 
-**Version**: v0.1.8
-**Status**: ✅ Production-ready CLI/Daemon/GUI with enhanced error handling and tunnel management  
+**Version**: v0.1.9
+**Status**: ✅ Production-ready CLI/Daemon/GUI with remote daemon support and enhanced UX  
 
 - CLI and daemon work end-to-end for **local port forwarding** with interactive auth.  
 - **SSE** powers real-time updates (`/api/events`); REST covers start/stop/status/auth.  
@@ -75,13 +75,13 @@
 - **Help and About dialogs**: Markdown-rendered documentation accessible from burger menu using `pulldown-cmark`.
 
 ### 🚧 GUI Qt (`crates/gui-qt`)
-- **Qt6/QML implementation** using qmetaobject-rs
-- Basic QML UI with Rust backend (AppBackend QObject)
-- Bridges QML declarative UI with gui-core business logic
-- **Technology**: qmetaobject-rs + Qt6 + QML (Qt Quick)
-- **Architecture**: QML for UI, Rust for logic, gui-core for ~60-70% code reuse
-- **Status**: Placeholder window working, full features being implemented
-- See [crates/gui-qt/README.md](../crates/gui-qt/README.md) for implementation roadmap
+- **Qt6/QML skeleton** using cxx-qt; launches and lands on About page with a skeleton notice
+- Profiles page uses static placeholder data; daemon/event wiring not yet implemented
+- Bridges QML declarative UI with gui-core business logic (planned; wiring pending)
+- **Technology**: cxx-qt + Qt6 + QML (Qt Quick)
+- **Architecture**: QML for UI, Rust for logic, gui-core for ~60-70% code reuse (planned)
+- **Status**: Skeleton build running; real data, dialogs, and daemon integration are in progress
+- See [crates/gui-qt/README.md](../crates/gui-qt/README.md) and `local-docs/GUI-QT-SKELETON.md` for current state/roadmap
 
 ## Current Capabilities
 
@@ -99,12 +99,13 @@
 ✅ Full profile CRUD UI (create/edit/delete) with validation
 ✅ Profile dialog with advanced options accordion
 ✅ GNOME Settings-style UI with proper switch styling
+✅ DEB packaging
 
 ❌ Remote forwarding
 ❌ Dynamic/SOCKS forwarding
 ❌ Auto-reconnect/health monitoring (options exist but not wired)
 ❌ System tray/notifications/systemd integration
-❌ Packaging (Flatpak/AUR/deb)
+❌ Packaging (Flatpak/AUR)
 ❌ Stale tests in `crates/common` need fixing
 
 ## Security Notes
@@ -126,6 +127,25 @@
 
 ### Recently Completed ✅
 
+- ✅ **Remote daemon profile support** (v0.1.9) - Profiles work with HTTP/HTTPS remote daemons
+  - New `ProfileSourceMode` enum: Local (filesystem), Hybrid (API + daemon filesystem), Remote (future)
+  - `StartTunnelRequest` sent via API includes profile data for remote daemon compatibility
+  - SSH private keys remain secure on daemon filesystem - never sent over network
+  - Enhanced error messages show daemon's actual SSH directory paths instead of generic `~/.ssh`
+  - Daemon calculates and reports SSH directory via `DaemonInfo.ssh_key_dir` API field
+  - Simplified SSH key setup instructions - removed specific scp/chmod commands
+  - Added ssh-agent recommendation for encrypted keys
+- ✅ **SSH Key Setup Warning opt-out** (v0.1.9) - User-controllable warning dialog
+  - "Don't show this again" checkbox on SSH key setup warning dialog
+  - Preference persists in `cli.toml` as `skip_ssh_setup_warning` field
+  - Respects user choice across application restarts
+- ✅ **Daemon settings improvements** (v0.1.9) - Better UI for remote daemon scenarios
+  - Hides "Restart Daemon" button when using HTTPS mode (remote daemon)
+  - Prevents confusion about local-only daemon operations
+  - Restart row only shown for unix-socket mode
+- ✅ **Debug logging migration** (v0.1.9) - Proper structured logging
+  - Converted all `eprintln!` debug output to `tracing::debug!` and `tracing::warn!`
+  - Consistent logging framework across all GUI code
 - ✅ **Enhanced 401 authentication error handling** (v0.1.8) - Proactive config validation with interactive snippet copy
   - Config validation before daemon connection attempts prevents confusing 401 errors
   - Interactive prompt to copy daemon-generated config snippet when missing
@@ -154,7 +174,16 @@
 - ✅ **Enhance GUI status updates** - Real-time colored status dots on profile list
 - ✅ **Add Help and About windows** - Markdown-rendered documentation in burger menu
 
+
 ### High Priority 🚧
+
+#### Packaging
+- Status: **in progress**
+- Targets:
+  - ✅ DEB = Done
+  - 🚧 RPM = in progress
+  - 🚧 AUR (PKGBUILD needed)
+  - 🚧 Flatpak (to be confirned)
 
 #### Remote Port Forwarding (`ssh -R`)
 - Status: **Planned** - Infrastructure ready, implementation needed
@@ -194,12 +223,6 @@
 
 ### Medium Priority 🔵
 
-#### GUI Dark Mode
-- Status: **Planned**
-- Description: Auto-selection based on system theme preferences
-- Implementation: Use GTK4 `AdwStyleManager` to detect and follow system theme
-- Files: `crates/gui-gtk/src/main.rs`, `crates/gui-gtk/src/ui/window.rs`
-
 #### Daemon Management GUI
 - Status: **Partially planned**
 - Description: Graphical interface for daemon configuration and monitoring
@@ -210,6 +233,22 @@
   - Configure profiles that should autostart (via daemon API)
 - Files: `crates/gui-gtk/src/ui/daemon_page.rs` (new)
 
+#### Client using multiple daemon connections (GUI/CLI)
+- Status: **Partially planned**
+- Description: Allow users to have more than one cli.toml 
+- Features:
+  - By default, ~/.config/ssh-tunnel-manager/cli.toml is used, but user can select another configuration in the Client configuration page
+  - Create a *preferences* file in ~/.config/ssh-tunnel-manager/ where to store the config files location
+  - Reload the configuration upon cli.toml selection
+  - Note: Only one daemon can be monitored at a time, but multiple GUI instances can be launched
+- Files: TBC
+
+#### Desktop Notifications
+- Status: **Planned**
+- Description: System notifications for tunnel status changes
+- Library: `notify-rust` (already in dependencies)
+- Events: Connected, Disconnected, Failed, Authentication Required
+
 ### Future Enhancements 📅
 
 #### Auto-Reconnect/Health Monitoring
@@ -218,28 +257,14 @@
 - Current: Options exist in profile config but not implemented
 - Files: `crates/daemon/src/tunnel.rs`
 
-#### Desktop Notifications
-- Status: **Planned**
-- Description: System notifications for tunnel status changes
-- Library: `notify-rust` (already in dependencies)
-- Events: Connected, Disconnected, Failed, Authentication Required
-
 #### System Integration
-- Status: **Partial** - systemd units exist, tray/notifications pending
+- Status: **Partial** - systemd units exist - other might not be implemented
 - Components:
   - ✅ Systemd user service templates
   - 🚧 System tray integration
   - 🚧 Desktop notifications
-  - 🚧 Autostart on login
-
-#### Packaging
-- Status: **Planned**
-- Targets:
-  - 🚧 Flatpak (manifest needed)
-  - 🚧 AUR (PKGBUILD needed)
-  - 🚧 Debian package (.deb)
-  - 🚧 AppImage
-
+  - 🚧 Autostart for profiles (autostart option is already present but not wired)
+  
 ### Known Issues / Technical Debt 🔧
 
 - ❌ Fix outdated tests in `crates/common` (profile manager schema drift)

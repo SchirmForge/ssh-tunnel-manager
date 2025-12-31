@@ -3,25 +3,37 @@
 
 //! Qt6 desktop application for SSH Tunnel Manager
 //!
-//! Minimal Qt application to demonstrate basic functionality.
-//! Full QML integration pending cxx-qt bridge macro resolution.
+//! Minimal runnable QML shell; business wiring comes later.
+
+use cxx_qt_lib::{QGuiApplication, QQmlApplicationEngine, QUrl, QString};
+use std::path::PathBuf;
 
 mod daemon;
 mod models;
 mod ui;
 
 fn main() {
-    println!("SSH Tunnel Manager - Qt GUI (Placeholder)");
-    println!();
-    println!("The Qt GUI is currently being developed.");
-    println!("Please use the GTK GUI for now:");
-    println!("  cargo run --package ssh-tunnel-gui-gtk");
-    println!();
-    println!("Status:");
-    println!("  ✓ All business logic ready (ProfileViewModel, DaemonClient, etc.)");
-    println!("  ✓ QML UI designed");
-    println!("  ⏸  cxx-qt bridge macro compilation issues being investigated");
-    println!();
-    println!("The GUI demonstrates ~60-70% code reuse from gui-core,");
-    println!("sharing the same business logic as the GTK implementation.");
+    // Initialize Qt application
+    let mut app = QGuiApplication::new();
+
+    // Load QML from the crate's qml/ directory
+    let qml_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("qml")
+        .join("main.qml");
+
+    let qml_url = QUrl::from_local_file(&QString::from(
+        qml_path
+            .to_str()
+            .expect("Failed to convert QML path to string"),
+    ));
+
+    let mut engine = QQmlApplicationEngine::new();
+    if let Some(mut engine_ref) = engine.as_mut() {
+        engine_ref.load(&qml_url);
+    }
+
+    // Run event loop
+    if let Some(mut app_ref) = app.as_mut() {
+        std::process::exit(app_ref.exec());
+    }
 }

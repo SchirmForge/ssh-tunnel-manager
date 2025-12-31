@@ -15,7 +15,7 @@ Suggested name: `TECHNICAL_REFERENCE.md`. Purpose: internal architecture map of 
   - `crates/common/src/lib.rs`: module exports/re-exports.
   - `config.rs`: `Profile`/`ConnectionConfig`/`ForwardingConfig`/`TunnelOptions` + validation.
   - `types.rs`: auth/forwarding enums, tunnel status/events, auth request/response, `StartTunnelResult`.
-  - `daemon_client.rs`: `DaemonClientConfig`, connection mode, reqwest client builder, auth header helper.
+  - `daemon_client.rs`: `DaemonClientConfig`, connection mode, reqwest client builder, auth header helper, config validation (`config_needs_ip_address`, `validate_client_config`).
   - `tls.rs`: rustls client config, fingerprint pinning.
   - `profile_manager.rs`: profile load/save/delete utilities (used by CLI/daemon/GUI).
   - `error.rs`: common error enum (not widely used in newer code paths).
@@ -23,7 +23,7 @@ Suggested name: `TECHNICAL_REFERENCE.md`. Purpose: internal architecture map of 
   - `src/main.rs`: startup, logging, PID guard, config load, token handling, router wiring, listeners for Unix/TCP/HTTPS.
   - `api.rs`: axum routes `/api/health`, `/api/tunnels`, start/stop/status/auth, SSE `/api/events`.
   - `tunnel.rs`: `TunnelManager`, SSH connection/auth/forwarding, known_hosts checks, event broadcast, auth prompts.
-  - `config.rs`: daemon config file handling, listener modes, CLI snippet writer.
+  - `config.rs`: daemon config file handling, listener modes, CLI snippet writer (writes empty `daemon_host` when binding to 0.0.0.0/::).
   - `auth.rs`: token generation/persistence, axum middleware.
   - `tls.rs`: self-signed cert generation, rustls server config, fingerprinting.
   - `known_hosts.rs`: parse/verify/write known_hosts.
@@ -41,7 +41,7 @@ Suggested name: `TECHNICAL_REFERENCE.md`. Purpose: internal architecture map of 
   - `profiles.rs`: profile CRUD operations (`load_profiles`, `save_profile`, `delete_profile`, `validate_profile`, `profile_name_exists`).
   - `view_models.rs`: `ProfileViewModel` with formatted display data, `StatusColor` enum for UI consistency.
   - `events.rs`: `TunnelEventHandler` trait for framework-agnostic event handling.
-  - `daemon.rs`: daemon configuration helpers (`load_daemon_config`, config path utilities).
+  - `daemon/config.rs`: daemon configuration helpers (`load_daemon_config`, `save_daemon_config`, `check_config_status`, `load_snippet_config`, config path utilities).
 - GUI GTK (`crates/gui-gtk`)
   - `src/main.rs`: GTK/libadwaita bootstrap with Tokio runtime.
   - `ui/window.rs`: main window, header, connection indicator, event listener hook, `AppState` with `AppCore` integration.
@@ -51,7 +51,8 @@ Suggested name: `TECHNICAL_REFERENCE.md`. Purpose: internal architecture map of 
   - `ui/profile_dialog.rs`: create/edit profile dialog, uses gui-core validation and save functions.
   - `ui/auth_dialog.rs`: interactive authentication prompts, integrates with `AppCore` auth state.
   - `ui/event_handler.rs`: GTK event handling utilities, updates `AppCore` and UI.
-  - `ui/client_config.rs`: client configuration page.
+  - `ui/config_wizard.rs`: first-launch configuration wizard (snippet import, manual config, IP address prompts).
+  - `ui/client_config.rs`: client configuration page with pending config review and save.
   - `ui/daemon_settings.rs`: daemon settings page (placeholder).
   - `ui/help_dialog.rs`: markdown-rendered help documentation.
   - `ui/about_dialog.rs`: about dialog with version info.
@@ -207,9 +208,9 @@ Suggested name: `TECHNICAL_REFERENCE.md`. Purpose: internal architecture map of 
     - Renders UI using GTK widgets
     - Implements event handlers calling gui-core utilities
     - Maintains GTK-specific state (GObject wrappers, widget references)
-  - `gui-qt`: Qt6 implementation (planned, future)
-    - Will reuse gui-core for all business logic
-    - Qt-specific UI rendering and state management
+  - `gui-qt`: Qt6 implementation (skeleton running)
+    - Current state: cxx-qt/QML shell launches, lands on About page with skeleton notice; profiles page uses static placeholder data
+    - Planned: reuse gui-core for all business logic, Qt-specific UI rendering/state management
 - **Benefits**:
   - Consistent behavior across GUI implementations
   - Reduced maintenance burden
@@ -228,6 +229,9 @@ Suggested name: `TECHNICAL_REFERENCE.md`. Purpose: internal architecture map of 
     - Debian/Ubuntu: `libgtk-4-dev libadwaita-1-dev build-essential pkg-config`
     - Fedora: `gtk4-devel libadwaita-devel gcc pkg-config`
     - Arch: `gtk4 libadwaita base-devel`
+- **GUI Qt (skeleton)**:
+  - Qt6 base/declarative/dev tools (qmake6 available)
+  - cxx-qt crate (build script currently no-op; QML uses static placeholders)
 
 ## Additional Notes / Gaps
 - `monitor.rs` is a stub; tunnel health monitoring beyond port-forward loop is future work.
@@ -235,4 +239,4 @@ Suggested name: `TECHNICAL_REFERENCE.md`. Purpose: internal architecture map of 
 - `profile_manager` tests use outdated field names (`username`, `password`); real code paths rely on `ssh-tunnel-common` definitions.
 - Security: passwords/passphrases can be stored in system keychain; auth token persisted with 0600 perms; known_hosts uses custom path by default.
 - Distribution/packaging and systemd integration are not yet represented in code (see README/SETUP for future plans).
-- Qt GUI implementation is planned but not yet started.
+- Qt GUI implementation is a running skeleton; daemon/data wiring remains pending.

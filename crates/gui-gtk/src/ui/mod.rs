@@ -17,4 +17,5 @@ pub mod event_handler;
 pub mod style;
 pub mod help_dialog;
 pub mod about_dialog;
+pub mod config_wizard;
 mod markdown;

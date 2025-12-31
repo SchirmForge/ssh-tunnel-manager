@@ -46,7 +46,9 @@ pub fn create(state: Rc<AppState>, profile: &ProfileModel) -> adw::NavigationPag
     main_content.append(&summary_group);
 
     // Action buttons (Start/Stop/Edit/Delete)
-    let (actions_box, start_btn, stop_btn) = create_action_buttons(state.clone(), profile);
+    // Get window from state for dialogs
+    let window = state.window.borrow().as_ref().cloned().expect("Window not available");
+    let (actions_box, start_btn, stop_btn) = create_action_buttons(state.clone(), profile, &window);
     main_content.append(&actions_box);
 
     // Store button references in state for SSE updates
@@ -231,7 +233,7 @@ fn create_details_expander(profile: &ProfileModel) -> adw::ExpanderRow {
 
 /// Create action buttons (Start/Stop/Edit/Delete)
 /// Returns (button_box, start_button, stop_button) for storing references in AppState
-fn create_action_buttons(state: Rc<AppState>, profile: &ProfileModel) -> (gtk4::Box, gtk4::Button, gtk4::Button) {
+fn create_action_buttons(state: Rc<AppState>, profile: &ProfileModel, window: &adw::ApplicationWindow) -> (gtk4::Box, gtk4::Button, gtk4::Button) {
     let button_box = gtk4::Box::new(gtk4::Orientation::Horizontal, 12);
     button_box.set_halign(gtk4::Align::Center);
     button_box.set_margin_top(24);
@@ -244,40 +246,130 @@ fn create_action_buttons(state: Rc<AppState>, profile: &ProfileModel) -> (gtk4::
 
     let profile_clone = profile.clone();
     let state_clone = state.clone();
+    let window_clone = window.clone();
     start_button.connect_clicked(move |button| {
-        eprintln!("Starting tunnel for profile: {}", profile_clone.name());
+        // Check if we need to show SSH key warning
+        let inner_profile = match profile_clone.profile() {
+            Some(p) => p,
+            None => {
+                eprintln!("✗ Profile data not available");
+                return;
+            }
+        };
 
-        if let Some(prof) = profile_clone.profile() {
-            let tunnel_id = prof.metadata.id;
-            let state = state_clone.clone();
+        let profile = profile_clone.clone();
+        let state = state_clone.clone();
+        let window = window_clone.clone();
+        let button = button.clone();
+
+        // Spawn async task to check for warning and handle start
+        glib::MainContext::default().spawn_local(async move {
+            // Check if daemon client needs SSH key warning (async)
+            let warning_message = if let Some(client) = state.daemon_client.borrow().as_ref() {
+                client.needs_ssh_key_warning(&inner_profile).await
+            } else {
+                None
+            };
+
+            if let Some(warning_msg) = warning_message {
+            // Show warning dialog with Continue/Cancel
+            let dialog = adw::MessageDialog::builder()
+                .transient_for(&window)
+                .heading("SSH Key Setup Required")
+                .body(&warning_msg)
+                .build();
+
+            // Add checkbox to dialog for "Don't show this again"
+            let checkbox = gtk4::CheckButton::with_label("Don't show this message again");
+            checkbox.set_margin_top(12);
+            checkbox.set_margin_bottom(12);
+            dialog.set_extra_child(Some(&checkbox));
+
+            dialog.add_response("cancel", "Cancel");
+            dialog.add_response("continue", "Continue");
+            dialog.set_response_appearance("continue", adw::ResponseAppearance::Suggested);
+            dialog.set_default_response(Some("continue"));
+            dialog.set_close_response("cancel");
+
+            let profile = profile.clone();
+            let state = state.clone();
+            let window = window.clone();
             let button = button.clone();
 
-            // Disable button during operation
+            dialog.connect_response(None, move |dialog_ref, response| {
+                if response == "continue" {
+                    // Check if user wants to skip future warnings
+                    if let Some(extra) = dialog_ref.extra_child() {
+                        if let Some(checkbox) = extra.downcast_ref::<gtk4::CheckButton>() {
+                            if checkbox.is_active() {
+                                // Save preference to config file
+                                let state_for_save = state.clone();
+                                glib::MainContext::default().spawn_local(async move {
+                                    if let Err(e) = ssh_tunnel_gui_core::save_skip_ssh_warning_preference(true).await {
+                                        tracing::warn!("Failed to save skip SSH warning preference: {}", e);
+                                    }
+                                    // Update daemon client config in memory
+                                    if let Some(client) = state_for_save.daemon_client.borrow_mut().as_mut() {
+                                        client.set_skip_ssh_warning(true);
+                                    }
+                                });
+                            }
+                        }
+                    }
+
+                    // User clicked Continue - proceed with starting tunnel
+                    button.set_sensitive(false);
+
+                    let profile = profile.clone();
+                    let state = state.clone();
+                    let window = window.clone();
+                    let button = button.clone();
+
+                    glib::MainContext::default().spawn_local(async move {
+                        let result = start_tunnel_async(&profile, &state).await;
+
+                        button.set_sensitive(true);
+
+                        match result {
+                            Ok(()) => {
+                                eprintln!("✓ Tunnel start request accepted by daemon");
+                            }
+                            Err(e) => {
+                                let error_msg = format!("Failed to start tunnel: {}", e);
+                                show_error_dialog(&window, &error_msg);
+                            }
+                        }
+                    });
+                }
+            });
+
+            dialog.present();
+        } else {
+            // No warning needed - proceed directly
             button.set_sensitive(false);
 
-            glib::MainContext::default().spawn_local(async move {
-                // Send start request; SSE listener handles auth/status updates
-                let daemon_client = match state.daemon_client.borrow().as_ref() {
-                    Some(client) => client.clone(),
-                    None => {
-                        eprintln!("✗ Daemon client not available");
-                        button.set_sensitive(true);
-                        return;
-                    }
-                };
+            let profile = profile.clone();
+            let state = state.clone();
+            let window = window.clone();
+            let button = button.clone();
 
-                match daemon_client.start_tunnel(tunnel_id).await {
-                    Ok(_) => {
-                        eprintln!("✓ Tunnel start request accepted");
-                        // Keep button disabled; SSE updates will set final state.
+            glib::MainContext::default().spawn_local(async move {
+                let result = start_tunnel_async(&profile, &state).await;
+
+                button.set_sensitive(true);
+
+                match result {
+                    Ok(()) => {
+                        eprintln!("✓ Tunnel start request accepted by daemon");
                     }
                     Err(e) => {
-                        eprintln!("✗ Failed to start tunnel: {}", e);
-                        button.set_sensitive(true);
+                        let error_msg = format!("Failed to start tunnel: {}", e);
+                        show_error_dialog(&window, &error_msg);
                     }
                 }
             });
-        }
+            }
+        });
     });
     button_box.append(&start_button);
 
@@ -441,8 +533,12 @@ fn create_action_buttons(state: Rc<AppState>, profile: &ProfileModel) -> (gtk4::
 /// Update the profile details UI based on tunnel status
 /// This is called by the SSE event handler when tunnel status changes
 pub fn update_tunnel_status(state: &AppState, status: TunnelStatus) {
+    tracing::debug!("profile_details::update_tunnel_status called with status: {:?}", status);
+
     // Update status banner
     if let Some(banner) = state.profile_details_banner.borrow().as_ref() {
+        tracing::debug!("Found banner widget, updating...");
+
         let (message, css_class) = match &status {
             TunnelStatus::NotConnected => ("Not connected", "info"),
             TunnelStatus::Connecting => ("Connecting...", "info"),
@@ -452,20 +548,25 @@ pub fn update_tunnel_status(state: &AppState, status: TunnelStatus) {
             TunnelStatus::Disconnected => ("Disconnected", "info"),
             TunnelStatus::Reconnecting => ("Reconnecting...", "warning"),
             TunnelStatus::Failed(reason) => {
+                tracing::debug!("Setting Failed status in banner: {}", reason);
                 banner.set_title(&format!("Connection failed: {}", reason));
                 banner.remove_css_class("info");
                 banner.remove_css_class("success");
                 banner.remove_css_class("warning");
                 banner.add_css_class("error");
                 banner.set_revealed(true);
+                tracing::debug!("Banner updated with error styling");
 
                 // Enable/disable buttons for failed state
                 if let Some(start_btn) = state.profile_details_start_btn.borrow().as_ref() {
                     start_btn.set_sensitive(true);
+                    tracing::debug!("Start button enabled");
                 }
                 if let Some(stop_btn) = state.profile_details_stop_btn.borrow().as_ref() {
                     stop_btn.set_sensitive(false);
+                    tracing::debug!("Stop button disabled");
                 }
+                tracing::debug!("profile_details::update_tunnel_status completed (Failed)");
                 return;
             }
         };
@@ -503,4 +604,38 @@ pub fn update_tunnel_status(state: &AppState, status: TunnelStatus) {
             }
         }
     }
+}
+
+/// Async function to start a tunnel
+async fn start_tunnel_async(profile: &ProfileModel, state: &Rc<AppState>) -> anyhow::Result<()> {
+    // Get profile data
+    let inner_profile = profile
+        .profile()
+        .ok_or_else(|| anyhow::anyhow!("Profile data not available"))?;
+
+    // Send start request; daemon SSE events will drive auth prompts and UI updates
+    let daemon_client = state
+        .daemon_client
+        .borrow()
+        .as_ref()
+        .ok_or_else(|| anyhow::anyhow!("Daemon client not available"))?
+        .clone();
+
+    daemon_client.start_tunnel(&inner_profile).await?;
+    Ok(())
+}
+
+/// Show an error dialog
+fn show_error_dialog(parent: &impl IsA<gtk4::Window>, message: &str) {
+    let dialog = adw::MessageDialog::builder()
+        .transient_for(parent)
+        .heading("Error")
+        .body(message)
+        .build();
+
+    dialog.add_response("ok", "OK");
+    dialog.set_default_response(Some("ok"));
+    dialog.set_close_response("ok");
+
+    dialog.present();
 }

@@ -3,7 +3,6 @@
 
 //! Qt models for QML integration
 //!
-//! These models bridge QML UI with gui-core business logic, demonstrating
-//! the ~60-70% code reuse architecture.
-//!
-//! Temporarily empty until cxx-qt bridge macro issues are resolved.
+//! For now this exposes a minimal ProfilesListModel so the QML shell can run.
+
+pub mod profile_list;

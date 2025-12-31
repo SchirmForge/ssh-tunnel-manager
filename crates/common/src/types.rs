@@ -7,6 +7,8 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::Profile;
+
 /// Authentication type for SSH connection
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
@@ -128,6 +130,31 @@ pub struct AuthResponse {
     pub response: String,
 }
 
+/// Profile source mode for tunnel start request
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum ProfileSourceMode {
+    /// Load profile from daemon's filesystem (Unix socket mode)
+    Local,
+    /// Profile data sent via API (HTTP/HTTPS remote daemon)
+    Hybrid,
+    /// Reserved for future: profile stored on daemon, managed remotely
+    #[serde(rename = "remote")]
+    Remote,
+}
+
+/// Request to start a tunnel
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StartTunnelRequest {
+    /// Profile ID (always required for identification)
+    pub profile_id: String,
+    /// How to obtain the profile data
+    pub mode: ProfileSourceMode,
+    /// Full profile data (required for Hybrid mode, ignored for Local mode)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub profile: Option<Profile>,
+}
+
 /// Status returned when starting a tunnel
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "status", rename_all = "snake_case")]
@@ -198,6 +225,7 @@ pub struct DaemonInfo {
     // Runtime info
     pub config_file_path: String,
     pub known_hosts_path: String,
+    pub ssh_key_dir: String, // Directory where daemon looks for SSH keys (e.g., /home/user/.ssh)
     pub active_tunnels_count: usize,
 
     // Process info

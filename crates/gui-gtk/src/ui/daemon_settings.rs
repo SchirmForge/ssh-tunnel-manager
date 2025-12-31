@@ -96,7 +96,7 @@ fn populate_daemon_page(scrolled: &gtk4::ScrolledWindow, state: Rc<AppState>) {
                 add_daemon_config_group(&prefs_page, &daemon_info);
                 add_file_locations_group(&prefs_page, &daemon_info);
                 add_activity_group(&prefs_page, &daemon_info);
-                add_actions_group(&prefs_page, state.clone());
+                add_actions_group(&prefs_page, state.clone(), &daemon_info);
             }
             Err(e) => {
                 // Error fetching daemon info - daemon likely not connected
@@ -293,7 +293,7 @@ fn add_activity_group(prefs_page: &adw::PreferencesPage, daemon_info: &DaemonInf
 }
 
 /// Add actions group (stop button and restart info)
-fn add_actions_group(prefs_page: &adw::PreferencesPage, state: Rc<AppState>) {
+fn add_actions_group(prefs_page: &adw::PreferencesPage, state: Rc<AppState>, daemon_info: &DaemonInfo) {
     let group = adw::PreferencesGroup::builder()
         .title("Actions")
         .build();
@@ -321,16 +321,19 @@ fn add_actions_group(prefs_page: &adw::PreferencesPage, state: Rc<AppState>) {
     stop_row.add_suffix(&stop_btn);
     group.add(&stop_row);
 
-    // Restart info row
-    let restart_row = adw::ActionRow::builder()
-        .title("Restart Daemon")
-        .subtitle("Use 'systemctl --user restart ssh-tunnel-daemon' or manually restart")
-        .build();
+    // Only show restart info for unix-socket mode
+    // For HTTPS remote daemons, restart is misleading (daemon runs on remote host)
+    if daemon_info.listener_mode == "unix-socket" {
+        let restart_row = adw::ActionRow::builder()
+            .title("Restart Daemon")
+            .subtitle("Use 'systemctl --user restart ssh-tunnel-daemon' or manually restart")
+            .build();
 
-    let info_icon = gtk4::Image::from_icon_name("help-about-symbolic");
-    restart_row.add_suffix(&info_icon);
+        let info_icon = gtk4::Image::from_icon_name("help-about-symbolic");
+        restart_row.add_suffix(&info_icon);
 
-    group.add(&restart_row);
+        group.add(&restart_row);
+    }
 
     prefs_page.add(&group);
 }

@@ -7,6 +7,102 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+---
+
+## [0.1.9] - 2025-12-31
+
+### Added
+- **Remote daemon profile support** - Profiles now work with HTTP/HTTPS remote daemons
+  - New `ProfileSourceMode` enum: Local (filesystem), Hybrid (API + daemon filesystem), Remote (future)
+  - `StartTunnelRequest` type sent via API includes profile data for remote daemons
+  - Daemon automatically detects connection mode and handles profile accordingly
+  - **Security**: SSH private keys stay on daemon filesystem at `~/.ssh/`, never sent over network
+  - Profile content sent via API for HTTP/HTTPS connections (Hybrid mode)
+  - SSH key path automatically converted to filename only (e.g., `/home/user/.ssh/id_ed25519` → `id_ed25519`)
+  - Helper functions in common crate: `prepare_profile_for_remote()`, `get_remote_key_setup_message()`
+  - **CLI**: Shows SSH key setup warning with scp commands to stderr before starting remote tunnel
+  - **GUI**: Interactive warning dialog with Continue/Cancel button shows scp commands for key setup
+  - Daemon validates SSH key exists at `~/.ssh/` and returns helpful error with scp commands if missing
+  - Backward compatible: Unix socket mode unchanged, continues loading profiles from filesystem (Local mode)
+  - Power user oriented: Manual SSH key file copying required for remote daemon scenarios
+  - Files: `crates/common/src/types.rs`, `crates/common/src/profile_manager.rs:200-279`, `crates/daemon/src/api.rs:128-245`, `crates/common/src/daemon_client.rs:561-601`, `crates/gui-core/src/daemon/client.rs:88-159`, `crates/gui-gtk/src/ui/details.rs:215-313`
+- **IP address validation in common crate** - Shared validation for IPv4, IPv6, and hostnames
+  - New `is_valid_host()` function in `crates/common/src/network.rs`
+  - Validates IPv4 addresses (e.g., `192.168.1.1`)
+  - Validates IPv6 addresses (e.g., `::1`, `2001:db8::1`)
+  - Validates hostnames following RFC 1123 rules (e.g., `daemon.local`, `example.com`)
+  - Exported from `ssh_tunnel_common` for use in CLI and GUI
+  - Comprehensive test coverage for valid and invalid inputs
+  - Used in GUI configuration wizard for IP address prompts
+- **HTTPS network configuration with empty daemon_host handling** - Improved UX for network access scenarios
+  - Daemon now writes empty `daemon_host` field in snippet when binding to `0.0.0.0` or `::`
+  - Prevents invalid `0.0.0.0` address from being saved in client configuration
+  - Both CLI and GUI automatically detect empty `daemon_host` and prompt for actual IP address
+  - GUI shows dialog with entry field and suggested default (192.168.1.100)
+  - CLI will prompt interactively during snippet import (planned)
+  - New validation functions in common crate: `config_needs_ip_address()`, `validate_client_config()`
+  - Comprehensive documentation added to INSTALLATION.md explaining the behavior
+  - Updated daemon.toml.example with explanation of snippet generation behavior
+  - Affects: daemon snippet generation, GUI configuration wizard, client config validation
+- **First-launch configuration wizard improvements** - Enhanced GUI setup experience
+  - Fixed crash when declining snippet import (switched from adw::Window to adw::PreferencesWindow)
+  - Changed button labels from "Import/Cancel" to "Yes/No" for better UX
+  - Added fallback to manual configuration when snippet is declined
+  - Manual config dialog now uses PreferencesWindow with proper layout
+  - Auth token marked as required for all connection modes (not just HTTPS)
+  - TLS fingerprint validation enforced for HTTPS mode
+  - Enter key support in IP address dialog for quick submission
+  - IP validation with helpful error messages showing valid examples
+- **Qt6 GUI skeleton** - Minimal runnable Qt/QML shell (cxx-qt) landing on About page with a skeleton notice and static placeholder profiles; daemon wiring and real data are still in progress.
+- **SSH Key Setup Warning opt-out** - Added "Don't show this again" checkbox to SSH key setup dialog
+  - New `skip_ssh_setup_warning` field in `DaemonClientConfig` stored in `cli.toml`
+  - Checkbox appears in both sidebar details panel and full profile details page
+  - Preference persists across application restarts
+  - Users can manually edit `cli.toml` to re-enable warnings
+  - Files: `crates/common/src/daemon_client.rs`, `crates/gui-core/src/daemon/client.rs`, `crates/gui-core/src/daemon/config.rs`, `crates/gui-gtk/src/ui/details.rs`, `crates/gui-gtk/src/ui/profile_details.rs`
+- **Daemon settings page improvements** - Hides "Restart Daemon" button when using HTTPS mode
+  - Restart row only shown for unix-socket mode (local daemon)
+  - Prevents confusion for remote daemon scenarios where restart would need to happen on remote host
+  - File: `crates/gui-gtk/src/ui/daemon_settings.rs`
+- **Enhanced SSH key error messages** - Improved clarity and accuracy for remote daemon scenarios
+  - Daemon calculates and reports actual SSH directory via `DaemonInfo.ssh_key_dir`
+  - Warning messages show daemon's actual paths instead of generic `~/.ssh`
+  - Simplified copy instructions - removed specific scp/chmod commands that assume same usernames
+  - Added recommendation to use ssh-agent for encrypted SSH keys
+  - Daemon expands relative key paths (e.g., `id_reverse`) to full `~/.ssh/id_reverse`
+  - Files: `crates/common/src/types.rs`, `crates/common/src/profile_manager.rs`, `crates/daemon/src/api.rs`, `crates/daemon/src/tunnel.rs`
+
+### Fixed
+- **IP address validation accepting invalid octets** - Now properly rejects IPs like `10.1.2.256`
+  - Added check to distinguish between malformed IPv4 addresses and valid hostnames
+  - Strings with 4 numeric parts separated by dots that fail IP parsing are now rejected
+  - Prevents accepting invalid octets > 255 that look like hostnames (e.g., `256.1.1.1`, `1.1.1.999`)
+  - Added comprehensive test coverage for invalid IP addresses
+  - File: `crates/common/src/network.rs:46-52`
+- **GUI configuration wizard connection mode persistence** - HTTPS mode now persists correctly
+  - Fixed event listener to use wizard's pending config instead of loading from file
+  - Modified `start_event_listener()` to check config in priority order: daemon_client → pending_daemon_config → file
+  - Resolves issue where wizard configured HTTPS but connection used UnixSocket mode
+  - File: `crates/gui-gtk/src/ui/window.rs:272-294`
+- **GUI daemon client update after saving configuration** - Client now connects with saved config
+  - Both save locations (Client Config page and close dialog) now update `daemon_client` in AppState
+  - Fixes timeout waiting for first event from daemon after configuration save
+  - Files: `crates/gui-gtk/src/ui/client_config.rs:255-287`, `crates/gui-gtk/src/ui/window.rs:230-260`
+- **GUI close dialog infinite loop** - Proper window destruction after save
+  - Changed from `window.close()` to `window.destroy()` to avoid re-triggering close-request handler
+  - File: `crates/gui-gtk/src/ui/window.rs:260`
+
+### Changed
+- **Config validation architecture** - Validation before connection attempts
+  - Moved config validation to common crate for reuse across CLI and GUI
+  - CLI validates daemon config at start of every daemon command
+  - Clear separation: validate → offer snippet copy → connect
+  - Prevents confusing 401 errors by catching config issues early
+
+---
+
+## [0.1.8] - 2025-12-27
+
 ### Added
 - **CLI stop --all command** - Stop all active tunnels with daemon status checking
   - Queries daemon for list of active tunnels
@@ -56,11 +152,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - Dynamic SOCKS: `SOCKS: 127.0.0.1:1080`
   - Consistent across CLI connection messages, GUI profile details, and profile lists
   - Properly handles IPv6 addresses with bracket notation
-- **Config validation architecture** - Validation before connection attempts
-  - Moved config validation to common crate for reuse across CLI and GUI
-  - CLI validates daemon config at start of every daemon command
-  - Clear separation: validate → offer snippet copy → connect
-  - Prevents confusing 401 errors by catching config issues early
 
 ---
 

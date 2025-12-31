@@ -398,10 +398,10 @@ async fn start_tunnel(name: String) -> Result<()> {
     let client = create_daemon_client()?;
     let cli_config = config::CliConfig::load()?;
 
-    let mut handler = CliEventHandler { profile };
+    let mut handler = CliEventHandler { profile: profile.clone() };
 
     // Use the shared SSE-first helper
-    start_tunnel_with_events(&client, &cli_config.daemon_config, tunnel_id, &mut handler).await
+    start_tunnel_with_events(&client, &cli_config.daemon_config, tunnel_id, &profile, &mut handler).await
 }
 
 /// Prompt user for authentication input
@@ -519,7 +519,7 @@ async fn restart_tunnel(name: String) -> Result<()> {
         profile: profile.clone(),
     };
 
-    match start_tunnel_with_events(&client, &cli_config.daemon_config, tunnel_id, &mut handler).await {
+    match start_tunnel_with_events(&client, &cli_config.daemon_config, tunnel_id, &profile, &mut handler).await {
         Ok(_) => {
             println!();
             println!("{}", "✓ Tunnel restarted successfully".green().bold());
@@ -953,7 +953,7 @@ async fn add_profile(
         if key_path_input.trim().is_empty() {
             // Password authentication
             let password = Password::new()
-                .with_prompt("SSH password")
+                .with_prompt("SSH login password (for remote server)")
                 .interact()?;
 
             let store_password = Confirm::new()
