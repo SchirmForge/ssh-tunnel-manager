@@ -10,7 +10,6 @@ A secure, performant SSH tunnel management application for Linux with CLI interf
 ✅ **Full-featured GUI** with profile management, real-time status, and markdown documentation
 ✅ **Enhanced CLI** with status/restart commands and proactive config validation
 🟢 **Local port forwarding** works end-to-end with interactive auth, keychain storage, and host key verification
-🚧 Remote/dynamic forwarding and auto-reconnect wiring are not implemented yet; some `crates/common` tests are stale.
 
 ## Features
 
