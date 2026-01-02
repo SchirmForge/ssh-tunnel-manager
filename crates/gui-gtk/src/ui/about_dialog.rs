@@ -10,7 +10,7 @@ use super::markdown::markdown_to_pango;
 
 /// Show the about dialog
 pub fn show_about_dialog(window: &adw::ApplicationWindow) {
-    let about_content = include_str!("../../assets/about.md");
+    let about_content = include_str!("../../../gui-core/assets/about.md");
     let pango_markup = markdown_to_pango(about_content);
 
     let dialog = adw::Window::new();

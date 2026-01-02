@@ -111,6 +111,8 @@ pub enum AuthRequestType {
 /// Authentication request from daemon to client
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuthRequest {
+    /// Unique request ID for this auth request
+    pub id: Uuid,
     /// Tunnel ID this auth request is for
     pub tunnel_id: Uuid,
     /// Type of authentication needed

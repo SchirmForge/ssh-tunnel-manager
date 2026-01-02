@@ -7,6 +7,8 @@ use gtk4::prelude::*;
 use libadwaita as adw;
 use adw::prelude::*;
 use std::rc::Rc;
+use std::time::{Duration, Instant};
+use uuid::Uuid;
 
 use super::window::AppState;
 use crate::models::profile_model::ProfileModel;
@@ -248,11 +250,19 @@ fn create_action_buttons(state: Rc<AppState>, profile: &ProfileModel, window: &a
     let state_clone = state.clone();
     let window_clone = window.clone();
     start_button.connect_clicked(move |button| {
+        // Disable button immediately to prevent double-clicks
+        if !button.is_sensitive() {
+            tracing::debug!("Start button already clicked, ignoring");
+            return;
+        }
+        button.set_sensitive(false);
+
         // Check if we need to show SSH key warning
         let inner_profile = match profile_clone.profile() {
             Some(p) => p,
             None => {
                 eprintln!("✗ Profile data not available");
+                button.set_sensitive(true);
                 return;
             }
         };
@@ -318,7 +328,7 @@ fn create_action_buttons(state: Rc<AppState>, profile: &ProfileModel, window: &a
                     }
 
                     // User clicked Continue - proceed with starting tunnel
-                    button.set_sensitive(false);
+                    // Button already disabled in click handler
 
                     let profile = profile.clone();
                     let state = state.clone();
@@ -333,6 +343,16 @@ fn create_action_buttons(state: Rc<AppState>, profile: &ProfileModel, window: &a
                         match result {
                             Ok(()) => {
                                 eprintln!("✓ Tunnel start request accepted by daemon");
+
+                                // Start per-tunnel polling for guaranteed delivery
+                                if let Some(p) = profile.profile() {
+                                    let tunnel_id = p.metadata.id;
+                                    let state_clone = state.clone();
+
+                                    glib::MainContext::default().spawn_local(async move {
+                                        poll_tunnel_until_terminal(tunnel_id, &state_clone).await;
+                                    });
+                                }
                             }
                             Err(e) => {
                                 let error_msg = format!("Failed to start tunnel: {}", e);
@@ -340,13 +360,16 @@ fn create_action_buttons(state: Rc<AppState>, profile: &ProfileModel, window: &a
                             }
                         }
                     });
+                } else {
+                    // User cancelled - re-enable button
+                    button.set_sensitive(true);
                 }
             });
 
             dialog.present();
         } else {
             // No warning needed - proceed directly
-            button.set_sensitive(false);
+            // Button already disabled at start of click handler
 
             let profile = profile.clone();
             let state = state.clone();
@@ -361,6 +384,16 @@ fn create_action_buttons(state: Rc<AppState>, profile: &ProfileModel, window: &a
                 match result {
                     Ok(()) => {
                         eprintln!("✓ Tunnel start request accepted by daemon");
+
+                        // Start per-tunnel polling for guaranteed delivery
+                        if let Some(p) = profile.profile() {
+                            let tunnel_id = p.metadata.id;
+                            let state_clone = state.clone();
+
+                            glib::MainContext::default().spawn_local(async move {
+                                poll_tunnel_until_terminal(tunnel_id, &state_clone).await;
+                            });
+                        }
                     }
                     Err(e) => {
                         let error_msg = format!("Failed to start tunnel: {}", e);
@@ -638,4 +671,88 @@ fn show_error_dialog(parent: &impl IsA<gtk4::Window>, message: &str) {
     dialog.set_close_response("ok");
 
     dialog.present();
+}
+
+/// Poll tunnel status after POST /start until terminal state is reached
+/// This provides guaranteed delivery of status changes and auth prompts,
+/// even if SSE events are lost during connection establishment.
+async fn poll_tunnel_until_terminal(tunnel_id: Uuid, state: &Rc<AppState>) {
+    let poll_interval = Duration::from_millis(500);
+    let max_duration = Duration::from_secs(120); // 2 minute timeout
+    let start_time = Instant::now();
+
+    tracing::info!("Starting per-tunnel polling for tunnel {}", tunnel_id);
+
+    loop {
+        // Check if we've exceeded max duration
+        if start_time.elapsed() > max_duration {
+            tracing::warn!("Polling timeout for tunnel {} after {} seconds", tunnel_id, max_duration.as_secs());
+            break;
+        }
+
+        // Query status via REST
+        // Clone the client to avoid holding RefCell borrow across await
+        let client = state.daemon_client.borrow().clone();
+        if let Some(client) = client {
+            match client.get_tunnel_status(tunnel_id).await {
+                Ok(Some(response)) => {
+                    // Update AppCore state
+                    {
+                        let mut core = state.core.borrow_mut();
+                        core.tunnel_statuses.insert(tunnel_id, response.status.clone());
+                    }
+
+                    // Update UI
+                    if let Some(list_box) = state.profile_list.borrow().as_ref() {
+                        super::profiles_list::update_profile_status(list_box, tunnel_id, response.status.clone());
+                    }
+
+                    // Handle pending auth
+                    if let Some(request) = response.pending_auth {
+                        tracing::info!("Poll: Found pending auth for tunnel {} - queueing", tunnel_id);
+                        if let Some(window) = state.window.borrow().as_ref() {
+                            super::auth_dialog::handle_auth_request(window, request, state.clone());
+                        }
+                    }
+
+                    // Check if terminal state reached
+                    match &response.status {
+                        TunnelStatus::Connected | TunnelStatus::Failed(_) | TunnelStatus::Disconnected => {
+                            tracing::info!("Poll: Tunnel {} reached terminal state: {:?} - stopping poll", tunnel_id, response.status);
+
+                            // Trigger status change handler on next main loop iteration
+                            // to avoid race conditions with dialog callbacks
+                            let state_clone = state.clone();
+                            let status_clone = response.status.clone();
+                            glib::idle_add_local_once(move || {
+                                super::event_handler::handle_status_changed(&state_clone, tunnel_id, status_clone);
+                            });
+                            break;
+                        }
+                        TunnelStatus::NotConnected => {
+                            tracing::info!("Poll: Tunnel {} not connected - stopping poll", tunnel_id);
+                            break;
+                        }
+                        _ => {
+                            // Transitional state - keep polling
+                            tracing::debug!("Poll: Tunnel {} status: {:?}", tunnel_id, response.status);
+                        }
+                    }
+                }
+                Ok(None) => {
+                    tracing::warn!("Poll: Tunnel {} not found (404) - stopping poll", tunnel_id);
+                    break;
+                }
+                Err(e) => {
+                    tracing::warn!("Poll: Failed to get status for tunnel {}: {}", tunnel_id, e);
+                    // Continue polling despite errors
+                }
+            }
+        }
+
+        // Wait before next poll
+        tokio::time::sleep(poll_interval).await;
+    }
+
+    tracing::info!("Stopped polling for tunnel {}", tunnel_id);
 }

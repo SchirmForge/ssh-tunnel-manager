@@ -2,8 +2,56 @@
 
 ## Current State
 
-**Version**: v0.1.9
-**Status**: ✅ Production-ready CLI/Daemon/GUI with remote daemon support and enhanced UX  
+**Version**: v0.1.10 (In Development)
+**Status**: 🚧 Active development - GUI notifications and UX improvements
+
+**Previous Stable**: v0.1.9 - Production-ready CLI/Daemon/GUI with remote daemon support
+
+### v0.1.10 Development Progress
+
+**Bug Fixes (Completed):**
+- ✅ **Authentication retry on failed 2FA** - Fixed keyboard-interactive retry flow (daemon and GUI)
+  - **Daemon**: Properly detects when server allows retry (checks `remaining_methods`)
+  - **Daemon**: Starts new keyboard-interactive session if server permits
+  - **Daemon**: Respects server's retry policy (no artificial client-side limits)
+  - **GUI**: Auth retry dialogs now display properly (old dialog closed, new one shown)
+  - **GUI**: Dialog reference tracked in AppState for replacement on retry
+  - User gets re-prompted for 2FA/password until server accepts or permanently rejects
+
+- ✅ **Improved daemon error logging** - Better diagnostics for HTTP connection errors
+  - Intelligent categorization: ClientDisconnect, SseStreamClose, NetworkError, ProtocolError, ServerError
+  - SSE stream disconnects moved from ERROR to DEBUG level (reduces log noise)
+  - Structured logging with error source, type, and actionable hints
+  - HTTP request tracing middleware added for context
+
+**Documentation (Completed):**
+- ✅ **Updated GUI About and Help dialogs**
+  - Content moved to `crates/gui-core/assets/` for framework-agnostic sharing
+  - About dialog updated with v0.1.9 features
+  - Help dialog includes comprehensive remote daemon setup guide
+  - Copyright updated to SchirmForge, correct GitHub URLs
+
+**Planned Features:**
+- 🚧 **GUI Notification System** - Desktop notifications for tunnel connection events
+  - Connected notifications
+  - Disconnected notifications
+  - Error notifications
+  - System tray integration (optional)
+
+- 🚧 **Adaptive Authentication Dialogs** - Better UX for authentication prompts
+  - Dynamic dialog sizing based on text content
+  - Better readability for long prompts
+  - Improved layout for keyboard-interactive auth
+
+- 🚧 **User Manual** - Comprehensive user documentation
+  - Getting started guide
+  - Common workflows
+  - Troubleshooting tips
+  - Screenshots and examples
+
+---
+
+## Released Features (v0.1.9)  
 
 - CLI and daemon work end-to-end for **local port forwarding** with interactive auth.  
 - **SSE** powers real-time updates (`/api/events`); REST covers start/stop/status/auth.  

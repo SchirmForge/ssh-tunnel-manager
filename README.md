@@ -17,7 +17,7 @@ A secure, performant SSH tunnel management application for Linux with CLI interf
 
 ### Limitations
 
-- 🚧 Remote/dynamic forwarding not implemented yet
+- 🚧 Notification on connection lost or reconnect not implemented yet
 - 🚧 Auto-reconnect wiring pending
 - ⚠️ Some `crates/common` tests are stale
 

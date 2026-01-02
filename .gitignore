@@ -13,6 +13,8 @@ Thumbs.db
 # Local env/config
 .env
 .env.*
+logs/
+*.log
 
 # Packaging outputs
 *.deb

@@ -10,7 +10,7 @@ use super::markdown::markdown_to_pango;
 
 /// Show the help dialog
 pub fn show_help_dialog(window: &adw::ApplicationWindow) {
-    let help_content = include_str!("../../assets/help.md");
+    let help_content = include_str!("../../../gui-core/assets/help.md");
     let pango_markup = markdown_to_pango(help_content);
 
     let dialog = adw::Window::new();

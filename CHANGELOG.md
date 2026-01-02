@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### In Development for v0.1.10
+
+**Bug Fixes:**
+- **Fixed authentication retry on failed 2FA/keyboard-interactive** - Complete fix for daemon and GUI
+  - **Daemon**: Server-controlled retry now works correctly
+    - Previously: First failed 2FA attempt would permanently fail the tunnel connection
+    - Now: Daemon checks if `keyboard-interactive` is still in server's `remaining_methods`
+    - If retry allowed, starts new keyboard-interactive session
+    - Respects server's retry policy (typically 3 attempts for Google Authenticator)
+    - Two-loop structure: outer loop for retry sessions, inner loop for prompts within session
+    - File: `crates/daemon/src/tunnel.rs:1048-1179`
+  - **GUI**: Architectural redesign - SSE-driven dialog state (eliminates race conditions)
+    - Previously: Dialog closed immediately on submit, causing race with SSE events; polling workaround tried to catch "missed" events
+    - Root cause: Multiple sources of truth (dialog state, network timing, SSE events)
+    - Now: Dialog stays open showing "Verifying..." until SSE event confirms next state
+    - SSE events are single source of truth: Connected → close dialog, AuthRequired → replace dialog, Error → close dialog
+    - Removed polling workaround - trust SSE stream completely
+    - Follows stateless web app pattern: GUI is pure view, daemon controls state
+    - Files: `crates/gui-gtk/src/ui/auth_dialog.rs:161-276`, `crates/gui-gtk/src/ui/event_handler.rs:20-54`, `crates/gui-gtk/src/ui/window.rs:44-45,69`
+- **Improved daemon HTTP connection error logging** - Better diagnostics and reduced log noise
+  - Added intelligent error categorization: ClientDisconnect, SseStreamClose, NetworkError, ProtocolError, ServerError
+  - SSE stream disconnects now logged at DEBUG level (were ERROR, cluttered logs)
+  - Added structured logging with error source, type, and actionable hints
+  - Added HTTP request tracing middleware with path, method, status, and latency
+  - Files: `crates/daemon/src/main.rs:33-180` (error analysis), `crates/daemon/src/api.rs:100-108` (tracing middleware)
+
+**Documentation:**
+- **Updated About and Help dialogs** - Now show v0.1.9 features and current information
+  - Moved documentation content to `crates/gui-core/assets/` for framework-agnostic sharing
+  - Updated About dialog with v0.1.9 highlights (config wizard, remote daemon support, hybrid profile mode)
+  - Updated Help dialog with comprehensive user guide including remote daemon setup
+  - Updated copyright to SchirmForge, repository links to correct GitHub URL
+  - Files: `crates/gui-core/assets/about.md`, `crates/gui-core/assets/help.md`
+
+**Planned Features:**
+- Notification system in GUI for connection events (connected, disconnected, errors)
+- Larger authentication dialogs that adapt to text content size
+- User manual documentation
+
 ---
 
 ## [0.1.9] - 2025-12-31

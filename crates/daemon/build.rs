@@ -34,6 +34,7 @@ fn main() {
         }
     }
 
-    // Rerun if build script changes
+    // Always rerun to get current timestamp
     println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rerun-if-env-changed=FORCE_BUILD_DATE_UPDATE");
 }

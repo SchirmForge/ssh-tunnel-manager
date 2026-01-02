@@ -15,6 +15,14 @@ mod daemon;
 const APP_ID: &str = "com.github.ssh-tunnel-manager";
 
 fn main() {
+    // Initialize tracing subscriber for logging
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::from_default_env()
+                .add_directive("ssh_tunnel_gtk=debug".parse().unwrap())
+        )
+        .init();
+
     // Initialize Tokio runtime for async operations
     let runtime = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
 

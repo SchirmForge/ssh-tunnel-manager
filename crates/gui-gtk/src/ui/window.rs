@@ -8,12 +8,13 @@ use libadwaita as adw;
 use adw::prelude::*;
 use std::rc::Rc;
 use std::cell::RefCell;
+use std::collections::VecDeque;
 
 use super::{navigation, profiles_list, daemon_settings, help_dialog, about_dialog};
 use crate::models::profile_model::ProfileModel;
 use crate::daemon::DaemonClient;
 use ssh_tunnel_gui_core::AppCore;
-use ssh_tunnel_common::DaemonClientConfig;
+use ssh_tunnel_common::{DaemonClientConfig, AuthRequest};
 
 /// Shared application state
 pub struct AppState {
@@ -41,6 +42,14 @@ pub struct AppState {
     pub pending_daemon_config: RefCell<Option<DaemonClientConfig>>,
     // Track if configuration has been modified during this session
     pub config_modified: RefCell<bool>,
+    // Active auth dialog (for closing on retry)
+    pub active_auth_dialog: RefCell<Option<adw::MessageDialog>>,
+    // Active auth request ID (for correlation)
+    pub active_auth_request_id: RefCell<Option<uuid::Uuid>>,
+    // Event queue for auth requests (decouples SSE reception from dialog display)
+    pub auth_request_queue: RefCell<VecDeque<AuthRequest>>,
+    // Flag indicating if we're currently processing an auth request
+    pub processing_auth_request: RefCell<bool>,
 }
 
 impl AppState {
@@ -64,6 +73,10 @@ impl AppState {
             profile_details_stop_btn: RefCell::new(None),
             pending_daemon_config: RefCell::new(None),
             config_modified: RefCell::new(false),
+            active_auth_dialog: RefCell::new(None),
+            active_auth_request_id: RefCell::new(None),
+            auth_request_queue: RefCell::new(VecDeque::new()),
+            processing_auth_request: RefCell::new(false),
         })
     }
 
@@ -314,7 +327,7 @@ fn start_event_listener(state: Rc<AppState>, status_icon: gtk4::Image) {
                     // Wait for first event with timeout to verify connection
                     match tokio::time::timeout(tokio::time::Duration::from_secs(5), rx.recv()).await {
                         Ok(Some(_first_event)) => {
-                            eprintln!("✓ Event listener connected (received first event)");
+                            tracing::info!("SSE event stream connected to daemon");
                             status_icon.set_icon_name(Some("network-wired-symbolic"));
                             status_icon.set_tooltip_text(Some("✓ Connected to daemon"));
                             status_icon.remove_css_class("daemon-offline");
@@ -327,54 +340,17 @@ fn start_event_listener(state: Rc<AppState>, status_icon: gtk4::Image) {
                             // Refresh daemon page if we're currently viewing it
                             if *state.current_nav_page.borrow() == navigation::NavigationPage::Daemon {
                                 if let Some(refresh) = state.daemon_page_refresh.borrow().as_ref() {
-                                    eprintln!("✓ Refreshing daemon page (daemon connected)");
+                                    tracing::debug!("Refreshing daemon page (daemon connected)");
                                     refresh();
-                                }
-                            }
-
-                            // Query initial tunnel statuses for all profiles
-                            if let Some(client) = state.daemon_client.borrow().as_ref() {
-                                if let Some(list_box) = state.profile_list.borrow().as_ref() {
-                                    let list_box_clone = list_box.clone();
-                                    let client_clone = client.clone();
-                                    let state_clone = state.clone();
-
-                                    glib::MainContext::default().spawn_local(async move {
-                                        match client_clone.list_tunnels().await {
-                                            Ok(tunnels) => {
-                                                eprintln!("✓ Queried {} tunnel statuses from daemon", tunnels.len());
-                                                for tunnel in tunnels {
-                                                    super::profiles_list::update_profile_status(
-                                                        &list_box_clone,
-                                                        tunnel.id,
-                                                        tunnel.status,
-                                                    );
-
-                                                    if let Some(request) = tunnel.pending_auth {
-                                                        if let Some(window) = state_clone.window.borrow().as_ref() {
-                                                            super::auth_dialog::handle_auth_request(
-                                                                window,
-                                                                request,
-                                                                state_clone.clone(),
-                                                            );
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                            Err(e) => {
-                                                eprintln!("⚠ Failed to query tunnel statuses: {}", e);
-                                            }
-                                        }
-                                    });
                                 }
                             }
                         }
                         Ok(None) => {
-                            eprintln!("✗ Event channel closed before first event");
+                            tracing::warn!("SSE event channel closed before first event - retrying");
                             continue; // Retry connection
                         }
                         Err(_) => {
-                            eprintln!("✗ Timeout waiting for first event from daemon");
+                            tracing::warn!("Timeout waiting for first SSE event - retrying");
                             continue; // Retry connection
                         }
                     }
@@ -401,18 +377,66 @@ fn start_event_listener(state: Rc<AppState>, status_icon: gtk4::Image) {
 
                         if elapsed > heartbeat_timeout {
                             // Timeout reached - send signal to exit event loop
-                            eprintln!("✗ Heartbeat timeout - daemon appears offline");
+                            tracing::warn!("Heartbeat timeout - daemon appears offline");
                             let _ = timeout_tx.send(());
                             break;
                         }
                     }
                 });
 
+                // Sync tunnel state after SSE connection established
+                // This catches any AuthRequired events that were emitted during disconnection
+                tracing::info!("SSE connected - syncing tunnel state from daemon");
+                if let Some(client) = state.daemon_client.borrow().as_ref() {
+                    if let Some(list_box) = state.profile_list.borrow().as_ref() {
+                        let list_box_clone = list_box.clone();
+                        let client_clone = client.clone();
+                        let state_clone = state.clone();
+
+                        glib::MainContext::default().spawn_local(async move {
+                            match client_clone.list_tunnels().await {
+                                Ok(tunnels) => {
+                                    tracing::info!("Synced {} tunnel statuses after SSE reconnect", tunnels.len());
+                                    for tunnel in tunnels {
+                                        // Update status in AppCore
+                                        {
+                                            let mut core = state_clone.core.borrow_mut();
+                                            core.tunnel_statuses.insert(tunnel.id, tunnel.status.clone());
+                                        }
+
+                                        // Update UI
+                                        super::profiles_list::update_profile_status(
+                                            &list_box_clone,
+                                            tunnel.id,
+                                            tunnel.status.clone(),
+                                        );
+
+                                        // Handle any pending auth requests that were missed during disconnect
+                                        if let Some(request) = tunnel.pending_auth {
+                                            tracing::info!("Found pending auth for tunnel {} after reconnect - queueing", tunnel.id);
+                                            if let Some(window) = state_clone.window.borrow().as_ref() {
+                                                super::auth_dialog::handle_auth_request(
+                                                    window,
+                                                    request,
+                                                    state_clone.clone(),
+                                                );
+                                            }
+                                        }
+                                    }
+                                }
+                                Err(e) => {
+                                    tracing::warn!("Failed to sync tunnel statuses after reconnect: {}", e);
+                                }
+                            }
+                        });
+                    }
+                }
+
                 // Process events as they arrive
                 loop {
                     tokio::select! {
                         Some(event) = rx.recv() => {
-                            eprintln!("Received event: {:?}", event);
+                            tracing::debug!("Received SSE event: {:?}", event);
 
                             // Use centralized event handler from gui-core
                             super::event_handler::process_tunnel_event(&state, event.clone());
@@ -494,12 +518,108 @@ fn start_event_listener(state: Rc<AppState>, status_icon: gtk4::Image) {
                                     status_icon.remove_css_class("daemon-offline");
                                     status_icon.remove_css_class("daemon-connecting");
                                     status_icon.add_css_class("daemon-connected");
+
+                                    // Periodic status sync on heartbeat to catch missed SSE events
+                                    // Only sync tunnels in transitional states (Connecting, WaitingForAuth)
+                                    let tunnels_to_check: Vec<uuid::Uuid> = {
+                                        let core = state.core.borrow();
+                                        core.tunnel_statuses.iter()
+                                            .filter(|(_, status)| status.is_in_progress())
+                                            .map(|(id, _)| *id)
+                                            .collect()
+                                    };
+
+                                    if !tunnels_to_check.is_empty() {
+                                        tracing::debug!(
+                                            "Heartbeat backup poll: Checking {} transitional tunnels (per-tunnel polling is primary)",
+                                            tunnels_to_check.len()
+                                        );
+
+                                        if let Some(client) = state.daemon_client.borrow().as_ref() {
+                                            if let Some(list_box) = state.profile_list.borrow().as_ref() {
+                                                let client_clone = client.clone();
+                                                let state_clone = state.clone();
+                                                let list_box_clone = list_box.clone();
+
+                                                glib::MainContext::default().spawn_local(async move {
+                                                    for tunnel_id in tunnels_to_check {
+                                                        match client_clone.get_tunnel_status(tunnel_id).await {
+                                                            Ok(Some(response)) => {
+                                                                // Update status in AppCore
+                                                                {
+                                                                    let mut core = state_clone.core.borrow_mut();
+                                                                    let old_status = core.tunnel_statuses.get(&tunnel_id).cloned();
+
+                                                                    // Only update if status changed
+                                                                    if old_status.as_ref() != Some(&response.status) {
+                                                                        tracing::info!(
+                                                                            "Heartbeat backup poll: Tunnel {} status changed from {:?} to {:?}",
+                                                                            tunnel_id, old_status, response.status
+                                                                        );
+                                                                        core.tunnel_statuses.insert(tunnel_id, response.status.clone());
+                                                                    }
+                                                                }
+
+                                                                // Update UI
+                                                                super::profiles_list::update_profile_status(
+                                                                    &list_box_clone,
+                                                                    tunnel_id,
+                                                                    response.status.clone(),
+                                                                );
+
+                                                                // Handle missed auth requests
+                                                                if let Some(request) = response.pending_auth {
+                                                                    tracing::info!(
+                                                                        "Heartbeat backup poll: Found pending auth for tunnel {} - queueing",
+                                                                        tunnel_id
+                                                                    );
+                                                                    if let Some(window) = state_clone.window.borrow().as_ref() {
+                                                                        super::auth_dialog::handle_auth_request(
+                                                                            window,
+                                                                            request,
+                                                                            state_clone.clone(),
+                                                                        );
+                                                                    }
+                                                                }
+
+                                                                // Trigger status event handler for terminal states
+                                                                match &response.status {
+                                                                    ssh_tunnel_common::TunnelStatus::Connected |
+                                                                    ssh_tunnel_common::TunnelStatus::Disconnected |
+                                                                    ssh_tunnel_common::TunnelStatus::Failed(_) => {
+                                                                        super::event_handler::handle_status_changed(
+                                                                            &state_clone,
+                                                                            tunnel_id,
+                                                                            response.status.clone(),
+                                                                        );
+                                                                    }
+                                                                    _ => {}
+                                                                }
+                                                            }
+                                                            Ok(None) => {
+                                                                tracing::debug!(
+                                                                    "Heartbeat backup poll: Tunnel {} not found (404)",
+                                                                    tunnel_id
+                                                                );
+                                                            }
+                                                            Err(e) => {
+                                                                tracing::warn!(
+                                                                    "Heartbeat backup poll: Failed to get status for tunnel {}: {}",
+                                                                    tunnel_id, e
+                                                                );
+                                                            }
+                                                        }
+                                                    }
+                                                });
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
                         _ = timeout_rx.recv() => {
                             // Heartbeat timeout - daemon appears offline
-                            eprintln!("✗ Daemon heartbeat timeout");
+                            tracing::warn!("Daemon heartbeat timeout - reconnecting");
 
                             // Update daemon connection state in AppCore
                             super::event_handler::handle_daemon_connected(&state, false);
@@ -514,7 +634,7 @@ fn start_event_listener(state: Rc<AppState>, status_icon: gtk4::Image) {
                             // Refresh daemon page if we're currently viewing it
                             if *state.current_nav_page.borrow() == navigation::NavigationPage::Daemon {
                                 if let Some(refresh) = state.daemon_page_refresh.borrow().as_ref() {
-                                    eprintln!("✓ Refreshing daemon page (daemon disconnected)");
+                                    tracing::debug!("Refreshing daemon page (daemon disconnected)");
                                     refresh();
                                 }
                             }
@@ -544,10 +664,10 @@ fn start_event_listener(state: Rc<AppState>, status_icon: gtk4::Image) {
                     }
                 }
                     // Event loop exited (timeout) - will reconnect after backoff
-                    eprintln!("Reconnecting to daemon in {} seconds...", backoff.as_secs());
+                    tracing::info!("Reconnecting to daemon in {} seconds...", backoff.as_secs());
                 }
                 Err(e) => {
-                    eprintln!("✗ Failed to start event listener: {}", e);
+                    tracing::error!("Failed to start event listener: {}", e);
                     status_icon.set_icon_name(Some("network-offline-symbolic"));
                     status_icon.set_tooltip_text(Some("✗ Failed to connect to daemon"));
                     status_icon.remove_css_class("daemon-connecting");

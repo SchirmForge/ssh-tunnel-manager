@@ -321,6 +321,41 @@ impl DaemonClient {
         }
     }
 
+    /// Submit authentication response for a tunnel with request ID
+    pub async fn submit_auth_with_id(
+        &self,
+        profile_id: Uuid,
+        request_id: Uuid,
+        auth_response: String,
+    ) -> Result<()> {
+        let url = format!("{}/api/tunnels/{}/auth", self.base_url()?, profile_id);
+        let request = self.client.post(&url);
+        let request = add_auth_header(request, &self.config)?;
+
+        let payload = serde_json::json!({
+            "request_id": request_id,
+            "response": auth_response,
+        });
+
+        let response = request
+            .json(&payload)
+            .send()
+            .await
+            .context("Failed to send auth response")?;
+
+        if response.status().is_success() {
+            Ok(())
+        } else {
+            let error: ErrorResponse = response
+                .json()
+                .await
+                .unwrap_or_else(|_| ErrorResponse {
+                    error: "Unknown error".to_string(),
+                });
+            anyhow::bail!("Failed to submit auth: {}", error.error)
+        }
+    }
+
     /// Get daemon information (version, config, uptime, etc.)
     pub async fn get_daemon_info(&self) -> Result<DaemonInfo> {
         let url = format!("{}/api/daemon/info", self.base_url()?);
