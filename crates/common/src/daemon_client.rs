@@ -717,12 +717,13 @@ async fn handle_auth_interactive<H: TunnelEventHandler>(
 
     let base_url = config.daemon_base_url()?;
     let auth_url = format!("{}/api/tunnels/{}/auth", base_url, tunnel_id);
-    let auth_response = AuthResponse {
-        tunnel_id,
-        response,
-    };
+    // Include the request_id so the daemon can pair this response with the pending prompt
+    let payload = serde_json::json!({
+        "request_id": auth_request.id,
+        "response": response,
+    });
 
-    let auth_resp = add_auth_header(client.post(&auth_url).json(&auth_response), config)?
+    let auth_resp = add_auth_header(client.post(&auth_url).json(&payload), config)?
         .send()
         .await
         .context("Failed to submit authentication")?;
