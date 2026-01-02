@@ -16,6 +16,7 @@ mod tls;
 mod tunnel;
 
 use std::sync::Arc;
+use std::error::Error;
 
 use anyhow::{Context, Result};
 use axum_server::tls_rustls::RustlsConfig;
@@ -29,6 +30,195 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use api::{create_router, AppState};
 use config::{DaemonConfig, ListenerMode};
 use tunnel::TunnelManager;
+
+/// Connection error categories for better diagnostics
+///
+/// Categorizes HTTP connection errors by severity and type to enable
+/// appropriate logging levels and reduce noise from normal disconnects.
+#[derive(Debug)]
+enum ConnectionErrorCategory {
+    /// Normal client disconnect (DEBUG level) - not actionable
+    ClientDisconnect,
+    /// SSE stream timeout or close (DEBUG level) - expected for long-lived connections
+    SseStreamClose,
+    /// Network/transport error (INFO level) - transient, may self-resolve
+    NetworkError,
+    /// Protocol error (WARN level) - may indicate client/server version mismatch
+    ProtocolError,
+    /// Server error requiring attention (ERROR level) - needs investigation
+    ServerError,
+}
+
+/// Analyze hyper connection error and categorize it
+///
+/// Uses type-based error inspection to determine the likely cause
+/// and appropriate severity level for logging. This approach is
+/// language-independent and works regardless of system locale.
+fn categorize_connection_error(err: &hyper::Error) -> ConnectionErrorCategory {
+    // Check for timeout errors (transient network issues, INFO level)
+    if err.is_timeout() {
+        return ConnectionErrorCategory::NetworkError;
+    }
+
+    // Protocol errors (WARN level - might indicate client/server mismatch)
+    if err.is_parse() || err.is_parse_too_large() || err.is_parse_status() {
+        return ConnectionErrorCategory::ProtocolError;
+    }
+
+    // Body write aborted - often SSE client disconnected (DEBUG level)
+    if err.is_body_write_aborted() {
+        return ConnectionErrorCategory::SseStreamClose;
+    }
+
+    // Connection closed before message completed (normal client disconnect, DEBUG level)
+    if err.is_incomplete_message() {
+        return ConnectionErrorCategory::ClientDisconnect;
+    }
+
+    // Channel closed or connection cancelled (normal disconnect, DEBUG level)
+    if err.is_closed() || err.is_canceled() {
+        return ConnectionErrorCategory::ClientDisconnect;
+    }
+
+    // Check underlying IO error source for connection-related errors
+    // Walk the error chain to find IO errors
+    let mut source = err.source();
+    while let Some(err_source) = source {
+        if let Some(io_err) = err_source.downcast_ref::<std::io::Error>() {
+            use std::io::ErrorKind;
+            match io_err.kind() {
+                ErrorKind::ConnectionReset
+                | ErrorKind::ConnectionAborted
+                | ErrorKind::BrokenPipe
+                | ErrorKind::NotConnected => {
+                    return ConnectionErrorCategory::ClientDisconnect;
+                }
+                ErrorKind::TimedOut => {
+                    return ConnectionErrorCategory::NetworkError;
+                }
+                _ => {}
+            }
+        }
+        source = err_source.source();
+    }
+
+    // Everything else is potentially serious (ERROR level)
+    ConnectionErrorCategory::ServerError
+}
+
+/// Log connection error with appropriate level and context
+///
+/// Provides structured logging with:
+/// - Error categorization (client_disconnect, network, protocol, daemon_internal)
+/// - Error type details from hyper (timeout, parse_error, body_write_aborted, etc.)
+/// - Appropriate log level (DEBUG for normal disconnects, ERROR for serious issues)
+/// - Actionable hints for errors requiring attention
+///
+/// # Arguments
+/// * `err` - The connection error from hyper or axum_server
+/// * `listener_mode` - The server mode ("unix_socket", "tcp_http", or "tcp_https")
+///
+/// # Examples of output:
+/// ```text
+/// [tcp_https] SSE stream closed | type=connection_error | error: connection error
+/// [tcp_https] Server error | source=daemon_internal | type=parse_error | error: ... | action=investigate_required
+/// ```
+fn log_connection_error(err: &Box<dyn std::error::Error + Send + Sync>, listener_mode: &str) {
+    let err_msg = err.to_string();
+
+    // Try to downcast to hyper::Error for detailed analysis
+    let category = if let Some(hyper_err) = err.downcast_ref::<hyper::Error>() {
+        categorize_connection_error(hyper_err)
+    } else {
+        // If not a hyper error, check if it's an IO error from axum_server or tokio
+        if let Some(io_err) = err.downcast_ref::<std::io::Error>() {
+            use std::io::ErrorKind;
+            match io_err.kind() {
+                ErrorKind::ConnectionReset
+                | ErrorKind::ConnectionAborted
+                | ErrorKind::BrokenPipe
+                | ErrorKind::NotConnected => ConnectionErrorCategory::ClientDisconnect,
+                ErrorKind::TimedOut => ConnectionErrorCategory::NetworkError,
+                _ => ConnectionErrorCategory::ServerError,
+            }
+        } else {
+            // For unknown error types, treat as server error
+            ConnectionErrorCategory::ServerError
+        }
+    };
+
+    // Build error source context
+    let mut source_parts = vec![];
+
+    // Try to get hyper-specific error details if available
+    if let Some(hyper_err) = err.downcast_ref::<hyper::Error>() {
+        if hyper_err.is_timeout() {
+            source_parts.push("timeout");
+        }
+        if hyper_err.is_parse() {
+            source_parts.push("parse_error");
+        }
+        if hyper_err.is_incomplete_message() {
+            source_parts.push("incomplete_message");
+        }
+        if hyper_err.is_body_write_aborted() {
+            source_parts.push("body_write_aborted");
+        }
+        if hyper_err.is_canceled() {
+            source_parts.push("canceled");
+        }
+    }
+
+    let error_type = if source_parts.is_empty() {
+        "connection_error".to_string()
+    } else {
+        source_parts.join("+")
+    };
+
+    // Determine error source category
+    let source_category = match &category {
+        ConnectionErrorCategory::ClientDisconnect | ConnectionErrorCategory::SseStreamClose => {
+            "client_disconnect"
+        },
+        ConnectionErrorCategory::NetworkError => "network",
+        ConnectionErrorCategory::ProtocolError => "protocol",
+        ConnectionErrorCategory::ServerError => "daemon_internal",
+    };
+
+    // Log with appropriate level
+    match category {
+        ConnectionErrorCategory::ClientDisconnect => {
+            debug!(
+                "[{}] Client disconnected | type={} | error: {}",
+                listener_mode, error_type, err_msg
+            );
+        },
+        ConnectionErrorCategory::SseStreamClose => {
+            debug!(
+                "[{}] SSE stream closed | type={} | error: {}",
+                listener_mode, error_type, err_msg
+            );
+        },
+        ConnectionErrorCategory::NetworkError => {
+            info!(
+                "[{}] Network error (transient) | source={} | type={} | error: {}",
+                listener_mode, source_category, error_type, err_msg
+            );
+        },
+        ConnectionErrorCategory::ProtocolError => {
+            tracing::warn!(
+                "[{}] Protocol error | source={} | type={} | error: {} | action=check_client_version",
+                listener_mode, source_category, error_type, err_msg
+            );
+        },
+        ConnectionErrorCategory::ServerError => {
+            error!(
+                "[{}] Server error | source={} | type={} | error: {} | action=investigate_required",
+                listener_mode, source_category, error_type, err_msg
+            );
+        },
+    }
+}
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -228,13 +418,7 @@ async fn serve_unix_socket(
                                 .serve_connection_with_upgrades(stream, hyper_service)
                                 .await
                             {
-                                // Client disconnects (e.g., Ctrl+C on watch command) are normal
-                                let err_msg = err.to_string();
-                                if err_msg.contains("connection closed") || err_msg.contains("Broken pipe") {
-                                    debug!("Client disconnected: {}", err);
-                                } else {
-                                    error!("Error serving connection: {}", err);
-                                }
+                                log_connection_error(&err, "unix_socket");
                             }
                         });
                     }

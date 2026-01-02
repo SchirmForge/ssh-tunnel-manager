@@ -9,6 +9,83 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.1.10] - 2026-01-02
+
+### Fixed
+- **Authentication retry on failed 2FA/keyboard-interactive** - Complete fix for daemon and GUI
+  - **Daemon**: Server-controlled retry now works correctly
+    - Previously: First failed 2FA attempt would permanently fail the tunnel connection
+    - Now: Daemon checks if `keyboard-interactive` is still in server's `remaining_methods`
+    - If retry allowed, starts new keyboard-interactive session
+    - Respects server's retry policy (typically 3 attempts for Google Authenticator)
+    - Two-loop structure: outer loop for retry sessions, inner loop for prompts within session
+    - File: `crates/daemon/src/tunnel.rs:1048-1179`
+  - **GUI**: Architectural redesign - SSE-driven dialog state (eliminates race conditions)
+    - Previously: Dialog closed immediately on submit, causing race with SSE events; polling workaround tried to catch "missed" events
+    - Root cause: Multiple sources of truth (dialog state, network timing, SSE events)
+    - Now: Dialog stays open showing "Verifying..." until SSE event confirms next state
+    - SSE events are single source of truth: Connected → close dialog, AuthRequired → replace dialog, Error → close dialog
+    - Removed polling workaround - trust SSE stream completely
+    - Follows stateless web app pattern: GUI is pure view, daemon controls state
+    - Files: `crates/gui-gtk/src/ui/auth_dialog.rs:161-276`, `crates/gui-gtk/src/ui/event_handler.rs:20-54`, `crates/gui-gtk/src/ui/window.rs:44-45,69`
+- **Language-dependent string comparisons removed from daemon** - Internationalization-ready error detection
+  - **Daemon connection error categorization** - Type-based error inspection instead of string matching
+    - Replaced `err.to_string().contains()` checks with proper error type methods
+    - Uses hyper::Error inspection: `is_timeout()`, `is_parse()`, `is_body_write_aborted()`, `is_incomplete_message()`, etc.
+    - Walks error chain to find underlying `std::io::Error` and checks `ErrorKind` enum variants
+    - Works correctly regardless of system locale or language settings
+    - File: `crates/daemon/src/main.rs:56-107`
+  - **Systemd error detection centralized** - Documented contract with TunnelManager
+    - Created `is_tunnel_not_found_error()` helper function
+    - Uses exact string matching (`==`) instead of substring contains
+    - Centralized with clear documentation of error message contract
+    - File: `crates/daemon/src/api.rs:40-51,289-299`
+  - **Encrypted SSH key detection** - Type-based error matching
+    - Replaced language-dependent string comparison with `russh::keys::Error` enum matching
+    - Uses `RusshKeyError::KeyIsEncrypted` variant for language-independent detection
+    - File: `crates/daemon/src/tunnel.rs:967-981`
+  - **Keyboard-interactive prompt handling** - Server prompt passed as-is
+    - Changed from hardcoded `AuthRequestType::TwoFactorCode` to `AuthRequestType::KeyboardInteractive`
+    - Server's prompt text (in server's configured language) passed directly to GUI
+    - No client-side string manipulation or language assumptions
+    - File: `crates/daemon/src/tunnel.rs:1209-1218`
+- **Test3 auth dialog placeholder mismatch** - Correct placeholder for remote password prompt
+  - GUI now shows generic "Enter password or code" for keyboard-interactive auth
+  - Server's prompt text guides user on what to enter
+  - Previously hardcoded "Enter 2FA code" for all keyboard-interactive prompts
+
+### Changed
+- **Improved daemon HTTP connection error logging** - Better diagnostics and reduced log noise
+  - Added intelligent error categorization: ClientDisconnect, SseStreamClose, NetworkError, ProtocolError, ServerError
+  - SSE stream disconnects now logged at DEBUG level (were ERROR, cluttered logs)
+  - Added structured logging with error source, type, and actionable hints
+  - Added HTTP request tracing middleware with path, method, status, and latency
+  - Files: `crates/daemon/src/main.rs:33-180` (error analysis), `crates/daemon/src/api.rs:100-108` (tracing middleware)
+- **SSE client consolidated to common crate** - Single source of truth for both CLI and GUI
+  - Moved `EventListener` and `TunnelEvent` from `gui-core` to `common` crate
+  - Both CLI and GUI now import from `ssh_tunnel_common::sse`
+  - Removed duplicate `TunnelEvent` enum from `daemon_client.rs`
+  - Renamed `TunnelEvent` in `types.rs` to `TunnelDomainEvent` to avoid conflict
+  - Framework-agnostic SSE client shared by all frontends
+  - Files: `crates/common/src/sse.rs` (new), `crates/gui-core/src/daemon/sse.rs` (deleted), `crates/common/src/lib.rs`, `crates/gui-core/src/daemon/mod.rs`, `crates/cli/src/main.rs`
+
+### Documentation
+- **Updated About and Help dialogs** - Now show v0.1.9 features and current information
+  - Moved documentation content to `crates/gui-core/assets/` for framework-agnostic sharing
+  - Updated About dialog with v0.1.9 highlights (config wizard, remote daemon support, hybrid profile mode)
+  - Updated Help dialog with comprehensive user guide including remote daemon setup
+  - Updated copyright to SchirmForge, repository links to correct GitHub URL
+  - Files: `crates/gui-core/assets/about.md`, `crates/gui-core/assets/help.md`
+
+### Technical Details
+- Error detection now uses type-based matching for language independence
+- Hyper error inspection methods: `is_timeout()`, `is_parse()`, `is_body_write_aborted()`, `is_incomplete_message()`, `is_closed()`, `is_canceled()`
+- IO error kind matching: `ConnectionReset`, `ConnectionAborted`, `BrokenPipe`, `NotConnected`, `TimedOut`
+- SSE module now in common crate enables code reuse across all frontends
+- Auth retry respects server's `remaining_methods` for protocol compliance
+
+---
+
 ## [0.1.9] - 2025-12-31
 
 ### Added

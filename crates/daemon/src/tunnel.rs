@@ -12,7 +12,7 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use russh::client::{self, AuthResult, Config, Handle, KeyboardInteractiveAuthResponse};
-use russh::keys::{load_secret_key, PrivateKey, PrivateKeyWithHashAlg};
+use russh::keys::{load_secret_key, PrivateKey, PrivateKeyWithHashAlg, Error as RusshKeyError};
 use tokio::io::copy_bidirectional;
 use tokio::net::TcpListener;
 use tokio::sync::{broadcast, mpsc, oneshot, RwLock};
@@ -133,18 +133,35 @@ impl TunnelManager {
             .map(|p| p.request.clone())
     }
 
-    /// Submit authentication response for a tunnel
-    pub async fn submit_auth(&self, id: &Uuid, response: String) -> Result<()> {
+    /// Submit authentication response for a tunnel with request ID verification
+    pub async fn submit_auth_by_request_id(
+        &self,
+        tunnel_id: &Uuid,
+        request_id: Uuid,
+        response: String,
+    ) -> Result<()> {
         let mut tunnels = self.tunnels.write().await;
 
         let tunnel = tunnels
-            .get_mut(id)
+            .get_mut(tunnel_id)
             .ok_or_else(|| anyhow::anyhow!("Tunnel not found"))?;
 
         let pending = tunnel
             .pending_auth
-            .take()
+            .as_ref()
             .ok_or_else(|| anyhow::anyhow!("No pending authentication request"))?;
+
+        // Verify request ID matches
+        if pending.request.id != request_id {
+            anyhow::bail!(
+                "Request ID mismatch (expected {}, got {})",
+                pending.request.id,
+                request_id
+            );
+        }
+
+        // Take the pending auth now that we've verified it
+        let pending = tunnel.pending_auth.take().unwrap();
 
         // Send the response to the waiting tunnel task
         pending
@@ -519,6 +536,7 @@ impl AuthContext {
         let (response_tx, response_rx) = oneshot::channel();
 
         let request = AuthRequest {
+            id: Uuid::new_v4(),
             tunnel_id: self.tunnel_id,
             auth_type,
             prompt: prompt.to_string(),
@@ -665,7 +683,7 @@ async fn establish_connection(
     };
 
     // Authenticate (this may trigger AuthRequired event)
-    let authenticated = authenticate(&mut session, &profile, &auth_ctx).await?;
+    let authenticated = authenticate(&mut session, &profile, &auth_ctx, event_tx).await?;
     if !authenticated {
         let reason = "Authentication failed".to_string();
         error!("{}", reason);
@@ -796,6 +814,7 @@ async fn authenticate(
     session: &mut Handle<ClientHandler>,
     profile: &Profile,
     auth_ctx: &AuthContext,
+    event_tx: &broadcast::Sender<TunnelEvent>,
 ) -> Result<bool> {
     let user = &profile.connection.user;
 
@@ -808,10 +827,10 @@ async fn authenticate(
                 .ok_or_else(|| anyhow::anyhow!("Key path not specified"))?;
 
             info!("Authenticating with key: {}", key_path.display());
-            let key_result =
+            let (success, remaining_methods) =
                 authenticate_with_key(session, user, key_path, auth_ctx, profile).await?;
 
-            if key_result {
+            if success {
                 return Ok(true);
             }
 
@@ -819,9 +838,37 @@ async fn authenticate(
             // Server accepted the key but wants additional auth
             info!("Key authentication partial success, checking for additional auth methods");
 
-            // Try keyboard-interactive next (handles 2FA, additional passwords, etc.)
-            info!("Attempting keyboard-interactive authentication");
-            authenticate_keyboard_interactive(session, user, auth_ctx).await
+            // Emit Starting event to close the passphrase dialog before showing next auth prompt
+            let _ = event_tx.send(TunnelEvent::Starting {
+                id: auth_ctx.tunnel_id,
+            });
+
+            // Check what methods the server supports
+            let remaining = remaining_methods.ok_or_else(|| {
+                anyhow::anyhow!("Server accepted key but didn't specify remaining auth methods")
+            })?;
+
+            // Check if server wants keyboard-interactive or password
+            use russh::MethodKind;
+            if remaining.contains(&MethodKind::KeyboardInteractive) {
+                info!("Server supports keyboard-interactive, attempting that");
+                authenticate_keyboard_interactive(session, user, auth_ctx, event_tx).await
+            } else if remaining.contains(&MethodKind::Password) {
+                info!("Server wants password authentication");
+                authenticate_with_password(session, user, auth_ctx, profile).await
+            } else {
+                let methods: Vec<String> = remaining
+                    .iter()
+                    .map(|m| {
+                        let s: &str = m.into();
+                        s.to_string()
+                    })
+                    .collect();
+                anyhow::bail!(
+                    "Server requires authentication methods we don't support: {}",
+                    methods.join(", ")
+                )
+            }
         }
         ssh_tunnel_common::AuthType::Password => {
             info!("Authenticating with password");
@@ -829,9 +876,25 @@ async fn authenticate(
         }
         ssh_tunnel_common::AuthType::PasswordWith2FA => {
             info!("Authenticating with password + 2FA (keyboard-interactive)");
-            authenticate_keyboard_interactive(session, user, auth_ctx).await
+            authenticate_keyboard_interactive(session, user, auth_ctx, event_tx).await
         }
     }
+}
+
+/// Helper function to build a helpful error message for key loading failures
+fn build_key_load_error_message(full_key_path: &Path, key_path: &Path) -> String {
+    format!(
+        "Failed to load SSH key: {}\n\n\
+        Please ensure:\n\
+        1. The SSH key file exists in the daemon user's ~/.ssh/ directory\n\
+        2. File permissions are correct (chmod 600 ~/.ssh/{})\n\
+        3. The key format is supported (RSA, Ed25519, ECDSA)\n\
+        4. If the key is encrypted, use ssh-agent on the daemon host:\n   \
+           eval $(ssh-agent) && ssh-add ~/.ssh/{}",
+        full_key_path.display(),
+        key_path.display(),
+        key_path.display()
+    )
 }
 
 /// Helper function to request passphrase from CLI and load key
@@ -855,13 +918,16 @@ async fn request_passphrase_and_load(
 }
 
 /// Authenticate using an SSH key (with optional passphrase)
+/// Returns (success, remaining_methods)
+/// - If success=true, authentication is complete
+/// - If success=false, remaining_methods contains what the server will accept next
 async fn authenticate_with_key(
     session: &mut Handle<ClientHandler>,
     user: &str,
     key_path: &Path,
     auth_ctx: &AuthContext,
     profile: &Profile,
-) -> Result<bool> {
+) -> Result<(bool, Option<russh::MethodSet>)> {
     // For remote profiles (Hybrid mode), key_path is just a filename
     // Expand it to the full path in ~/.ssh
     let full_key_path = if key_path.is_relative() {
@@ -899,28 +965,18 @@ async fn authenticate_with_key(
         match load_secret_key(&full_key_path, None) {
             Ok(key) => key,
             Err(e) => {
-                let err_str = e.to_string().to_lowercase();
-                if err_str.contains("encrypted")
-                    || err_str.contains("passphrase")
-                    || err_str.contains("decrypt")
-                {
-                    info!("Key is encrypted, requesting passphrase");
-                    request_passphrase_and_load(&full_key_path, auth_ctx).await?
-                } else {
-                    // Key file not found or unreadable - provide simplified helpful error
-                    return Err(anyhow::anyhow!(
-                        "Failed to load SSH key: {}\n\n\
-                        Please ensure:\n\
-                        1. The SSH key file exists in the daemon user's ~/.ssh/ directory\n\
-                        2. File permissions are correct (chmod 600 ~/.ssh/{})\n\
-                        3. If the key is encrypted, use ssh-agent on the daemon host:\n   \
-                           eval $(ssh-agent) && ssh-add ~/.ssh/{}\n\n\
-                        Original error: {}",
-                        full_key_path.display(),
-                        key_path.display(),
-                        key_path.display(),
-                        e
-                    ));
+                // Check if the error is specifically about encryption using the russh-keys error type
+                // This is language-independent and works regardless of system locale
+                match e {
+                    RusshKeyError::KeyIsEncrypted => {
+                        info!("Key is encrypted, requesting passphrase");
+                        request_passphrase_and_load(&full_key_path, auth_ctx).await?
+                    }
+                    _ => {
+                        // Other errors (corrupt key, file not found, unsupported type, permissions, etc.)
+                        let msg = build_key_load_error_message(&full_key_path, &key_path);
+                        return Err(anyhow::anyhow!("{}\n\nOriginal error: {}", msg, e));
+                    }
                 }
             }
         }
@@ -939,7 +995,7 @@ async fn authenticate_with_key(
         .context("Public key authentication failed")?;
 
     match auth_result {
-        AuthResult::Success => Ok(true),
+        AuthResult::Success => Ok((true, None)),
         AuthResult::Failure {
             remaining_methods,
             partial_success,
@@ -956,7 +1012,8 @@ async fn authenticate_with_key(
             if partial_success {
                 // Server accepted the key but wants more authentication
                 info!("Public key accepted, server requires additional authentication: {}", methods.join(", "));
-                Ok(false) // Return false to trigger fallback auth methods
+                // Return the remaining methods so caller can decide which auth to try
+                Ok((false, Some(remaining_methods)))
             } else {
                 // Server rejected the key
                 let methods_str = if methods.is_empty() {
@@ -1050,57 +1107,72 @@ async fn authenticate_keyboard_interactive(
     session: &mut client::Handle<ClientHandler>,
     user: &str,
     auth_ctx: &AuthContext,
+    event_tx: &broadcast::Sender<TunnelEvent>,
 ) -> Result<bool> {
     info!(
         "Attempting keyboard-interactive authentication for user: {}",
         user
     );
 
-    // Start keyboard-interactive auth WITHOUT wrapping in an extra timeout.
-    let mut response = session
-        .authenticate_keyboard_interactive_start(user, None)
-        .await
-        .context("failed to start keyboard-interactive authentication")?;
-
+    // Outer loop: retry keyboard-interactive if server allows it
     loop {
-        match response {
-            KeyboardInteractiveAuthResponse::Success => {
-                info!("Keyboard-interactive authentication successful");
-                return Ok(true);
-            }
+        // Start keyboard-interactive auth WITHOUT wrapping in an extra timeout.
+        let mut response = session
+            .authenticate_keyboard_interactive_start(user, None)
+            .await
+            .context("failed to start keyboard-interactive authentication")?;
 
-            // In your russh version, Failure has no fields
-            KeyboardInteractiveAuthResponse::Failure {
-                remaining_methods,
-                partial_success,
-            } => {
-                // Build a helpful error message
-                let methods: Vec<String> = remaining_methods
-                    .iter()
-                    .map(|m| {
+        // Inner loop: handle prompts for this keyboard-interactive attempt
+        loop {
+            match response {
+                KeyboardInteractiveAuthResponse::Success => {
+                    info!("Keyboard-interactive authentication successful");
+                    return Ok(true);
+                }
+
+                KeyboardInteractiveAuthResponse::Failure {
+                    remaining_methods,
+                    partial_success,
+                } => {
+                    // Check if keyboard-interactive is still available for retry
+                    let methods: Vec<String> = remaining_methods
+                        .iter()
+                        .map(|m| {
+                            let s: &str = m.into();
+                            s.to_string()
+                        })
+                        .collect();
+
+                    let kbd_int_available = remaining_methods.iter().any(|m| {
                         let s: &str = m.into();
-                        s.to_string()
-                    })
-                    .collect();
+                        s == "keyboard-interactive"
+                    });
 
-                let methods_str = if methods.is_empty() {
-                    "No authentication methods available".to_string()
-                } else {
-                    format!("Server requires: {}", methods.join(", "))
-                };
+                    if kbd_int_available && !partial_success {
+                        // Server is allowing retry - break inner loop and start new attempt
+                        info!("Keyboard-interactive authentication failed, but server allows retry. Attempting again...");
+                        break; // Break inner loop, continue outer loop
+                    }
 
-                let error_msg = if partial_success {
-                    format!(
-                        "Keyboard-interactive authentication partially successful. {} to complete authentication",
-                        methods_str
-                    )
-                } else {
-                    format!("Keyboard-interactive authentication rejected. {}", methods_str)
-                };
+                    // Build helpful error message for permanent failure
+                    let methods_str = if methods.is_empty() {
+                        "No authentication methods available".to_string()
+                    } else {
+                        format!("Server requires: {}", methods.join(", "))
+                    };
 
-                error!("{}", error_msg);
-                anyhow::bail!(error_msg)
-            }
+                    let error_msg = if partial_success {
+                        format!(
+                            "Keyboard-interactive authentication partially successful. {} to complete authentication",
+                            methods_str
+                        )
+                    } else {
+                        format!("Keyboard-interactive authentication rejected. {}", methods_str)
+                    };
+
+                    error!("{}", error_msg);
+                    anyhow::bail!(error_msg)
+                }
 
             KeyboardInteractiveAuthResponse::InfoRequest {
                 name,
@@ -1140,10 +1212,11 @@ async fn authenticate_keyboard_interactive(
 
                     full_prompt.push_str(&prompt.prompt);
 
-                    // `echo == false` -> sensitive input (TOTP / password)
+                    // Use KeyboardInteractive for all keyboard-interactive prompts
+                    // The server-provided prompt text will tell the user what's needed
                     let answer = auth_ctx
                         .request_input(
-                            AuthRequestType::TwoFactorCode, // semantic type, UI prompt is `full_prompt`
+                            AuthRequestType::KeyboardInteractive,
                             &full_prompt,
                             !prompt.echo,
                         )
@@ -1158,6 +1231,13 @@ async fn authenticate_keyboard_interactive(
                     .authenticate_keyboard_interactive_respond(answers)
                     .await
                     .context("failed to send keyboard-interactive responses")?;
+
+                // Emit Starting event to signal GUI that we processed the auth responses
+                // and are waiting for server's next step. This closes the "Verifying..." dialog.
+                let _ = event_tx.send(TunnelEvent::Starting {
+                    id: auth_ctx.tunnel_id,
+                });
+                }
             }
         }
     }

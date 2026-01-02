@@ -19,7 +19,7 @@ use futures::StreamExt;
 use ssh_tunnel_common::{
     delete_profile_by_name, load_all_profiles, load_profile_by_name, profile_exists_by_name,
     save_profile, start_tunnel_with_events, stop_tunnel as stop_tunnel_shared,
-    AuthRequest, AuthType, ConnectionConfig, DaemonTunnelEvent,
+    AuthRequest, AuthType, ConnectionConfig, TunnelEvent,
     ForwardingConfig, ForwardingType, PasswordStorage, Profile, TunnelEventHandler, TunnelOptions,
     TunnelStatus, TunnelStatusResponse, Uuid,
 };
@@ -307,9 +307,9 @@ impl TunnelEventHandler for CliEventHandler {
         announce_connected(&self.profile);
     }
 
-    fn on_event(&mut self, event: &DaemonTunnelEvent) {
+    fn on_event(&mut self, event: &TunnelEvent) {
         match event {
-            DaemonTunnelEvent::Starting { .. } => {
+            TunnelEvent::Starting { .. } => {
                 println!("{}", "Start request accepted, connecting...".dimmed());
             }
             _ => {}
@@ -1573,17 +1573,17 @@ async fn watch_events(name: Option<String>) -> Result<()> {
                     continue;
                 }
 
-                match serde_json::from_str::<DaemonTunnelEvent>(json_str) {
+                match serde_json::from_str::<TunnelEvent>(json_str) {
                     Ok(ev) => {
                         // Optional filter by tunnel id
                         if let Some(fid) = filter_id {
                             let id = match &ev {
-                                DaemonTunnelEvent::Starting { id }
-                                | DaemonTunnelEvent::Connected { id }
-                                | DaemonTunnelEvent::Disconnected { id, .. }
-                                | DaemonTunnelEvent::Error { id, .. }
-                                | DaemonTunnelEvent::AuthRequired { id, .. } => Some(id),
-                                DaemonTunnelEvent::Heartbeat { .. } => None,
+                                TunnelEvent::Starting { id }
+                                | TunnelEvent::Connected { id }
+                                | TunnelEvent::Disconnected { id, .. }
+                                | TunnelEvent::Error { id, .. }
+                                | TunnelEvent::AuthRequired { id, .. } => Some(id),
+                                TunnelEvent::Heartbeat { .. } => None,
                             };
                             if let Some(id) = id {
                                 if *id != fid {
@@ -1593,29 +1593,29 @@ async fn watch_events(name: Option<String>) -> Result<()> {
                         }
 
                         match ev {
-                            DaemonTunnelEvent::Starting { id } => {
+                            TunnelEvent::Starting { id } => {
                                 println!("{}", format!("Starting tunnel {id}").cyan());
                             }
-                            DaemonTunnelEvent::Connected { id } => {
+                            TunnelEvent::Connected { id } => {
                                 println!("{}", format!("Tunnel {id} connected").green());
                             }
-                            DaemonTunnelEvent::Disconnected { id, reason } => {
+                            TunnelEvent::Disconnected { id, reason } => {
                                 println!(
                                     "{}",
                                     format!("Tunnel {id} disconnected: {reason}").yellow()
                                 );
                             }
-                            DaemonTunnelEvent::Error { id, error } => {
+                            TunnelEvent::Error { id, error } => {
                                 eprintln!("{}", format!("Tunnel {id} error: {error}").red());
                             }
-                            DaemonTunnelEvent::AuthRequired { id, request } => {
+                            TunnelEvent::AuthRequired { id, request } => {
                                 println!(
                                     "{}",
                                     format!("Auth required for tunnel {id}: {}", request.prompt)
                                         .magenta()
                                 );
                             }
-                            DaemonTunnelEvent::Heartbeat { .. } => {
+                            TunnelEvent::Heartbeat { .. } => {
                                 // Ignore heartbeats in watch mode
                             }
                         }

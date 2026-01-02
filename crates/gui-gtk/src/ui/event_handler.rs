@@ -19,7 +19,7 @@ use crate::daemon::TunnelEvent;
 
 /// Handle a status change event
 pub fn handle_status_changed(state: &Rc<AppState>, profile_id: Uuid, status: TunnelStatus) {
-    eprintln!("Event: Status changed for profile {}: {:?}", profile_id, status);
+    tracing::debug!("Event: Status changed for profile {}: {:?}", profile_id, status);
 
     // Update status in AppCore
     {
@@ -32,10 +32,48 @@ pub fn handle_status_changed(state: &Rc<AppState>, profile_id: Uuid, status: Tun
         profiles_list::update_profile_status(list_box, profile_id, status.clone());
     }
 
-    // Clear auth state if connected/disconnected
+    // Clear auth state if terminal state reached
+    // NOTE: Dialogs close themselves on user interaction (Submit/Cancel)
+    // We should NOT call dialog.close() here to avoid GTK panic
     match &status {
-        TunnelStatus::Connected | TunnelStatus::Disconnected | TunnelStatus::Failed(_) => {
+        TunnelStatus::Connected => {
+            // Auth succeeded - clear dialog reference (already closed by user)
+            tracing::info!("Authentication successful for tunnel {}", profile_id);
+            state.active_auth_dialog.replace(None);
             auth_dialog::clear_auth_state(state, profile_id);
+
+            // Clear processing flag and process next queued request
+            *state.processing_auth_request.borrow_mut() = false;
+            if let Some(window) = state.window.borrow().as_ref() {
+                auth_dialog::process_auth_queue(window, state.clone());
+            }
+        }
+        TunnelStatus::Connecting => {
+            // Intermediate auth step succeeded (e.g., passphrase accepted, now needs 2FA)
+            // Clear current dialog reference and process next auth request from queue
+            tracing::debug!("Auth step succeeded for tunnel {} - processing queue", profile_id);
+            state.active_auth_dialog.replace(None);
+            auth_dialog::clear_auth_state(state, profile_id);
+
+            // Clear processing flag and process next queued request
+            *state.processing_auth_request.borrow_mut() = false;
+            if let Some(window) = state.window.borrow().as_ref() {
+                auth_dialog::process_auth_queue(window, state.clone());
+            }
+        }
+        TunnelStatus::Disconnected | TunnelStatus::Failed(_) => {
+            // Auth failed or tunnel stopped - clear dialog reference
+            state.active_auth_dialog.replace(None);
+            auth_dialog::clear_auth_state(state, profile_id);
+
+            // Clear queue for this tunnel (no more auth will come)
+            state.auth_request_queue.borrow_mut().retain(|req| req.tunnel_id != profile_id);
+
+            // Clear processing flag and process next tunnel's auth
+            *state.processing_auth_request.borrow_mut() = false;
+            if let Some(window) = state.window.borrow().as_ref() {
+                auth_dialog::process_auth_queue(window, state.clone());
+            }
         }
         _ => {}
     }
@@ -43,7 +81,7 @@ pub fn handle_status_changed(state: &Rc<AppState>, profile_id: Uuid, status: Tun
 
 /// Handle an auth required event
 pub fn handle_auth_required(state: &Rc<AppState>, request: AuthRequest) {
-    eprintln!("Event: Auth required for profile {}: {}", request.tunnel_id, request.prompt);
+    tracing::debug!("Event: Auth required for profile {}: {}", request.tunnel_id, request.prompt);
 
     // Update status to WaitingForAuth in AppCore
     {
@@ -64,7 +102,7 @@ pub fn handle_auth_required(state: &Rc<AppState>, request: AuthRequest) {
 
 /// Handle daemon connection state change
 pub fn handle_daemon_connected(state: &Rc<AppState>, connected: bool) {
-    eprintln!("Event: Daemon connection changed: {}", connected);
+    tracing::info!("Event: Daemon connection changed: {}", connected);
 
     // Update AppCore state
     {
@@ -75,36 +113,56 @@ pub fn handle_daemon_connected(state: &Rc<AppState>, connected: bool) {
 
 /// Handle an error event
 pub fn handle_error(state: &Rc<AppState>, profile_id: Option<Uuid>, error: String) {
-    tracing::debug!("handle_error called - profile_id: {:?}, error: {}", profile_id, error);
+    tracing::info!("handle_error called - profile_id: {:?}, error: {}", profile_id, error);
 
     // If error is for a specific profile, update its status
     if let Some(id) = profile_id {
-        tracing::debug!("Updating status for profile {} to Failed", id);
+        tracing::info!("Updating status for profile {} to Failed", id);
         let status = TunnelStatus::Failed(error.clone());
 
         // Update status in AppCore
         {
             let mut core = state.core.borrow_mut();
             core.tunnel_statuses.insert(id, status.clone());
-            tracing::debug!("Status updated in AppCore");
+            tracing::info!("Status updated in AppCore");
         }
 
         // Clear auth state for this profile
-        tracing::debug!("Clearing auth state");
+        tracing::info!("Clearing auth state");
         auth_dialog::clear_auth_state(state, id);
 
+        // Close the dialog
+        tracing::info!("Checking for active dialog to close...");
+        if let Some(dialog) = state.active_auth_dialog.borrow_mut().take() {
+            dialog.close();
+            tracing::info!("Closed active auth dialog");
+        } else {
+            tracing::warn!("No active dialog found to close");
+        }
+
+        // Clear queue for this tunnel (no more auth will come)
+        state.auth_request_queue.borrow_mut().retain(|req| req.tunnel_id != id);
+        tracing::info!("Cleared auth queue for tunnel {}", id);
+
+        // Clear processing flag and process next tunnel's auth
+        *state.processing_auth_request.borrow_mut() = false;
+        if let Some(window) = state.window.borrow().as_ref() {
+            auth_dialog::process_auth_queue(window, state.clone());
+            tracing::info!("Processing next auth request from queue");
+        }
+
         // Update profiles list UI
-        tracing::debug!("Updating profiles list UI");
+        tracing::info!("Updating profiles list UI");
         if let Some(list_box) = state.profile_list.borrow().as_ref() {
             profiles_list::update_profile_status(list_box, id, status.clone());
-            tracing::debug!("Profiles list UI updated");
+            tracing::info!("Profiles list UI updated");
         } else {
-            tracing::debug!("No profile list available to update");
+            tracing::info!("No profile list available to update");
         }
     }
 
     // Show error toast/notification
-    tracing::debug!("Attempting to show error toast");
+    tracing::info!("Attempting to show error toast");
     if let Some(window) = state.window.borrow().as_ref() {
         let toast = adw::Toast::new(&error);
         toast.set_timeout(5);

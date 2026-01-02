@@ -1,6 +1,6 @@
 # Known Issues & Limitations
 
-This document tracks known bugs, limitations, and missing features in SSH Tunnel Manager v0.1.8.
+This document tracks known bugs, limitations, and missing features in SSH Tunnel Manager v0.1.9.
 
 ## Known Bugs
 

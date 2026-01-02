@@ -23,13 +23,16 @@ pub struct AppCore {
     /// Whether daemon is connected
     pub daemon_connected: bool,
 
-    /// Pending authentication requests
+    /// Pending authentication requests (keyed by request.id)
     pub pending_auth_requests: HashMap<Uuid, AuthRequest>,
 
-    /// Active authentication requests (dialog currently shown)
+    /// Active authentication requests (dialog currently shown, keyed by request.id)
     pub active_auth_requests: HashMap<Uuid, AuthRequest>,
 
-    /// Track which profiles have auth dialogs open
+    /// Mapping from tunnel_id to current active request_id
+    pub tunnel_active_request: HashMap<Uuid, Uuid>,
+
+    /// Track which profiles have auth dialogs open (still keyed by tunnel_id)
     pub auth_dialog_open: HashSet<Uuid>,
 
     /// Current navigation page
@@ -64,6 +67,7 @@ impl AppCore {
             daemon_connected: false,
             pending_auth_requests: HashMap::new(),
             active_auth_requests: HashMap::new(),
+            tunnel_active_request: HashMap::new(),
             auth_dialog_open: HashSet::new(),
             current_page: Page::Client,
         }
@@ -107,26 +111,57 @@ impl AppCore {
 
     /// Add pending auth request
     pub fn add_pending_auth(&mut self, request: AuthRequest) {
-        self.pending_auth_requests.insert(request.tunnel_id, request);
+        let request_id = request.id;
+        let tunnel_id = request.tunnel_id;
+
+        // Store by request ID
+        self.pending_auth_requests.insert(request_id, request);
+
+        // Update tunnel → request mapping, cleaning up old request if any
+        if let Some(old_req_id) = self.tunnel_active_request.insert(tunnel_id, request_id) {
+            // Clean up old request
+            self.pending_auth_requests.remove(&old_req_id);
+            self.active_auth_requests.remove(&old_req_id);
+        }
     }
 
-    /// Remove pending auth request
+    /// Remove pending auth request by tunnel ID
     pub fn remove_pending_auth(&mut self, tunnel_id: Uuid) -> Option<AuthRequest> {
-        self.pending_auth_requests.remove(&tunnel_id)
+        if let Some(request_id) = self.tunnel_active_request.remove(&tunnel_id) {
+            self.pending_auth_requests.remove(&request_id)
+        } else {
+            None
+        }
     }
 
     /// Mark auth dialog as open for a tunnel
     pub fn mark_auth_dialog_open(&mut self, tunnel_id: Uuid) {
         self.auth_dialog_open.insert(tunnel_id);
-        if let Some(request) = self.pending_auth_requests.remove(&tunnel_id) {
-            self.active_auth_requests.insert(tunnel_id, request);
+
+        // Move from pending to active
+        if let Some(request_id) = self.tunnel_active_request.get(&tunnel_id) {
+            if let Some(request) = self.pending_auth_requests.remove(request_id) {
+                self.active_auth_requests.insert(*request_id, request);
+            }
         }
     }
 
     /// Mark auth dialog as closed for a tunnel
     pub fn mark_auth_dialog_closed(&mut self, tunnel_id: Uuid) {
         self.auth_dialog_open.remove(&tunnel_id);
-        self.active_auth_requests.remove(&tunnel_id);
+
+        // Clear request_id from tunnel mapping and remove from active requests
+        if let Some(request_id) = self.tunnel_active_request.remove(&tunnel_id) {
+            self.active_auth_requests.remove(&request_id);
+            self.pending_auth_requests.remove(&request_id);
+        }
+    }
+
+    /// Get active request for a tunnel
+    pub fn get_active_request_for_tunnel(&self, tunnel_id: Uuid) -> Option<&AuthRequest> {
+        self.tunnel_active_request
+            .get(&tunnel_id)
+            .and_then(|req_id| self.active_auth_requests.get(req_id))
     }
 
     /// Check if auth dialog is open for a tunnel

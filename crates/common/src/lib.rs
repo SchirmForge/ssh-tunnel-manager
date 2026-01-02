@@ -10,6 +10,7 @@ pub mod error;
 pub mod keychain;
 pub mod network;
 pub mod profile_manager;
+pub mod sse;
 pub mod tls;
 pub mod types;
 
@@ -18,8 +19,9 @@ pub use daemon_client::{
     add_auth_header, cli_config_snippet_exists, config_needs_ip_address, create_daemon_client,
     get_cli_config_snippet_path, start_tunnel_with_events, stop_tunnel, validate_client_config,
     validate_daemon_config, ConfigValidationResult, ConnectionMode, DaemonClientConfig,
-    TunnelEvent as DaemonTunnelEvent, TunnelEventHandler, TunnelStatusResponse,
+    TunnelEventHandler, TunnelStatusResponse,
 };
+pub use sse::{EventListener, TunnelEvent};
 pub use error::{Error, Result};
 pub use keychain::{get_password, has_password, is_keychain_available, remove_password, store_password};
 pub use network::{is_loopback_address, is_valid_host};
@@ -32,7 +34,7 @@ pub use profile_manager::{
 pub use tls::{create_insecure_tls_config, create_pinned_tls_config};
 pub use types::{
     AuthRequest, AuthRequestType, AuthResponse, AuthType, DaemonInfo, ForwardingType,
-    ProfileSourceMode, StartTunnelRequest, StartTunnelResult, TunnelEvent, TunnelStatus,
+    ProfileSourceMode, StartTunnelRequest, StartTunnelResult, TunnelDomainEvent, TunnelStatus,
 };
 
 // Re-export commonly used external types

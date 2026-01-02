@@ -10,43 +10,85 @@ use std::rc::Rc;
 use uuid::Uuid;
 
 use super::{details, profile_details, profiles_list, window::AppState};
-use ssh_tunnel_common::{AuthRequest, TunnelStatus};
+use ssh_tunnel_common::{AuthRequest, AuthRequestType, TunnelStatus};
 
-/// Handle an authentication request, queueing if a dialog is already open.
+/// Handle an authentication request by queuing it for processing.
+/// Events are queued and processed sequentially to prevent GTK event loop overwhelm.
 pub fn handle_auth_request(
     parent: &adw::ApplicationWindow,
     request: AuthRequest,
     state: Rc<AppState>,
 ) {
-    let tunnel_id = request.tunnel_id;
-    {
-        let mut core = state.core.borrow_mut();
+    // Check if this request is already being processed or queued (avoid duplicates from polling)
+    let is_active = state.active_auth_request_id.borrow()
+        .map(|id| id == request.id)
+        .unwrap_or(false);
 
-        // Check if we're already handling this request
-        if let Some(current) = core.active_auth_requests.get(&tunnel_id) {
-            if is_same_request(current, &request) {
-                return;
-            }
-        }
-
-        // If dialog already open for this tunnel, queue the request
-        if core.is_auth_dialog_open(tunnel_id) {
-            if core.pending_auth_requests
-                .get(&tunnel_id)
-                .map(|existing| is_same_request(existing, &request))
-                .unwrap_or(false)
-            {
-                return;
-            }
-            core.pending_auth_requests.insert(tunnel_id, request);
-            return;
-        }
-
-        // Mark dialog as open and track the request
-        core.mark_auth_dialog_open(tunnel_id);
-        core.active_auth_requests.insert(tunnel_id, request.clone());
+    if is_active {
+        tracing::debug!("Auth request {} is currently active - skipping duplicate", request.id);
+        return;
     }
 
+    let already_queued = state.auth_request_queue.borrow()
+        .iter()
+        .any(|req| req.id == request.id);
+
+    if already_queued {
+        tracing::debug!("Auth request {} already queued - skipping duplicate", request.id);
+        return;
+    }
+
+    tracing::debug!("Queueing auth request {} for tunnel {}", request.id, request.tunnel_id);
+
+    // Queue the request
+    state.auth_request_queue.borrow_mut().push_back(request);
+
+    // Try to process the queue
+    process_auth_queue(parent, state);
+}
+
+/// Process the next auth request in the queue (if not already processing).
+/// This is public so event_handler.rs can call it when status events arrive.
+pub fn process_auth_queue(
+    parent: &adw::ApplicationWindow,
+    state: Rc<AppState>,
+) {
+    // Check if we're already showing a dialog
+    if *state.processing_auth_request.borrow() {
+        tracing::debug!("Already processing auth request - queue size: {}",
+                  state.auth_request_queue.borrow().len());
+        return;
+    }
+
+    // Get next request from queue
+    let request = match state.auth_request_queue.borrow_mut().pop_front() {
+        Some(req) => req,
+        None => {
+            tracing::debug!("Auth queue empty");
+            return;
+        }
+    };
+
+    tracing::info!("Processing auth request {} from queue (remaining: {})",
+              request.id, state.auth_request_queue.borrow().len());
+
+    let tunnel_id = request.tunnel_id;
+    let request_id = request.id;
+
+    // Mark as processing
+    *state.processing_auth_request.borrow_mut() = true;
+
+    // Update tracked request ID
+    state.active_auth_request_id.replace(Some(request_id));
+
+    // Update core state
+    {
+        let mut core = state.core.borrow_mut();
+        core.mark_auth_dialog_open(tunnel_id);
+        core.active_auth_requests.insert(request_id, request.clone());
+    }
+
+    // Show dialog
     show_auth_dialog(parent, request, state);
 }
 
@@ -59,6 +101,7 @@ fn show_auth_dialog(
     let profile_id = request.tunnel_id;
     let prompt = request.prompt.clone();
     let hidden = request.hidden;
+    let auth_type = request.auth_type;
     let parent = parent.clone();
     let dialog = adw::MessageDialog::builder()
         .transient_for(&parent)
@@ -67,16 +110,31 @@ fn show_auth_dialog(
         .body(&prompt)
         .build();
 
+    // Determine appropriate placeholder text based on auth type
+    let placeholder = match auth_type {
+        AuthRequestType::KeyPassphrase => "Enter SSH key passphrase",
+        AuthRequestType::Password => "Enter remote user password",
+        AuthRequestType::TwoFactorCode => "Enter 2FA code",
+        AuthRequestType::KeyboardInteractive => {
+            if hidden {
+                "Enter password or code"
+            } else {
+                "Enter response"
+            }
+        }
+        AuthRequestType::HostKeyVerification => "Type 'yes' to accept or 'no' to reject",
+    };
+
     // Create appropriate entry widget based on whether input should be hidden
     let entry: gtk4::Widget = if hidden {
         gtk4::PasswordEntry::builder()
             .show_peek_icon(true)
-            .placeholder_text("Enter password or code")
+            .placeholder_text(placeholder)
             .build()
             .upcast()
     } else {
         gtk4::Entry::builder()
-            .placeholder_text("Enter response")
+            .placeholder_text(placeholder)
             .build()
             .upcast()
     };
@@ -99,6 +157,9 @@ fn show_auth_dialog(
     dialog.set_default_response(Some("submit"));
     dialog.set_close_response("cancel");
 
+    // Store dialog reference in state so we can close it on retry
+    state.active_auth_dialog.replace(Some(dialog.clone()));
+
     // Focus the entry when dialog is shown
     entry.grab_focus();
 
@@ -116,8 +177,8 @@ fn show_auth_dialog(
 
     // Handle response
     let entry_clone = entry.clone();
-    let state = state.clone();
-    let parent = parent.clone();
+    let state_clone = state.clone();
+    let parent_clone = parent.clone();
     let response_handled = std::cell::RefCell::new(false);
     dialog.connect_response(None, move |dialog, response| {
         if *response_handled.borrow() {
@@ -125,10 +186,10 @@ fn show_auth_dialog(
         }
         *response_handled.borrow_mut() = true;
 
-        let mut cancelled = response != "submit";
-        let mut submitted_text = None;
+        let cancelled = response != "submit";
 
         if !cancelled {
+            // Get the text from entry
             let text = if let Some(password_entry) = entry_clone.downcast_ref::<gtk4::PasswordEntry>() {
                 password_entry.text().to_string()
             } else if let Some(text_entry) = entry_clone.downcast_ref::<gtk4::Entry>() {
@@ -138,38 +199,105 @@ fn show_auth_dialog(
             };
 
             if text.is_empty() {
-                cancelled = true;
+                // Empty input treated as cancel
+                tracing::debug!("Empty authentication response - treating as cancel");
+                handle_cancel(dialog, &state_clone, &parent_clone, profile_id);
             } else {
-                submitted_text = Some(text);
+                // Get request_id from state
+                let request_id = match *state_clone.active_auth_request_id.borrow() {
+                    Some(id) => id,
+                    None => {
+                        // Request already cleared (daemon timeout/failure) - treat as cancel
+                        tracing::warn!("Auth request already cleared for tunnel {} (daemon timeout or failure)", profile_id);
+
+                        // Show toast notification to user
+                        let toast = adw::Toast::new("Authentication request was cancelled by daemon (timeout or failure)");
+                        toast.set_timeout(5);
+                        if let Some(overlay) = parent_clone.first_child()
+                            .and_then(|w| w.downcast::<adw::ToastOverlay>().ok())
+                        {
+                            overlay.add_toast(toast);
+                        }
+
+                        handle_cancel(dialog, &state_clone, &parent_clone, profile_id);
+                        return;
+                    }
+                };
+
+                tracing::info!("Submitting auth for tunnel {} (request {})", profile_id, request_id);
+
+                // Close dialog immediately - SSE events will handle next steps
+                dialog.close();
+                state_clone.active_auth_dialog.replace(None);
+
+                // Clear processing flag to allow next auth request from queue
+                *state_clone.processing_auth_request.borrow_mut() = false;
+
+                let state = state_clone.clone();
+
+                // Submit auth in background
+                glib::MainContext::default().spawn_local(async move {
+                    if let Err(e) = submit_auth_async(profile_id, request_id, text, &state).await {
+                        tracing::error!("Failed to submit authentication for tunnel {}: {}", profile_id, e);
+                        // Network error - daemon won't receive our response
+                        // User will need to retry connection
+                    }
+                    // On success: SSE events will trigger appropriate actions:
+                    // - Connected → status updated on main screen
+                    // - AuthRequired (retry) → new dialog appears via queue
+                    // - Error → error shown on main screen
+                });
             }
+        } else {
+            // User clicked cancel
+            handle_cancel(dialog, &state_clone, &parent_clone, profile_id);
         }
-
-        if let Some(text) = submitted_text {
-            let state = state.clone();
-            glib::MainContext::default().spawn_local(async move {
-                if let Err(e) = submit_auth_async(profile_id, text, &state).await {
-                    eprintln!("Failed to submit authentication: {}", e);
-                }
-            });
-        } else if cancelled {
-            let state = state.clone();
-            glib::MainContext::default().spawn_local(async move {
-                if let Err(e) = cancel_auth_async(profile_id, &state).await {
-                    eprintln!("Failed to cancel authentication: {}", e);
-                }
-            });
-        }
-
-        dialog.close();
-        finish_auth_dialog(&parent, &state, profile_id, cancelled);
     });
 
     dialog.present();
 }
 
+/// Handle cancel button - close dialog and stop tunnel
+fn handle_cancel(
+    dialog: &adw::MessageDialog,
+    state: &Rc<AppState>,
+    parent: &adw::ApplicationWindow,
+    profile_id: Uuid,
+) {
+    tracing::info!("Authentication cancelled for tunnel {}", profile_id);
+
+    // Close dialog immediately on cancel
+    dialog.close();
+
+    // Clear dialog reference from state
+    state.active_auth_dialog.replace(None);
+
+    // Mark dialog as closed in core
+    {
+        let mut core = state.core.borrow_mut();
+        core.mark_auth_dialog_closed(profile_id);
+        core.pending_auth_requests.remove(&profile_id);
+    }
+
+    // Clear processing flag and process next queued request
+    *state.processing_auth_request.borrow_mut() = false;
+
+    // Stop the tunnel
+    let state_for_cancel = state.clone();
+    glib::MainContext::default().spawn_local(async move {
+        if let Err(e) = cancel_auth_async(profile_id, &state_for_cancel).await {
+            tracing::warn!("Failed to cancel authentication for tunnel {}: {}", profile_id, e);
+        }
+    });
+
+    // Process next request from queue (if any)
+    process_auth_queue(parent, state.clone());
+}
+
 /// Submit authentication response to daemon
 async fn submit_auth_async(
     profile_id: Uuid,
+    request_id: Uuid,
     response: String,
     state: &Rc<AppState>,
 ) -> anyhow::Result<()> {
@@ -181,18 +309,13 @@ async fn submit_auth_async(
         .ok_or_else(|| anyhow::anyhow!("Daemon client not available"))?
         .clone();
 
-    // Submit the auth response
-    daemon_client.submit_auth(profile_id, response).await?;
+    // Submit the auth response with request_id
+    daemon_client.submit_auth_with_id(profile_id, request_id, response).await?;
 
-    eprintln!("✓ Authentication submitted for tunnel {}", profile_id);
+    tracing::debug!("Authentication submitted for tunnel {} (request {})", profile_id, request_id);
 
-    // If the SSE event is missed, poll for a pending follow-up auth prompt (e.g., 2FA).
-    tokio::time::sleep(std::time::Duration::from_millis(150)).await;
-    if let Ok(Some(request)) = daemon_client.get_pending_auth(profile_id).await {
-        if let Some(window) = state.window.borrow().as_ref() {
-            handle_auth_request(window, request, state.clone());
-        }
-    }
+    // SSE will handle next steps (success, retry, or error)
+    // No polling needed - daemon will emit Connected/AuthRequired/Error event
 
     Ok(())
 }
@@ -207,41 +330,21 @@ async fn cancel_auth_async(profile_id: Uuid, state: &Rc<AppState>) -> anyhow::Re
         .clone();
 
     if let Err(e) = daemon_client.stop_tunnel(profile_id).await {
-        eprintln!("Warning: Failed to stop tunnel after auth cancel: {}", e);
+        tracing::warn!("Failed to stop tunnel {} after auth cancel: {}", profile_id, e);
     }
 
     update_status_after_cancel(state, profile_id);
     Ok(())
 }
 
-fn finish_auth_dialog(
-    parent: &adw::ApplicationWindow,
-    state: &Rc<AppState>,
-    profile_id: Uuid,
-    cancelled: bool,
-) {
-    let next_request = {
-        let mut core = state.core.borrow_mut();
-        let next = if cancelled {
-            core.pending_auth_requests.remove(&profile_id);
-            None
-        } else {
-            core.pending_auth_requests.remove(&profile_id)
-        };
-
-        core.mark_auth_dialog_closed(profile_id);
-        next
-    };
-
-    if let Some(request) = next_request {
-        handle_auth_request(parent, request, state.clone());
-    }
-}
 
 pub fn clear_auth_state(state: &Rc<AppState>, profile_id: Uuid) {
     let mut core = state.core.borrow_mut();
     core.mark_auth_dialog_closed(profile_id);
-    core.pending_auth_requests.remove(&profile_id);
+
+    // Clear dialog references
+    state.active_auth_dialog.replace(None);
+    state.active_auth_request_id.replace(None);
 }
 
 fn update_status_after_cancel(state: &Rc<AppState>, profile_id: Uuid) {
@@ -262,11 +365,4 @@ fn update_status_after_cancel(state: &Rc<AppState>, profile_id: Uuid) {
             }
         }
     }
-}
-
-fn is_same_request(a: &AuthRequest, b: &AuthRequest) -> bool {
-    a.tunnel_id == b.tunnel_id
-        && a.auth_type == b.auth_type
-        && a.prompt == b.prompt
-        && a.hidden == b.hidden
 }

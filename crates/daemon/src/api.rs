@@ -13,6 +13,8 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
+use tower_http::trace::{TraceLayer, DefaultMakeSpan, DefaultOnResponse};
+use tower_http::LatencyUnit;
 
 // added for /api/event management
 use axum::response::sse::Event;
@@ -21,12 +23,12 @@ use futures::{stream, StreamExt};
 use std::convert::Infallible;
 use tokio_stream::wrappers::BroadcastStream;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tracing::{error, info};
 use uuid::Uuid;
 
 use ssh_tunnel_common::{
-    load_profile_by_id, AuthRequest, AuthResponse, ProfileSourceMode, StartTunnelRequest,
+    load_profile_by_id, AuthRequest, ProfileSourceMode, StartTunnelRequest,
     TunnelStatus,
 };
 use chrono::{DateTime, Utc};
@@ -34,6 +36,19 @@ use std::time::{Duration, SystemTime};
 
 use crate::config::DaemonConfig;
 use crate::tunnel::{TunnelEvent, TunnelManager};
+
+/// Check if an anyhow error represents a "not found" condition from TunnelManager
+///
+/// This checks for the specific error messages that TunnelManager::stop() returns.
+/// While this is still checking error messages, it's centralized here and documents
+/// the exact contract between TunnelManager and the API layer.
+fn is_tunnel_not_found_error(err: &anyhow::Error) -> bool {
+    let msg = err.to_string();
+    // TunnelManager::stop() returns these exact strings (line 327 and 389 in tunnel.rs):
+    // - "Tunnel not found" (when tunnel ID doesn't exist)
+    // - "Tunnel is not active" (when tunnel exists but is in wrong state)
+    msg == "Tunnel not found" || msg == "Tunnel is not active"
+}
 
 /// Shared application state
 pub struct AppState {
@@ -95,6 +110,15 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/api/tunnels/:id/auth", get(get_pending_auth))
         .route("/api/tunnels/:id/auth", post(submit_auth))
         .route("/api/events", get(event_stream))
+        .layer(
+            TraceLayer::new_for_http()
+                .make_span_with(DefaultMakeSpan::new().include_headers(false))
+                .on_response(
+                    DefaultOnResponse::new()
+                        .include_headers(false)
+                        .latency_unit(LatencyUnit::Millis)
+                )
+        )
         .with_state(state)
 }
 
@@ -265,14 +289,13 @@ async fn stop_tunnel(
         Err(e) => {
             error!("Failed to stop tunnel {}: {}", id, e);
             // Map common tunnel lifecycle errors to client-friendly status codes
-            let msg = e.to_string();
-            let status = if msg.contains("not active") || msg.contains("not found") {
+            let status = if is_tunnel_not_found_error(&e) {
                 StatusCode::NOT_FOUND
             } else {
                 StatusCode::INTERNAL_SERVER_ERROR
             };
 
-            (status, Json(ErrorResponse { error: msg })).into_response()
+            (status, Json(ErrorResponse { error: e.to_string() })).into_response()
         }
     }
 }
@@ -322,28 +345,24 @@ async fn get_pending_auth(
     }
 }
 
+/// Submit authentication response payload with request_id
+#[derive(Debug, Deserialize, Serialize)]
+struct SubmitAuthPayload {
+    pub request_id: Uuid,
+    pub response: String,
+}
+
 /// Submit authentication response
 async fn submit_auth(
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
-    Json(auth_response): Json<AuthResponse>,
+    Json(payload): Json<SubmitAuthPayload>,
 ) -> impl IntoResponse {
-    info!("API: Auth response received for tunnel {}", id);
-
-    // Verify the tunnel ID matches
-    if auth_response.tunnel_id != id {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: "Tunnel ID in request body doesn't match URL".to_string(),
-            }),
-        )
-            .into_response();
-    }
+    info!("API: Auth response received for tunnel {} (request_id: {})", id, payload.request_id);
 
     match state
         .tunnel_manager
-        .submit_auth(&id, auth_response.response)
+        .submit_auth_by_request_id(&id, payload.request_id, payload.response)
         .await
     {
         Ok(()) => {

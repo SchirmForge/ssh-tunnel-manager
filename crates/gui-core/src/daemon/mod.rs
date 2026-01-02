@@ -8,8 +8,8 @@
 
 pub mod client;
 pub mod config;
-pub mod sse;
 
 pub use client::DaemonClient;
 pub use config::{load_daemon_config, get_cli_config_path};
-pub use sse::{EventListener, TunnelEvent};
+// Re-export SSE types from common crate
+pub use ssh_tunnel_common::sse::{EventListener, TunnelEvent};

@@ -47,10 +47,12 @@ pub enum TunnelStatus {
     Failed(String), // connection attempt failed (reason)
 }
 
-/// Events emitted by the daemon
+/// Domain events for tunnel lifecycle (business logic)
+/// Note: This is different from the SSE wire protocol TunnelEvent in crate::sse
+/// This type is for domain/business logic, not SSE communication
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
-pub enum TunnelEvent {
+pub enum TunnelDomainEvent {
     /// Tunnel connected successfully
     Starting { id: Uuid, timestamp: DateTime<Utc> },
 
@@ -111,6 +113,8 @@ pub enum AuthRequestType {
 /// Authentication request from daemon to client
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuthRequest {
+    /// Unique request ID for this auth request
+    pub id: Uuid,
     /// Tunnel ID this auth request is for
     pub tunnel_id: Uuid,
     /// Type of authentication needed
