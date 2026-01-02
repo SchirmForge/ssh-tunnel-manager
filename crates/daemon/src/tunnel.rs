@@ -12,7 +12,7 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use russh::client::{self, AuthResult, Config, Handle, KeyboardInteractiveAuthResponse};
-use russh::keys::{load_secret_key, PrivateKey, PrivateKeyWithHashAlg};
+use russh::keys::{load_secret_key, PrivateKey, PrivateKeyWithHashAlg, Error as RusshKeyError};
 use tokio::io::copy_bidirectional;
 use tokio::net::TcpListener;
 use tokio::sync::{broadcast, mpsc, oneshot, RwLock};
@@ -881,6 +881,22 @@ async fn authenticate(
     }
 }
 
+/// Helper function to build a helpful error message for key loading failures
+fn build_key_load_error_message(full_key_path: &Path, key_path: &Path) -> String {
+    format!(
+        "Failed to load SSH key: {}\n\n\
+        Please ensure:\n\
+        1. The SSH key file exists in the daemon user's ~/.ssh/ directory\n\
+        2. File permissions are correct (chmod 600 ~/.ssh/{})\n\
+        3. The key format is supported (RSA, Ed25519, ECDSA)\n\
+        4. If the key is encrypted, use ssh-agent on the daemon host:\n   \
+           eval $(ssh-agent) && ssh-add ~/.ssh/{}",
+        full_key_path.display(),
+        key_path.display(),
+        key_path.display()
+    )
+}
+
 /// Helper function to request passphrase from CLI and load key
 async fn request_passphrase_and_load(
     key_path: &Path,
@@ -949,28 +965,18 @@ async fn authenticate_with_key(
         match load_secret_key(&full_key_path, None) {
             Ok(key) => key,
             Err(e) => {
-                let err_str = e.to_string().to_lowercase();
-                if err_str.contains("encrypted")
-                    || err_str.contains("passphrase")
-                    || err_str.contains("decrypt")
-                {
-                    info!("Key is encrypted, requesting passphrase");
-                    request_passphrase_and_load(&full_key_path, auth_ctx).await?
-                } else {
-                    // Key file not found or unreadable - provide simplified helpful error
-                    return Err(anyhow::anyhow!(
-                        "Failed to load SSH key: {}\n\n\
-                        Please ensure:\n\
-                        1. The SSH key file exists in the daemon user's ~/.ssh/ directory\n\
-                        2. File permissions are correct (chmod 600 ~/.ssh/{})\n\
-                        3. If the key is encrypted, use ssh-agent on the daemon host:\n   \
-                           eval $(ssh-agent) && ssh-add ~/.ssh/{}\n\n\
-                        Original error: {}",
-                        full_key_path.display(),
-                        key_path.display(),
-                        key_path.display(),
-                        e
-                    ));
+                // Check if the error is specifically about encryption using the russh-keys error type
+                // This is language-independent and works regardless of system locale
+                match e {
+                    RusshKeyError::KeyIsEncrypted => {
+                        info!("Key is encrypted, requesting passphrase");
+                        request_passphrase_and_load(&full_key_path, auth_ctx).await?
+                    }
+                    _ => {
+                        // Other errors (corrupt key, file not found, unsupported type, permissions, etc.)
+                        let msg = build_key_load_error_message(&full_key_path, &key_path);
+                        return Err(anyhow::anyhow!("{}\n\nOriginal error: {}", msg, e));
+                    }
                 }
             }
         }

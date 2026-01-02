@@ -37,6 +37,19 @@ use std::time::{Duration, SystemTime};
 use crate::config::DaemonConfig;
 use crate::tunnel::{TunnelEvent, TunnelManager};
 
+/// Check if an anyhow error represents a "not found" condition from TunnelManager
+///
+/// This checks for the specific error messages that TunnelManager::stop() returns.
+/// While this is still checking error messages, it's centralized here and documents
+/// the exact contract between TunnelManager and the API layer.
+fn is_tunnel_not_found_error(err: &anyhow::Error) -> bool {
+    let msg = err.to_string();
+    // TunnelManager::stop() returns these exact strings (line 327 and 389 in tunnel.rs):
+    // - "Tunnel not found" (when tunnel ID doesn't exist)
+    // - "Tunnel is not active" (when tunnel exists but is in wrong state)
+    msg == "Tunnel not found" || msg == "Tunnel is not active"
+}
+
 /// Shared application state
 pub struct AppState {
     pub tunnel_manager: TunnelManager,
@@ -276,14 +289,13 @@ async fn stop_tunnel(
         Err(e) => {
             error!("Failed to stop tunnel {}: {}", id, e);
             // Map common tunnel lifecycle errors to client-friendly status codes
-            let msg = e.to_string();
-            let status = if msg.contains("not active") || msg.contains("not found") {
+            let status = if is_tunnel_not_found_error(&e) {
                 StatusCode::NOT_FOUND
             } else {
                 StatusCode::INTERNAL_SERVER_ERROR
             };
 
-            (status, Json(ErrorResponse { error: msg })).into_response()
+            (status, Json(ErrorResponse { error: e.to_string() })).into_response()
         }
     }
 }

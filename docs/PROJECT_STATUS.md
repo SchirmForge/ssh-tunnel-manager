@@ -2,21 +2,33 @@
 
 ## Current State
 
-**Version**: v0.1.10 (In Development)
-**Status**: 🚧 Active development - GUI notifications and UX improvements
+**Version**: v0.1.10
+**Status**: ✅ Production-ready CLI/Daemon/GUI with full REST API architecture
 
-**Previous Stable**: v0.1.9 - Production-ready CLI/Daemon/GUI with remote daemon support
+**Release Date**: 2026-01-02
 
-### v0.1.10 Development Progress
+### v0.1.10 Release Highlights
 
 **Bug Fixes (Completed):**
 - ✅ **Authentication retry on failed 2FA** - Fixed keyboard-interactive retry flow (daemon and GUI)
   - **Daemon**: Properly detects when server allows retry (checks `remaining_methods`)
   - **Daemon**: Starts new keyboard-interactive session if server permits
   - **Daemon**: Respects server's retry policy (no artificial client-side limits)
-  - **GUI**: Auth retry dialogs now display properly (old dialog closed, new one shown)
-  - **GUI**: Dialog reference tracked in AppState for replacement on retry
+  - **GUI**: SSE-driven dialog state eliminates race conditions
+  - **GUI**: Dialog stays open showing "Verifying..." until SSE confirms next state
   - User gets re-prompted for 2FA/password until server accepts or permanently rejects
+
+- ✅ **Language-independent error detection** - Daemon works correctly on non-English systems
+  - **Hyper error categorization**: Uses type-based error inspection (`is_timeout()`, `is_parse()`, etc.)
+  - **Encrypted key detection**: Uses `russh::keys::Error` enum matching instead of string comparison
+  - **Keyboard-interactive prompts**: Server's prompt text passed as-is (supports non-English SSH servers)
+  - **IO error detection**: Checks `ErrorKind` enum variants instead of error messages
+  - Works correctly regardless of system locale
+
+- ✅ **SSE client consolidation** - Moved from gui-core to common crate
+  - Single source of truth for both CLI and GUI
+  - Framework-agnostic EventListener shared across all frontends
+  - Removed duplicate TunnelEvent definitions
 
 - ✅ **Improved daemon error logging** - Better diagnostics for HTTP connection errors
   - Intelligent categorization: ClientDisconnect, SseStreamClose, NetworkError, ProtocolError, ServerError
@@ -31,8 +43,8 @@
   - Help dialog includes comprehensive remote daemon setup guide
   - Copyright updated to SchirmForge, correct GitHub URLs
 
-**Planned Features:**
-- 🚧 **GUI Notification System** - Desktop notifications for tunnel connection events
+**Future Enhancements (Planned for v0.2.x):**
+- 🚧 **NEW FEATURE - GUI Notification System** - Desktop notifications for tunnel connection events
   - Connected notifications
   - Disconnected notifications
   - Error notifications
@@ -41,11 +53,9 @@
 - 🚧 **Adaptive Authentication Dialogs** - Better UX for authentication prompts
   - Dynamic dialog sizing based on text content
   - Better readability for long prompts
-  - Improved layout for keyboard-interactive auth
 
-- 🚧 **User Manual** - Comprehensive user documentation
+- 🚧 **User Manual** - Improve user documentation
   - Getting started guide
-  - Common workflows
   - Troubleshooting tips
   - Screenshots and examples
 

@@ -16,6 +16,7 @@ mod tls;
 mod tunnel;
 
 use std::sync::Arc;
+use std::error::Error;
 
 use anyhow::{Context, Result};
 use axum_server::tls_rustls::RustlsConfig;
@@ -50,40 +51,55 @@ enum ConnectionErrorCategory {
 
 /// Analyze hyper connection error and categorize it
 ///
-/// Uses error message patterns and hyper error flags to determine the
-/// likely cause and appropriate severity level for logging.
+/// Uses type-based error inspection to determine the likely cause
+/// and appropriate severity level for logging. This approach is
+/// language-independent and works regardless of system locale.
 fn categorize_connection_error(err: &hyper::Error) -> ConnectionErrorCategory {
-    let err_msg = err.to_string().to_lowercase();
-
-    // Client disconnect patterns (normal, DEBUG level)
-    if err_msg.contains("connection closed")
-        || err_msg.contains("broken pipe")
-        || err_msg.contains("connection reset")
-        || err_msg.contains("not connected") {
-        return ConnectionErrorCategory::ClientDisconnect;
-    }
-
-    // SSE stream patterns (normal for long-lived connections, DEBUG level)
-    if err_msg.contains("connection error") && !err.is_incomplete_message() {
-        // Generic "connection error" from hyper is often SSE client disconnect
-        return ConnectionErrorCategory::SseStreamClose;
-    }
-
-    // Body write errors (often SSE client went away, DEBUG level)
-    if err_msg.contains("error writing a body to connection") {
-        return ConnectionErrorCategory::SseStreamClose;
-    }
-
-    // Network/transport errors (INFO level - transient issues)
-    if err_msg.contains("timeout")
-        || err_msg.contains("timed out")
-        || err_msg.contains("connection timed out") {
+    // Check for timeout errors (transient network issues, INFO level)
+    if err.is_timeout() {
         return ConnectionErrorCategory::NetworkError;
     }
 
     // Protocol errors (WARN level - might indicate client/server mismatch)
     if err.is_parse() || err.is_parse_too_large() || err.is_parse_status() {
         return ConnectionErrorCategory::ProtocolError;
+    }
+
+    // Body write aborted - often SSE client disconnected (DEBUG level)
+    if err.is_body_write_aborted() {
+        return ConnectionErrorCategory::SseStreamClose;
+    }
+
+    // Connection closed before message completed (normal client disconnect, DEBUG level)
+    if err.is_incomplete_message() {
+        return ConnectionErrorCategory::ClientDisconnect;
+    }
+
+    // Channel closed or connection cancelled (normal disconnect, DEBUG level)
+    if err.is_closed() || err.is_canceled() {
+        return ConnectionErrorCategory::ClientDisconnect;
+    }
+
+    // Check underlying IO error source for connection-related errors
+    // Walk the error chain to find IO errors
+    let mut source = err.source();
+    while let Some(err_source) = source {
+        if let Some(io_err) = err_source.downcast_ref::<std::io::Error>() {
+            use std::io::ErrorKind;
+            match io_err.kind() {
+                ErrorKind::ConnectionReset
+                | ErrorKind::ConnectionAborted
+                | ErrorKind::BrokenPipe
+                | ErrorKind::NotConnected => {
+                    return ConnectionErrorCategory::ClientDisconnect;
+                }
+                ErrorKind::TimedOut => {
+                    return ConnectionErrorCategory::NetworkError;
+                }
+                _ => {}
+            }
+        }
+        source = err_source.source();
     }
 
     // Everything else is potentially serious (ERROR level)
@@ -114,16 +130,19 @@ fn log_connection_error(err: &Box<dyn std::error::Error + Send + Sync>, listener
     let category = if let Some(hyper_err) = err.downcast_ref::<hyper::Error>() {
         categorize_connection_error(hyper_err)
     } else {
-        // If not a hyper error, categorize based on message
-        let err_msg_lower = err_msg.to_lowercase();
-        if err_msg_lower.contains("connection closed")
-            || err_msg_lower.contains("broken pipe")
-            || err_msg_lower.contains("connection reset") {
-            ConnectionErrorCategory::ClientDisconnect
-        } else if err_msg_lower.contains("connection error")
-            || err_msg_lower.contains("error writing a body") {
-            ConnectionErrorCategory::SseStreamClose
+        // If not a hyper error, check if it's an IO error from axum_server or tokio
+        if let Some(io_err) = err.downcast_ref::<std::io::Error>() {
+            use std::io::ErrorKind;
+            match io_err.kind() {
+                ErrorKind::ConnectionReset
+                | ErrorKind::ConnectionAborted
+                | ErrorKind::BrokenPipe
+                | ErrorKind::NotConnected => ConnectionErrorCategory::ClientDisconnect,
+                ErrorKind::TimedOut => ConnectionErrorCategory::NetworkError,
+                _ => ConnectionErrorCategory::ServerError,
+            }
         } else {
+            // For unknown error types, treat as server error
             ConnectionErrorCategory::ServerError
         }
     };
