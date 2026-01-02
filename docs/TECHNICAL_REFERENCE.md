@@ -14,8 +14,9 @@ Suggested name: `TECHNICAL_REFERENCE.md`. Purpose: internal architecture map of 
 - Common
   - `crates/common/src/lib.rs`: module exports/re-exports.
   - `config.rs`: `Profile`/`ConnectionConfig`/`ForwardingConfig`/`TunnelOptions` + validation.
-  - `types.rs`: auth/forwarding enums, tunnel status/events, auth request/response, `StartTunnelResult`.
-  - `daemon_client.rs`: `DaemonClientConfig`, connection mode, reqwest client builder, auth header helper, config validation (`config_needs_ip_address`, `validate_client_config`).
+  - `types.rs`: auth/forwarding enums, tunnel status, `TunnelDomainEvent` (business logic events, renamed from TunnelEvent in v0.1.10), auth request/response, `StartTunnelResult`.
+  - `sse.rs`: `EventListener` and `TunnelEvent` (SSE wire protocol) - NEW in v0.1.10, moved from gui-core for CLI/GUI code reuse.
+  - `daemon_client.rs`: `DaemonClientConfig`, connection mode, reqwest client builder, auth header helper, config validation. Duplicate TunnelEvent removed in v0.1.10.
   - `tls.rs`: rustls client config, fingerprint pinning.
   - `profile_manager.rs`: profile load/save/delete utilities (used by CLI/daemon/GUI).
   - `error.rs`: common error enum (not widely used in newer code paths).
@@ -42,6 +43,7 @@ Suggested name: `TECHNICAL_REFERENCE.md`. Purpose: internal architecture map of 
   - `view_models.rs`: `ProfileViewModel` with formatted display data, `StatusColor` enum for UI consistency.
   - `events.rs`: `TunnelEventHandler` trait for framework-agnostic event handling.
   - `daemon/config.rs`: daemon configuration helpers (`load_daemon_config`, `save_daemon_config`, `check_config_status`, `load_snippet_config`, config path utilities).
+  - `daemon/mod.rs`: re-exports SSE types from common crate (`EventListener`, `TunnelEvent`) for convenience.
 - GUI GTK (`crates/gui-gtk`)
   - `src/main.rs`: GTK/libadwaita bootstrap with Tokio runtime.
   - `ui/window.rs`: main window, header, connection indicator, event listener hook, `AppState` with `AppCore` integration.
@@ -57,8 +59,8 @@ Suggested name: `TECHNICAL_REFERENCE.md`. Purpose: internal architecture map of 
   - `ui/help_dialog.rs`: markdown-rendered help documentation.
   - `ui/about_dialog.rs`: about dialog with version info.
   - `daemon/client.rs`: REST client for daemon API.
-  - `daemon/sse.rs`: SSE listener/parsing for real-time events.
   - `models/profile_model.rs`: GObject wrapper around `Profile` for GTK state.
+  - Note: SSE module moved to common crate in v0.1.10, imported via `ssh_tunnel_common::sse` or re-exported from gui-core.
   - `utils/profiles.rs`: profile directory utilities (mostly superseded by gui-core).
 
 ## Dependencies by Module / File

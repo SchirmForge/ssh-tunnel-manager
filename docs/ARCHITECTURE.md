@@ -1,7 +1,7 @@
 # SSH Tunnel Manager - Architecture
 
-**Version**: v0.1.9
-**Status**: Production-ready with remote daemon support
+**Version**: v0.1.10
+**Status**: Production-ready with full REST API architecture
 
 ## Overview
 

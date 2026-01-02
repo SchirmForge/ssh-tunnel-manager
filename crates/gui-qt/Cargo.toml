@@ -1,6 +1,6 @@
 [package]
 name = "ssh-tunnel-gui-qt"
-version = "0.1.9"
+version = "0.1.10"
 edition = "2021"
 authors = ["SSH Tunnel Manager Contributors"]
 description = "Qt6 desktop GUI for SSH Tunnel Manager"
