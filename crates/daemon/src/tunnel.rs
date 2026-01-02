@@ -1206,10 +1206,11 @@ async fn authenticate_keyboard_interactive(
 
                     full_prompt.push_str(&prompt.prompt);
 
-                    // `echo == false` -> sensitive input (TOTP / password)
+                    // Use KeyboardInteractive for all keyboard-interactive prompts
+                    // The server-provided prompt text will tell the user what's needed
                     let answer = auth_ctx
                         .request_input(
-                            AuthRequestType::TwoFactorCode, // semantic type, UI prompt is `full_prompt`
+                            AuthRequestType::KeyboardInteractive,
                             &full_prompt,
                             !prompt.echo,
                         )

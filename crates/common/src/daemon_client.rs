@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::tls::{create_insecure_tls_config, create_pinned_tls_config};
 use crate::{AuthRequest, AuthResponse, TunnelStatus, Uuid};
+use crate::sse::TunnelEvent;
 
 /// Connection mode for client to daemon communication
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
@@ -378,17 +379,8 @@ mod tests {
 // SSE-First Tunnel Control Flow
 // ============================================================================
 
-/// SSE event types from the daemon
-#[derive(Debug, Deserialize, Clone)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum TunnelEvent {
-    Starting { id: Uuid },
-    Connected { id: Uuid },
-    Disconnected { id: Uuid, reason: String },
-    Error { id: Uuid, error: String },
-    AuthRequired { id: Uuid, request: AuthRequest },
-    Heartbeat { timestamp: Option<String> },
-}
+// TunnelEvent moved to crate::sse module
+// Re-exported from lib.rs
 
 /// Response from tunnel status endpoint
 #[derive(Debug, Deserialize)]

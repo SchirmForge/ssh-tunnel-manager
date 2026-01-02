@@ -113,7 +113,7 @@ fn show_auth_dialog(
     // Determine appropriate placeholder text based on auth type
     let placeholder = match auth_type {
         AuthRequestType::KeyPassphrase => "Enter SSH key passphrase",
-        AuthRequestType::Password => "Enter password",
+        AuthRequestType::Password => "Enter remote user password",
         AuthRequestType::TwoFactorCode => "Enter 2FA code",
         AuthRequestType::KeyboardInteractive => {
             if hidden {

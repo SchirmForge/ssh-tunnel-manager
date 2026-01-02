@@ -13,7 +13,7 @@ use tokio::sync::mpsc;
 use tokio::time::{sleep, Duration};
 use uuid::Uuid;
 
-use ssh_tunnel_common::{add_auth_header, AuthRequest, DaemonClientConfig};
+use crate::{add_auth_header, AuthRequest, DaemonClientConfig};
 
 /// Event from daemon SSE stream
 /// Matches the daemon's OutgoingEvent structure
@@ -91,7 +91,7 @@ impl EventListener {
         let url = format!("{}/api/events", base_url);
 
         // Create HTTP client
-        let client = ssh_tunnel_common::create_daemon_client(config)?;
+        let client = crate::create_daemon_client(config)?;
 
         // Build request with auth
         let request = client.get(&url);
