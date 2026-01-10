@@ -42,7 +42,7 @@ A secure, performant SSH tunnel management application for Linux with CLI interf
 - Dynamic (SOCKS) port forwarding
 - Auto-reconnect/health monitoring wiring
 - Desktop notifications
-- Packaging (Flatpak, AUR, deb)
+- Additional packages
 
 ## Installation
 
