@@ -10,6 +10,6 @@ pub mod client;
 pub mod config;
 
 pub use client::DaemonClient;
-pub use config::{load_daemon_config, get_cli_config_path};
+pub use config::{get_cli_config_path, load_daemon_config};
 // Re-export SSE types from common crate
 pub use ssh_tunnel_common::sse::{EventListener, TunnelEvent};

@@ -59,14 +59,13 @@ pub fn is_valid_host(host: &str) -> bool {
     }
 
     // Split by dots and validate each label
-    host.split('.')
-        .all(|label| {
-            !label.is_empty()
-                && label.len() <= 63
-                && !label.starts_with('-')
-                && !label.ends_with('-')
-                && label.chars().all(|c| c.is_alphanumeric() || c == '-')
-        })
+    host.split('.').all(|label| {
+        !label.is_empty()
+            && label.len() <= 63
+            && !label.starts_with('-')
+            && !label.ends_with('-')
+            && label.chars().all(|c| c.is_alphanumeric() || c == '-')
+    })
 }
 
 #[cfg(test)]
@@ -107,10 +106,10 @@ mod tests {
         assert!(is_valid_host("255.255.255.255"));
 
         // Invalid IPv4 addresses (out of range octets)
-        assert!(!is_valid_host("10.1.2.256"));  // 256 > 255
-        assert!(!is_valid_host("256.1.1.1"));   // First octet > 255
-        assert!(!is_valid_host("1.1.1.999"));   // Last octet > 255
-        assert!(!is_valid_host("300.300.300.300"));  // All octets > 255
+        assert!(!is_valid_host("10.1.2.256")); // 256 > 255
+        assert!(!is_valid_host("256.1.1.1")); // First octet > 255
+        assert!(!is_valid_host("1.1.1.999")); // Last octet > 255
+        assert!(!is_valid_host("300.300.300.300")); // All octets > 255
 
         // Valid IPv6 addresses
         assert!(is_valid_host("::1"));
@@ -126,13 +125,13 @@ mod tests {
         assert!(is_valid_host("a.b.c.d.e.f"));
 
         // Invalid hostnames
-        assert!(!is_valid_host(""));  // Empty
-        assert!(!is_valid_host("-invalid.com"));  // Starts with hyphen
-        assert!(!is_valid_host("invalid-.com"));  // Ends with hyphen
-        assert!(!is_valid_host("invalid..com"));  // Double dot
-        assert!(!is_valid_host(".invalid.com"));  // Starts with dot
-        assert!(!is_valid_host("invalid.com."));  // Ends with dot (actually invalid in our validator)
-        assert!(!is_valid_host("in valid.com"));  // Contains space
-        assert!(!is_valid_host("invalid_host.com"));  // Contains underscore
+        assert!(!is_valid_host("")); // Empty
+        assert!(!is_valid_host("-invalid.com")); // Starts with hyphen
+        assert!(!is_valid_host("invalid-.com")); // Ends with hyphen
+        assert!(!is_valid_host("invalid..com")); // Double dot
+        assert!(!is_valid_host(".invalid.com")); // Starts with dot
+        assert!(!is_valid_host("invalid.com.")); // Ends with dot (actually invalid in our validator)
+        assert!(!is_valid_host("in valid.com")); // Contains space
+        assert!(!is_valid_host("invalid_host.com")); // Contains underscore
     }
 }

@@ -22,12 +22,10 @@ pub fn load_all_profiles() -> Result<Vec<Profile>> {
 
 /// Get the profiles directory path
 pub fn get_profiles_dir() -> Result<PathBuf> {
-    let config_dir = dirs::config_dir()
-        .ok_or_else(|| anyhow::anyhow!("Could not find config directory"))?;
+    let config_dir =
+        dirs::config_dir().ok_or_else(|| anyhow::anyhow!("Could not find config directory"))?;
 
-    let profiles_dir = config_dir
-        .join("ssh-tunnel-manager")
-        .join("profiles");
+    let profiles_dir = config_dir.join("ssh-tunnel-manager").join("profiles");
 
     Ok(profiles_dir)
 }

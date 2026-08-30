@@ -15,8 +15,8 @@ mod security;
 mod tls;
 mod tunnel;
 
-use std::sync::Arc;
 use std::error::Error;
+use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use axum_server::tls_rustls::RustlsConfig;
@@ -123,7 +123,10 @@ fn categorize_connection_error(err: &hyper::Error) -> ConnectionErrorCategory {
 /// [tcp_https] SSE stream closed | type=connection_error | error: connection error
 /// [tcp_https] Server error | source=daemon_internal | type=parse_error | error: ... | action=investigate_required
 /// ```
-fn log_connection_error(err: &(dyn std::error::Error + Send + Sync + 'static), listener_mode: &str) {
+fn log_connection_error(
+    err: &(dyn std::error::Error + Send + Sync + 'static),
+    listener_mode: &str,
+) {
     let err_msg = err.to_string();
 
     // Try to downcast to hyper::Error for detailed analysis
@@ -179,7 +182,7 @@ fn log_connection_error(err: &(dyn std::error::Error + Send + Sync + 'static), l
     let source_category = match &category {
         ConnectionErrorCategory::ClientDisconnect | ConnectionErrorCategory::SseStreamClose => {
             "client_disconnect"
-        },
+        }
         ConnectionErrorCategory::NetworkError => "network",
         ConnectionErrorCategory::ProtocolError => "protocol",
         ConnectionErrorCategory::ServerError => "daemon_internal",
@@ -192,31 +195,31 @@ fn log_connection_error(err: &(dyn std::error::Error + Send + Sync + 'static), l
                 "[{}] Client disconnected | type={} | error: {}",
                 listener_mode, error_type, err_msg
             );
-        },
+        }
         ConnectionErrorCategory::SseStreamClose => {
             debug!(
                 "[{}] SSE stream closed | type={} | error: {}",
                 listener_mode, error_type, err_msg
             );
-        },
+        }
         ConnectionErrorCategory::NetworkError => {
             info!(
                 "[{}] Network error (transient) | source={} | type={} | error: {}",
                 listener_mode, source_category, error_type, err_msg
             );
-        },
+        }
         ConnectionErrorCategory::ProtocolError => {
             tracing::warn!(
                 "[{}] Protocol error | source={} | type={} | error: {} | action=check_client_version",
                 listener_mode, source_category, error_type, err_msg
             );
-        },
+        }
         ConnectionErrorCategory::ServerError => {
             error!(
                 "[{}] Server error | source={} | type={} | error: {} | action=investigate_required",
                 listener_mode, source_category, error_type, err_msg
             );
-        },
+        }
     }
 }
 
@@ -311,11 +314,10 @@ async fn main() -> Result<()> {
     // Create API router with optional authentication
     let app = if let Some(token) = auth_token {
         let auth_state = auth::AuthState::new(token);
-        create_router(state)
-            .layer(axum::middleware::from_fn_with_state(
-                auth_state,
-                auth::auth_middleware,
-            ))
+        create_router(state).layer(axum::middleware::from_fn_with_state(
+            auth_state,
+            auth::auth_middleware,
+        ))
     } else {
         create_router(state)
     };
@@ -326,12 +328,17 @@ async fn main() -> Result<()> {
             serve_unix_socket(app, &daemon_config, shutdown_manager.clone(), shutdown_tx).await?;
         }
         ListenerMode::TcpHttp => {
-            let bind_address = ssh_tunnel_common::format_host_port(&daemon_config.bind_host, daemon_config.bind_port);
-            serve_tcp_http(app, &bind_address, shutdown_manager.clone(), shutdown_tx)
-                .await?;
+            let bind_address = ssh_tunnel_common::format_host_port(
+                &daemon_config.bind_host,
+                daemon_config.bind_port,
+            );
+            serve_tcp_http(app, &bind_address, shutdown_manager.clone(), shutdown_tx).await?;
         }
         ListenerMode::TcpHttps => {
-            let bind_address = ssh_tunnel_common::format_host_port(&daemon_config.bind_host, daemon_config.bind_port);
+            let bind_address = ssh_tunnel_common::format_host_port(
+                &daemon_config.bind_host,
+                daemon_config.bind_port,
+            );
             serve_tcp_https(
                 app,
                 &bind_address,

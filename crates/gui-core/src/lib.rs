@@ -6,25 +6,28 @@
 //! This crate contains shared business logic, state management, and data models
 //! that are used by both GTK and Qt GUI implementations.
 
-pub mod state;
+pub mod daemon;
 pub mod events;
 pub mod profiles;
+pub mod state;
 pub mod view_models;
-pub mod daemon;
 
 // Re-export commonly used types
-pub use state::AppCore;
-pub use events::{TunnelEventHandler, GuiEvent};
-pub use profiles::{load_profiles, save_profile, delete_profile, validate_profile, profile_name_exists};
-pub use view_models::{ProfileViewModel, StatusColor};
 pub use daemon::{
-    DaemonClient, EventListener, TunnelEvent,
-    load_daemon_config, get_cli_config_path,
-    config::{ConfigStatus, check_config_status, load_snippet_config, save_daemon_config, save_skip_ssh_warning_preference, daemon_config_snippet_exists},
+    config::{
+        check_config_status, daemon_config_snippet_exists, load_snippet_config, save_daemon_config,
+        save_skip_ssh_warning_preference, ConfigStatus,
+    },
+    get_cli_config_path, load_daemon_config, DaemonClient, EventListener, TunnelEvent,
 };
+pub use events::{GuiEvent, TunnelEventHandler};
+pub use profiles::{
+    delete_profile, load_profiles, profile_name_exists, save_profile, validate_profile,
+};
+pub use state::AppCore;
+pub use view_models::{ProfileViewModel, StatusColor};
 
 // Re-export types from common crate for convenience
 pub use ssh_tunnel_common::{
-    Profile, TunnelStatus, AuthRequest, AuthType, ForwardingType,
-    DaemonInfo, ConnectionMode,
+    AuthRequest, AuthType, ConnectionMode, DaemonInfo, ForwardingType, Profile, TunnelStatus,
 };

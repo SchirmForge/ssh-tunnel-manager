@@ -17,10 +17,7 @@ use tracing::{info, warn};
 
 /// Generate a self-signed certificate for the daemon
 /// Returns the certificate fingerprint
-pub fn generate_self_signed_cert(
-    cert_path: &Path,
-    key_path: &Path,
-) -> Result<String> {
+pub fn generate_self_signed_cert(cert_path: &Path, key_path: &Path) -> Result<String> {
     info!("Generating self-signed TLS certificate");
 
     // Create distinguished name
@@ -45,17 +42,14 @@ pub fn generate_self_signed_cert(
 
     // Ensure parent directories exist
     if let Some(parent) = cert_path.parent() {
-        fs::create_dir_all(parent)
-            .context("Failed to create certificate directory")?;
+        fs::create_dir_all(parent).context("Failed to create certificate directory")?;
     }
 
     // Write certificate (PEM format)
-    fs::write(cert_path, cert.pem())
-        .context("Failed to write certificate file")?;
+    fs::write(cert_path, cert.pem()).context("Failed to write certificate file")?;
 
     // Write private key (PEM format)
-    fs::write(key_path, key_pair.serialize_pem())
-        .context("Failed to write private key file")?;
+    fs::write(key_path, key_pair.serialize_pem()).context("Failed to write private key file")?;
 
     // Set restrictive permissions on both files
     crate::permissions::set_file_permissions_private(cert_path)?;
@@ -91,8 +85,7 @@ fn calculate_fingerprint(der: &[u8]) -> String {
 
 /// Calculate fingerprint from an existing certificate file
 pub fn get_cert_fingerprint(cert_path: &Path) -> Result<String> {
-    let cert_file = fs::File::open(cert_path)
-        .context("Failed to open certificate file")?;
+    let cert_file = fs::File::open(cert_path).context("Failed to open certificate file")?;
     let mut cert_reader = std::io::BufReader::new(cert_file);
 
     let certs = certs(&mut cert_reader)
@@ -112,8 +105,7 @@ pub fn check_cert_expiry(cert_path: &Path) -> Result<bool> {
     use x509_parser::prelude::*;
 
     // Read and parse certificate
-    let cert_file = fs::File::open(cert_path)
-        .context("Failed to open certificate file")?;
+    let cert_file = fs::File::open(cert_path).context("Failed to open certificate file")?;
     let mut cert_reader = std::io::BufReader::new(cert_file);
 
     let cert_ders = certs(&mut cert_reader)
@@ -144,9 +136,15 @@ pub fn check_cert_expiry(cert_path: &Path) -> Result<bool> {
         warn!("═══════════════════════════════════════════════════════════");
         warn!("⚠️  TLS CERTIFICATE EXPIRING SOON!");
         warn!("═══════════════════════════════════════════════════════════");
-        warn!("The TLS certificate will expire in {} days.", days_until_expiry);
+        warn!(
+            "The TLS certificate will expire in {} days.",
+            days_until_expiry
+        );
         warn!("Consider regenerating the certificate soon.");
-        warn!("Delete {} to regenerate on next start.", cert_path.display());
+        warn!(
+            "Delete {} to regenerate on next start.",
+            cert_path.display()
+        );
         warn!("═══════════════════════════════════════════════════════════");
         return Ok(true);
     } else if days_until_expiry <= 90 {
@@ -165,8 +163,7 @@ pub fn load_tls_cert_and_key(
     info!("Loading TLS private key from: {}", key_path.display());
 
     // Read certificate file
-    let cert_file = fs::File::open(cert_path)
-        .context("Failed to open certificate file")?;
+    let cert_file = fs::File::open(cert_path).context("Failed to open certificate file")?;
     let mut cert_reader = std::io::BufReader::new(cert_file);
 
     let certs = certs(&mut cert_reader)
@@ -178,8 +175,7 @@ pub fn load_tls_cert_and_key(
     }
 
     // Read private key file
-    let key_file = fs::File::open(key_path)
-        .context("Failed to open private key file")?;
+    let key_file = fs::File::open(key_path).context("Failed to open private key file")?;
     let mut key_reader = std::io::BufReader::new(key_file);
 
     let key = private_key(&mut key_reader)

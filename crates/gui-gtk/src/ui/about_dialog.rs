@@ -3,10 +3,10 @@
 
 // About dialog showing application information
 
+use super::markdown::markdown_to_pango;
+use adw::prelude::*;
 use gtk4::prelude::*;
 use libadwaita as adw;
-use adw::prelude::*;
-use super::markdown::markdown_to_pango;
 
 /// Show the about dialog
 pub fn show_about_dialog(window: &adw::ApplicationWindow) {

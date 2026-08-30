@@ -3,20 +3,20 @@
 
 // Profile editor dialog - Create and edit profiles
 
+use adw::prelude::*;
 use gtk4::prelude::*;
 use gtk4::{Box as GtkBox, Entry, Orientation, SpinButton};
 use libadwaita as adw;
-use adw::prelude::*;
-use uuid::Uuid;
 use std::rc::Rc;
+use uuid::Uuid;
 
 use crate::models::profile_model::ProfileModel;
 use crate::ui::window::AppState;
 use ssh_tunnel_common::config::{
-    Profile, ProfileMetadata, ConnectionConfig, ForwardingConfig, PasswordStorage, TunnelOptions,
+    ConnectionConfig, ForwardingConfig, PasswordStorage, Profile, ProfileMetadata, TunnelOptions,
 };
 use ssh_tunnel_common::types::{AuthType, ForwardingType};
-use ssh_tunnel_gui_core::{validate_profile, profile_name_exists, save_profile};
+use ssh_tunnel_gui_core::{profile_name_exists, save_profile, validate_profile};
 
 /// Show profile editor dialog for creating a new profile
 pub fn show_new_profile_dialog(parent: &impl IsA<gtk4::Window>, state: Rc<AppState>) {
@@ -72,14 +72,10 @@ fn create_dialog(
     header.set_show_end_title_buttons(false);
 
     // Cancel button
-    let cancel_button = gtk4::Button::builder()
-        .label("Cancel")
-        .build();
+    let cancel_button = gtk4::Button::builder().label("Cancel").build();
 
     // Save button
-    let save_button = gtk4::Button::builder()
-        .label("Save")
-        .build();
+    let save_button = gtk4::Button::builder().label("Save").build();
     save_button.add_css_class("suggested-action");
 
     header.pack_start(&cancel_button);
@@ -116,9 +112,7 @@ fn create_dialog(
         .build();
     name_row.add_suffix(&name_entry);
 
-    let host_entry = Entry::builder()
-        .placeholder_text("example.com")
-        .build();
+    let host_entry = Entry::builder().placeholder_text("example.com").build();
     let host_row = adw::ActionRow::builder()
         .title("SSH Host")
         .subtitle("Remote server address")
@@ -135,9 +129,7 @@ fn create_dialog(
         .build();
     port_row.add_suffix(&port_spin);
 
-    let user_entry = Entry::builder()
-        .placeholder_text("username")
-        .build();
+    let user_entry = Entry::builder().placeholder_text("username").build();
     let user_row = adw::ActionRow::builder()
         .title("SSH User")
         .subtitle("Username for SSH connection")
@@ -459,7 +451,9 @@ fn create_dialog(
                     store_keychain_switch.set_active(true);
                     store_keychain_switch.set_sensitive(true);
                     key_password_row.set_visible(true);
-                    key_password_row.set_subtitle("Passphrase stored in system keychain - enter new passphrase to update");
+                    key_password_row.set_subtitle(
+                        "Passphrase stored in system keychain - enter new passphrase to update",
+                    );
                 }
             }
 
@@ -814,8 +808,8 @@ fn validate_key_passphrase(key_path: &std::path::Path, passphrase: &str) -> Resu
     use std::fs;
 
     // Read the key file
-    let key_data = fs::read_to_string(key_path)
-        .map_err(|e| format!("Failed to read SSH key file: {}", e))?;
+    let key_data =
+        fs::read_to_string(key_path).map_err(|e| format!("Failed to read SSH key file: {}", e))?;
 
     // Attempt to decode with the passphrase
     decode_secret_key(&key_data, Some(passphrase))
@@ -826,12 +820,10 @@ fn validate_key_passphrase(key_path: &std::path::Path, passphrase: &str) -> Resu
 
 /// Store password/passphrase in system keychain
 fn store_password_in_keychain(profile_id: &Uuid, password: &str) -> Result<(), String> {
-    ssh_tunnel_common::store_password(profile_id, password)
-        .map_err(|e| format!("{}", e))
+    ssh_tunnel_common::store_password(profile_id, password).map_err(|e| format!("{}", e))
 }
 
 /// Remove password/passphrase from system keychain
 fn remove_password_from_keychain(profile_id: &Uuid) -> Result<(), String> {
-    ssh_tunnel_common::remove_password(profile_id)
-        .map_err(|e| format!("{}", e))
+    ssh_tunnel_common::remove_password(profile_id).map_err(|e| format!("{}", e))
 }

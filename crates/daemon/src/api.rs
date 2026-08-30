@@ -13,7 +13,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use tower_http::trace::{TraceLayer, DefaultMakeSpan, DefaultOnResponse};
+use tower_http::trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer};
 use tower_http::LatencyUnit;
 
 // added for /api/event management
@@ -27,11 +27,10 @@ use serde::{Deserialize, Serialize};
 use tracing::{error, info};
 use uuid::Uuid;
 
-use ssh_tunnel_common::{
-    load_profile_by_id, AuthRequest, ProfileSourceMode, StartTunnelRequest,
-    TunnelStatus,
-};
 use chrono::{DateTime, Utc};
+use ssh_tunnel_common::{
+    load_profile_by_id, AuthRequest, ProfileSourceMode, StartTunnelRequest, TunnelStatus,
+};
 use std::time::{Duration, SystemTime};
 
 use crate::config::DaemonConfig;
@@ -116,8 +115,8 @@ pub fn create_router(state: Arc<AppState>) -> Router {
                 .on_response(
                     DefaultOnResponse::new()
                         .include_headers(false)
-                        .latency_unit(LatencyUnit::Millis)
-                )
+                        .latency_unit(LatencyUnit::Millis),
+                ),
         )
         .with_state(state)
 }
@@ -154,7 +153,10 @@ async fn start_tunnel(
     Path(id): Path<Uuid>,
     Json(request): Json<StartTunnelRequest>,
 ) -> impl IntoResponse {
-    info!("API: Start tunnel request for {} (mode: {:?})", id, request.mode);
+    info!(
+        "API: Start tunnel request for {} (mode: {:?})",
+        id, request.mode
+    );
 
     // Validate that the profile_id in the request matches the URL path
     if request.profile_id != id.to_string() {
@@ -295,7 +297,13 @@ async fn stop_tunnel(
                 StatusCode::INTERNAL_SERVER_ERROR
             };
 
-            (status, Json(ErrorResponse { error: e.to_string() })).into_response()
+            (
+                status,
+                Json(ErrorResponse {
+                    error: e.to_string(),
+                }),
+            )
+                .into_response()
         }
     }
 }
@@ -358,7 +366,10 @@ async fn submit_auth(
     Path(id): Path<Uuid>,
     Json(payload): Json<SubmitAuthPayload>,
 ) -> impl IntoResponse {
-    info!("API: Auth response received for tunnel {} (request_id: {})", id, payload.request_id);
+    info!(
+        "API: Auth response received for tunnel {} (request_id: {})",
+        id, payload.request_id
+    );
 
     match state
         .tunnel_manager
@@ -449,13 +460,13 @@ pub async fn event_stream(
 fn heartbeat_stream(
 ) -> impl futures::Stream<Item = Result<Event, Infallible>> + Send + Sync + 'static {
     tokio_stream::wrappers::IntervalStream::new(tokio::time::interval(heartbeat_interval()))
-        .map(|_| {
-            Ok(Event::default().data(heartbeat_payload()))
-        })
+        .map(|_| Ok(Event::default().data(heartbeat_payload())))
 }
 
 fn heartbeat_payload() -> String {
-    match serde_json::to_string(&OutgoingEvent::Heartbeat { timestamp: Utc::now() }) {
+    match serde_json::to_string(&OutgoingEvent::Heartbeat {
+        timestamp: Utc::now(),
+    }) {
         Ok(j) => j,
         Err(e) => {
             tracing::error!("Failed to serialize heartbeat: {e}");
@@ -476,8 +487,8 @@ fn heartbeat_interval() -> Duration {
 
 /// Get daemon information (version, config, uptime, etc.)
 async fn get_daemon_info(State(state): State<Arc<AppState>>) -> impl IntoResponse {
-    use std::time::UNIX_EPOCH;
     use ssh_tunnel_common::DaemonInfo;
+    use std::time::UNIX_EPOCH;
 
     // Compute uptime
     let started = *state.started_at.read().await;
@@ -487,10 +498,7 @@ async fn get_daemon_info(State(state): State<Arc<AppState>>) -> impl IntoRespons
         .as_secs();
 
     // Format started_at as ISO 8601
-    let started_at_timestamp = started
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
+    let started_at_timestamp = started.duration_since(UNIX_EPOCH).unwrap().as_secs();
     let started_at_iso = chrono::DateTime::from_timestamp(started_at_timestamp as i64, 0)
         .map(|dt| dt.to_rfc3339())
         .unwrap_or_else(|| "unknown".to_string());
@@ -507,10 +515,14 @@ async fn get_daemon_info(State(state): State<Arc<AppState>>) -> impl IntoRespons
         crate::config::ListenerMode::UnixSocket => "unix-socket",
         crate::config::ListenerMode::TcpHttp => "tcp-http",
         crate::config::ListenerMode::TcpHttps => "tcp-https",
-    }.to_string();
+    }
+    .to_string();
 
     // Get socket path (for Unix socket mode)
-    let socket_path = if matches!(config.listener_mode, crate::config::ListenerMode::UnixSocket) {
+    let socket_path = if matches!(
+        config.listener_mode,
+        crate::config::ListenerMode::UnixSocket
+    ) {
         crate::config::socket_path()
             .ok()
             .map(|p| p.display().to_string())
@@ -520,7 +532,12 @@ async fn get_daemon_info(State(state): State<Arc<AppState>>) -> impl IntoRespons
 
     // Get config file path
     let config_file_path = dirs::config_dir()
-        .map(|dir| dir.join("ssh-tunnel-manager").join("daemon.toml").display().to_string())
+        .map(|dir| {
+            dir.join("ssh-tunnel-manager")
+                .join("daemon.toml")
+                .display()
+                .to_string()
+        })
         .unwrap_or_else(|| "unknown".to_string());
 
     // Get current username
@@ -538,12 +555,18 @@ async fn get_daemon_info(State(state): State<Arc<AppState>>) -> impl IntoRespons
         uptime_seconds: uptime,
         started_at: started_at_iso,
         listener_mode,
-        bind_host: if matches!(config.listener_mode, crate::config::ListenerMode::TcpHttp | crate::config::ListenerMode::TcpHttps) {
+        bind_host: if matches!(
+            config.listener_mode,
+            crate::config::ListenerMode::TcpHttp | crate::config::ListenerMode::TcpHttps
+        ) {
             Some(config.bind_host.clone())
         } else {
             None
         },
-        bind_port: if matches!(config.listener_mode, crate::config::ListenerMode::TcpHttp | crate::config::ListenerMode::TcpHttps) {
+        bind_port: if matches!(
+            config.listener_mode,
+            crate::config::ListenerMode::TcpHttp | crate::config::ListenerMode::TcpHttps
+        ) {
             Some(config.bind_port)
         } else {
             None
@@ -592,6 +615,9 @@ mod tests {
 
         // Ensure we emitted a heartbeat payload
         let json = heartbeat_payload();
-        assert!(json.contains("heartbeat"), "heartbeat payload missing marker");
+        assert!(
+            json.contains("heartbeat"),
+            "heartbeat payload missing marker"
+        );
     }
 }

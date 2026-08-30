@@ -21,16 +21,17 @@ pub use daemon_client::{
     validate_daemon_config, ConfigValidationResult, ConnectionMode, DaemonClientConfig,
     TunnelEventHandler, TunnelStatusResponse,
 };
-pub use sse::{EventListener, TunnelEvent};
 pub use error::{Error, Result};
-pub use keychain::{get_password, has_password, is_keychain_available, remove_password, store_password};
+pub use keychain::{
+    get_password, has_password, is_keychain_available, remove_password, store_password,
+};
 pub use network::{is_loopback_address, is_valid_host};
 pub use profile_manager::{
-    delete_profile_by_id, delete_profile_by_name, get_remote_key_setup_message,
-    load_all_profiles, load_profile, load_profile_by_id, load_profile_by_name,
-    prepare_profile_for_remote, profile_exists_by_id, profile_exists_by_name, profiles_dir,
-    save_profile,
+    delete_profile_by_id, delete_profile_by_name, get_remote_key_setup_message, load_all_profiles,
+    load_profile, load_profile_by_id, load_profile_by_name, prepare_profile_for_remote,
+    profile_exists_by_id, profile_exists_by_name, profiles_dir, save_profile,
 };
+pub use sse::{EventListener, TunnelEvent};
 pub use tls::{create_insecure_tls_config, create_pinned_tls_config};
 pub use types::{
     AuthRequest, AuthRequestType, AuthResponse, AuthType, DaemonInfo, ForwardingType,

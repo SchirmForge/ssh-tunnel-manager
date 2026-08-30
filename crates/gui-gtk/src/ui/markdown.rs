@@ -3,7 +3,7 @@
 
 // Markdown to Pango markup converter for GTK text display
 
-use pulldown_cmark::{Parser, Event, Tag, TagEnd, HeadingLevel};
+use pulldown_cmark::{Event, HeadingLevel, Parser, Tag, TagEnd};
 
 /// Convert markdown to Pango markup for GTK TextView
 pub fn markdown_to_pango(markdown: &str) -> String {
@@ -123,7 +123,10 @@ pub fn markdown_to_pango(markdown: &str) -> String {
                     .replace('&', "&amp;")
                     .replace('<', "&lt;")
                     .replace('>', "&gt;");
-                output.push_str(&format!("<span font_family='monospace' background='#f0f0f0'>{}</span>", escaped));
+                output.push_str(&format!(
+                    "<span font_family='monospace' background='#f0f0f0'>{}</span>",
+                    escaped
+                ));
             }
             Event::SoftBreak => {
                 output.push(' ');

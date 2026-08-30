@@ -30,7 +30,10 @@ fn repo_root() -> PathBuf {
 }
 
 pub fn env_file_path() -> PathBuf {
-    repo_root().join(".local").join("testing").join("ssh-target.env")
+    repo_root()
+        .join(".local")
+        .join("testing")
+        .join("ssh-target.env")
 }
 
 impl LiveTarget {
@@ -56,7 +59,9 @@ impl LiveTarget {
                 }
 
                 // A target with no host is not usable.
-                values.contains_key("SSH_TUNNEL_TEST_HOST").then_some(LiveTarget { values })
+                values
+                    .contains_key("SSH_TUNNEL_TEST_HOST")
+                    .then_some(LiveTarget { values })
             })
             .as_ref()
     }
@@ -283,10 +288,7 @@ mod tests {
             hex(&sha1(b"abc")),
             "a9993e364706816aba3e25717850c26c9cd0d89d"
         );
-        assert_eq!(
-            hex(&sha1(b"")),
-            "da39a3ee5e6b4b0d3255bfef95601890afd80709"
-        );
+        assert_eq!(hex(&sha1(b"")), "da39a3ee5e6b4b0d3255bfef95601890afd80709");
     }
 
     #[test]

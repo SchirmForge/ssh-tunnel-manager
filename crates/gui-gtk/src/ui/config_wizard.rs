@@ -3,10 +3,10 @@
 
 //! First-launch configuration wizard
 
+use adw::prelude::*;
 use gtk4::prelude::*;
 use gtk4::{Box as GtkBox, Button, Orientation};
 use libadwaita as adw;
-use adw::prelude::*;
 use ssh_tunnel_common::{is_valid_host, ConnectionMode, DaemonClientConfig};
 use ssh_tunnel_gui_core::{check_config_status, load_snippet_config, ConfigStatus};
 
@@ -38,7 +38,9 @@ pub fn show_config_wizard(parent: Option<&impl IsA<gtk4::Window>>) -> Option<Dae
 }
 
 /// Show dialog to import configuration from daemon-generated snippet
-fn show_snippet_import_dialog(parent: Option<&impl IsA<gtk4::Window>>) -> Option<DaemonClientConfig> {
+fn show_snippet_import_dialog(
+    parent: Option<&impl IsA<gtk4::Window>>,
+) -> Option<DaemonClientConfig> {
     use std::cell::Cell;
     use std::rc::Rc;
 
@@ -62,8 +64,11 @@ fn show_snippet_import_dialog(parent: Option<&impl IsA<gtk4::Window>>) -> Option
             match load_snippet_config() {
                 Ok(mut config) => {
                     // Check if daemon_host is empty for HTTP/HTTPS modes
-                    if matches!(config.connection_mode, ConnectionMode::Http | ConnectionMode::Https)
-                        && config.daemon_host.is_empty() {
+                    if matches!(
+                        config.connection_mode,
+                        ConnectionMode::Http | ConnectionMode::Https
+                    ) && config.daemon_host.is_empty()
+                    {
                         // Prompt for IP address
                         if let Some(ip) = prompt_for_ip_address(_dialog.transient_for().as_ref()) {
                             config.daemon_host = ip;
@@ -111,7 +116,7 @@ fn prompt_for_ip_address(parent: Option<&impl IsA<gtk4::Window>>) -> Option<Stri
     // Create entry field for IP address
     let entry = adw::EntryRow::new();
     entry.set_title("Daemon IP Address");
-    entry.set_text("192.168.1.100");  // Suggested default
+    entry.set_text("192.168.1.100"); // Suggested default
 
     let prefs_group = adw::PreferencesGroup::new();
     prefs_group.add(&entry);
@@ -175,7 +180,9 @@ fn prompt_for_ip_address(parent: Option<&impl IsA<gtk4::Window>>) -> Option<Stri
 }
 
 /// Show manual configuration dialog
-fn show_manual_config_dialog(parent: Option<&impl IsA<gtk4::Window>>) -> Option<DaemonClientConfig> {
+fn show_manual_config_dialog(
+    parent: Option<&impl IsA<gtk4::Window>>,
+) -> Option<DaemonClientConfig> {
     let dialog = adw::PreferencesWindow::new();
     dialog.set_title(Some("Configure Daemon Connection"));
     dialog.set_modal(true);
@@ -192,7 +199,9 @@ fn show_manual_config_dialog(parent: Option<&impl IsA<gtk4::Window>>) -> Option<
     // Connection mode selector
     let mode_group = adw::PreferencesGroup::new();
     mode_group.set_title("Connection Mode");
-    mode_group.set_description(Some("Choose how to connect to the SSH Tunnel Manager daemon"));
+    mode_group.set_description(Some(
+        "Choose how to connect to the SSH Tunnel Manager daemon",
+    ));
 
     let socket_row = adw::ActionRow::new();
     socket_row.set_title("Unix Socket (Local)");
@@ -240,7 +249,9 @@ fn show_manual_config_dialog(parent: Option<&impl IsA<gtk4::Window>>) -> Option<
     // Authentication token (always shown)
     let auth_group = adw::PreferencesGroup::new();
     auth_group.set_title("Authentication");
-    auth_group.set_description(Some("Required - daemon enforces authentication for all connection modes"));
+    auth_group.set_description(Some(
+        "Required - daemon enforces authentication for all connection modes",
+    ));
 
     let token_row = adw::PasswordEntryRow::new();
     token_row.set_title("Authentication Token");

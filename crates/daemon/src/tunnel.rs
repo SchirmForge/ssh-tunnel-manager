@@ -12,7 +12,7 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use russh::client::{self, AuthResult, Config, Handle, KeyboardInteractiveAuthResponse};
-use russh::keys::{load_secret_key, PrivateKey, PrivateKeyWithHashAlg, Error as RusshKeyError};
+use russh::keys::{load_secret_key, Error as RusshKeyError, PrivateKey, PrivateKeyWithHashAlg};
 use tokio::io::copy_bidirectional;
 use tokio::net::TcpListener;
 use tokio::sync::{broadcast, mpsc, oneshot, RwLock};
@@ -269,7 +269,8 @@ impl TunnelManager {
                     // Check if fail_tunnel() already handled this error
                     let already_failed = {
                         let tunnels = tunnels_for_task.read().await;
-                        tunnels.get(&id)
+                        tunnels
+                            .get(&id)
                             .map(|t| matches!(t.status, TunnelStatus::Failed(_)))
                             .unwrap_or(false)
                     };
@@ -429,9 +430,12 @@ impl client::Handler for ClientHandler {
 
         // Load known_hosts file from configured path
         let mut known_hosts = KnownHosts::load_from_pathbuf(self.known_hosts_path.clone(), false)
-            .map_err(|e| russh::Error::from(std::io::Error::other(
-                format!("Failed to load known_hosts: {}", e)
-            )))?;
+            .map_err(|e| {
+            russh::Error::from(std::io::Error::other(format!(
+                "Failed to load known_hosts: {}",
+                e
+            )))
+        })?;
 
         // Verify the host key
         match known_hosts.verify(host, port, server_public_key) {
@@ -448,7 +452,12 @@ impl client::Handler for ClientHandler {
                 use russh::keys::PublicKeyBase64;
                 let key_bytes = server_public_key.public_key_bytes();
                 let key_type = if key_bytes.len() >= 4 {
-                    let len = u32::from_be_bytes([key_bytes[0], key_bytes[1], key_bytes[2], key_bytes[3]]) as usize;
+                    let len = u32::from_be_bytes([
+                        key_bytes[0],
+                        key_bytes[1],
+                        key_bytes[2],
+                        key_bytes[3],
+                    ]) as usize;
                     if key_bytes.len() >= 4 + len {
                         String::from_utf8_lossy(&key_bytes[4..4 + len]).to_string()
                     } else {
@@ -466,27 +475,40 @@ impl client::Handler for ClientHandler {
                 );
 
                 // Request user confirmation
-                let response = self.auth_context.request_input(
-                    ssh_tunnel_common::types::AuthRequestType::HostKeyVerification,
-                    &prompt,
-                    false,  // not hidden
-                ).await.map_err(|e| russh::Error::from(std::io::Error::other(
-                    format!("Host key verification prompt failed: {}", e)
-                )))?;
+                let response = self
+                    .auth_context
+                    .request_input(
+                        ssh_tunnel_common::types::AuthRequestType::HostKeyVerification,
+                        &prompt,
+                        false, // not hidden
+                    )
+                    .await
+                    .map_err(|e| {
+                        russh::Error::from(std::io::Error::other(format!(
+                            "Host key verification prompt failed: {}",
+                            e
+                        )))
+                    })?;
 
                 // Check user response
                 let response_lower = response.trim().to_lowercase();
                 if response_lower == "yes" || response_lower == "y" {
                     // User accepted - add to known_hosts
-                    known_hosts.add(host, port, server_public_key)
-                        .map_err(|e| russh::Error::from(std::io::Error::other(
-                            format!("Failed to add host key: {}", e)
-                        )))?;
+                    known_hosts
+                        .add(host, port, server_public_key)
+                        .map_err(|e| {
+                            russh::Error::from(std::io::Error::other(format!(
+                                "Failed to add host key: {}",
+                                e
+                            )))
+                        })?;
 
-                    known_hosts.save()
-                        .map_err(|e| russh::Error::from(std::io::Error::other(
-                            format!("Failed to save known_hosts: {}", e)
-                        )))?;
+                    known_hosts.save().map_err(|e| {
+                        russh::Error::from(std::io::Error::other(format!(
+                            "Failed to save known_hosts: {}",
+                            e
+                        )))
+                    })?;
 
                     info!("Host key accepted and saved for {}:{}", host, port);
                     Ok(true)
@@ -497,13 +519,19 @@ impl client::Handler for ClientHandler {
                 }
             }
 
-            VerifyResult::Mismatch { expected_fingerprint, actual_fingerprint, line_number } => {
+            VerifyResult::Mismatch {
+                expected_fingerprint,
+                actual_fingerprint,
+                line_number,
+            } => {
                 // KEY MISMATCH - Possible MITM attack!
                 error!("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@");
                 error!("@    WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!     @");
                 error!("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@");
                 error!("IT IS POSSIBLE THAT SOMEONE IS DOING SOMETHING NASTY!");
-                error!("Someone could be eavesdropping on you right now (man-in-the-middle attack)!");
+                error!(
+                    "Someone could be eavesdropping on you right now (man-in-the-middle attack)!"
+                );
                 error!("It is also possible that the host key has just been changed.");
                 error!("");
                 error!("Host: {}:{}", host, port);
@@ -654,13 +682,17 @@ async fn establish_connection(
                 id: tunnel_id,
                 request,
             }) {
-                debug!("Failed to broadcast AuthRequired event for {}: {}", tunnel_id, e);
+                debug!(
+                    "Failed to broadcast AuthRequired event for {}: {}",
+                    tunnel_id, e
+                );
             }
         }
     });
 
     // Connect to SSH server
-    let addr = ssh_tunnel_common::format_host_port(&profile.connection.host, profile.connection.port);
+    let addr =
+        ssh_tunnel_common::format_host_port(&profile.connection.host, profile.connection.port);
     info!("Connecting to SSH server: {}", addr);
 
     // session wrapped in a timeout
@@ -1015,7 +1047,10 @@ async fn authenticate_with_key(
 
             if partial_success {
                 // Server accepted the key but wants more authentication
-                info!("Public key accepted, server requires additional authentication: {}", methods.join(", "));
+                info!(
+                    "Public key accepted, server requires additional authentication: {}",
+                    methods.join(", ")
+                );
                 // Return the remaining methods so caller can decide which auth to try
                 Ok((false, Some(remaining_methods)))
             } else {
@@ -1171,76 +1206,79 @@ async fn authenticate_keyboard_interactive(
                             methods_str
                         )
                     } else {
-                        format!("Keyboard-interactive authentication rejected. {}", methods_str)
+                        format!(
+                            "Keyboard-interactive authentication rejected. {}",
+                            methods_str
+                        )
                     };
 
                     error!("{}", error_msg);
                     anyhow::bail!(error_msg)
                 }
 
-            KeyboardInteractiveAuthResponse::InfoRequest {
-                name,
-                instructions,
-                prompts,
-            } => {
-                debug!(
+                KeyboardInteractiveAuthResponse::InfoRequest {
+                    name,
+                    instructions,
+                    prompts,
+                } => {
+                    debug!(
                     "Keyboard-interactive: info request: name={:?}, instructions={:?}, prompts={:?}",
                     name, instructions, prompts
                 );
 
-                // Some servers send an info request with 0 prompts.
-                // The correct reply in SSH is also 0 responses.
-                if prompts.is_empty() {
-                    debug!("Keyboard-interactive: empty prompts, sending zero responses");
+                    // Some servers send an info request with 0 prompts.
+                    // The correct reply in SSH is also 0 responses.
+                    if prompts.is_empty() {
+                        debug!("Keyboard-interactive: empty prompts, sending zero responses");
+                        response = session
+                            .authenticate_keyboard_interactive_respond(Vec::new())
+                            .await
+                            .context("failed to send empty kbd-int response")?;
+                        continue;
+                    }
+
+                    let mut answers = Vec::with_capacity(prompts.len());
+
+                    for prompt in &prompts {
+                        let mut full_prompt = String::new();
+
+                        if !name.trim().is_empty() {
+                            full_prompt.push_str(&name);
+                            full_prompt.push('\n');
+                        }
+
+                        if !instructions.trim().is_empty() {
+                            full_prompt.push_str(&instructions);
+                            full_prompt.push('\n');
+                        }
+
+                        full_prompt.push_str(&prompt.prompt);
+
+                        // Use KeyboardInteractive for all keyboard-interactive prompts
+                        // The server-provided prompt text will tell the user what's needed
+                        let answer = auth_ctx
+                            .request_input(
+                                AuthRequestType::KeyboardInteractive,
+                                &full_prompt,
+                                !prompt.echo,
+                            )
+                            .await
+                            .context("failed to get keyboard-interactive input from client")?;
+
+                        answers.push(answer);
+                    }
+
+                    // Send answers and wait for the next step (another InfoRequest or final Success/Failure).
                     response = session
-                        .authenticate_keyboard_interactive_respond(Vec::new())
+                        .authenticate_keyboard_interactive_respond(answers)
                         .await
-                        .context("failed to send empty kbd-int response")?;
-                    continue;
-                }
+                        .context("failed to send keyboard-interactive responses")?;
 
-                let mut answers = Vec::with_capacity(prompts.len());
-
-                for prompt in &prompts {
-                    let mut full_prompt = String::new();
-
-                    if !name.trim().is_empty() {
-                        full_prompt.push_str(&name);
-                        full_prompt.push('\n');
-                    }
-
-                    if !instructions.trim().is_empty() {
-                        full_prompt.push_str(&instructions);
-                        full_prompt.push('\n');
-                    }
-
-                    full_prompt.push_str(&prompt.prompt);
-
-                    // Use KeyboardInteractive for all keyboard-interactive prompts
-                    // The server-provided prompt text will tell the user what's needed
-                    let answer = auth_ctx
-                        .request_input(
-                            AuthRequestType::KeyboardInteractive,
-                            &full_prompt,
-                            !prompt.echo,
-                        )
-                        .await
-                        .context("failed to get keyboard-interactive input from client")?;
-
-                    answers.push(answer);
-                }
-
-                // Send answers and wait for the next step (another InfoRequest or final Success/Failure).
-                response = session
-                    .authenticate_keyboard_interactive_respond(answers)
-                    .await
-                    .context("failed to send keyboard-interactive responses")?;
-
-                // Emit Starting event to signal GUI that we processed the auth responses
-                // and are waiting for server's next step. This closes the "Verifying..." dialog.
-                let _ = event_tx.send(TunnelEvent::Starting {
-                    id: auth_ctx.tunnel_id,
-                });
+                    // Emit Starting event to signal GUI that we processed the auth responses
+                    // and are waiting for server's next step. This closes the "Verifying..." dialog.
+                    let _ = event_tx.send(TunnelEvent::Starting {
+                        id: auth_ctx.tunnel_id,
+                    });
                 }
             }
         }
@@ -1270,9 +1308,10 @@ async fn run_local_forward_task(
         .remote_port
         .ok_or_else(|| anyhow::anyhow!("Remote port not specified"))?;
 
-    let bind_addr: SocketAddr = ssh_tunnel_common::format_host_port(&profile.forwarding.bind_address, local_port)
-        .parse()
-        .context("Invalid bind address")?;
+    let bind_addr: SocketAddr =
+        ssh_tunnel_common::format_host_port(&profile.forwarding.bind_address, local_port)
+            .parse()
+            .context("Invalid bind address")?;
 
     info!(
         "Starting local forward: {} -> {}:{}",
@@ -1323,12 +1362,15 @@ async fn run_local_forward_task(
                 debug!("Accepted connection from {}", peer_addr);
 
                 // Open channel to remote
-                let channel = match session.channel_open_direct_tcpip(
-                    remote_host,
-                    remote_port.into(),
-                    &peer_addr.ip().to_string(),
-                    peer_addr.port().into(),
-                ).await {
+                let channel = match session
+                    .channel_open_direct_tcpip(
+                        remote_host,
+                        remote_port.into(),
+                        &peer_addr.ip().to_string(),
+                        peer_addr.port().into(),
+                    )
+                    .await
+                {
                     Ok(ch) => {
                         // Reset failure counter on success
                         consecutive_failures = 0;
@@ -1391,8 +1433,8 @@ impl Default for TunnelManager {
     fn default() -> Self {
         use crate::known_hosts::KnownHosts;
         // Use default known_hosts path for test/default instances
-        let known_hosts_path = KnownHosts::default_path()
-            .unwrap_or_else(|_| PathBuf::from("known_hosts"));
+        let known_hosts_path =
+            KnownHosts::default_path().unwrap_or_else(|_| PathBuf::from("known_hosts"));
         Self::new(known_hosts_path)
     }
 }

@@ -3,8 +3,8 @@
 
 //! Profile operations and validation
 
-use ssh_tunnel_common::Profile;
 use anyhow::Result;
+use ssh_tunnel_common::Profile;
 use uuid::Uuid;
 
 /// Load all profiles from disk
@@ -46,9 +46,10 @@ pub fn validate_profile(profile: &Profile) -> Result<()> {
     // SSH key validation
     use ssh_tunnel_common::AuthType;
     if matches!(profile.connection.auth_type, AuthType::Key)
-        && profile.connection.key_path.is_none() {
-            anyhow::bail!("SSH key path is required when using key authentication");
-        }
+        && profile.connection.key_path.is_none()
+    {
+        anyhow::bail!("SSH key path is required when using key authentication");
+    }
 
     // Forwarding validation
     use ssh_tunnel_common::ForwardingType;
@@ -57,7 +58,8 @@ pub fn validate_profile(profile: &Profile) -> Result<()> {
             if profile.forwarding.local_port.is_none() || profile.forwarding.local_port == Some(0) {
                 anyhow::bail!("Local port must be greater than 0");
             }
-            if profile.forwarding.remote_port.is_none() || profile.forwarding.remote_port == Some(0) {
+            if profile.forwarding.remote_port.is_none() || profile.forwarding.remote_port == Some(0)
+            {
                 anyhow::bail!("Remote port must be greater than 0");
             }
         }
@@ -65,7 +67,8 @@ pub fn validate_profile(profile: &Profile) -> Result<()> {
             if profile.forwarding.local_port.is_none() || profile.forwarding.local_port == Some(0) {
                 anyhow::bail!("Local port must be greater than 0");
             }
-            if profile.forwarding.remote_port.is_none() || profile.forwarding.remote_port == Some(0) {
+            if profile.forwarding.remote_port.is_none() || profile.forwarding.remote_port == Some(0)
+            {
                 anyhow::bail!("Remote port must be greater than 0");
             }
         }
@@ -82,12 +85,9 @@ pub fn validate_profile(profile: &Profile) -> Result<()> {
 /// Check if profile name already exists (excluding given ID)
 pub fn profile_name_exists(name: &str, exclude_id: Option<Uuid>) -> bool {
     match load_profiles() {
-        Ok(profiles) => {
-            profiles.iter().any(|p| {
-                p.metadata.name.eq_ignore_ascii_case(name)
-                    && (exclude_id != Some(p.metadata.id))
-            })
-        }
+        Ok(profiles) => profiles.iter().any(|p| {
+            p.metadata.name.eq_ignore_ascii_case(name) && (exclude_id != Some(p.metadata.id))
+        }),
         Err(_) => false,
     }
 }

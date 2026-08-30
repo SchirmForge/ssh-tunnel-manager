@@ -3,9 +3,9 @@
 
 // Daemon status page - displays daemon information and control buttons
 
+use adw::prelude::*;
 use gtk4::prelude::*;
 use libadwaita as adw;
-use adw::prelude::*;
 use std::rc::Rc;
 
 use super::window::AppState;
@@ -119,12 +119,14 @@ fn add_connection_group(
     config: &DaemonClientConfig,
     is_connected: bool,
 ) {
-    let group = adw::PreferencesGroup::builder()
-        .title("Connection")
-        .build();
+    let group = adw::PreferencesGroup::builder().title("Connection").build();
 
     // Connection status row
-    let status_text = if is_connected { "Connected" } else { "Disconnected" };
+    let status_text = if is_connected {
+        "Connected"
+    } else {
+        "Disconnected"
+    };
     let status_row = adw::ActionRow::builder()
         .title("Status")
         .subtitle(status_text)
@@ -263,9 +265,7 @@ fn add_file_locations_group(prefs_page: &adw::PreferencesPage, daemon_info: &Dae
 
 /// Add activity group
 fn add_activity_group(prefs_page: &adw::PreferencesPage, daemon_info: &DaemonInfo) {
-    let group = adw::PreferencesGroup::builder()
-        .title("Activity")
-        .build();
+    let group = adw::PreferencesGroup::builder().title("Activity").build();
 
     // Active tunnels count
     let count_text = if daemon_info.active_tunnels_count == 1 {
@@ -296,10 +296,12 @@ fn add_activity_group(prefs_page: &adw::PreferencesPage, daemon_info: &DaemonInf
 }
 
 /// Add actions group (stop button and restart info)
-fn add_actions_group(prefs_page: &adw::PreferencesPage, state: Rc<AppState>, daemon_info: &DaemonInfo) {
-    let group = adw::PreferencesGroup::builder()
-        .title("Actions")
-        .build();
+fn add_actions_group(
+    prefs_page: &adw::PreferencesPage,
+    state: Rc<AppState>,
+    daemon_info: &DaemonInfo,
+) {
+    let group = adw::PreferencesGroup::builder().title("Actions").build();
 
     // Stop button row
     let stop_row = adw::ActionRow::builder()
@@ -362,7 +364,9 @@ fn add_connection_error_banner(prefs_page: &adw::PreferencesPage, message: &str)
 
 /// Show stop confirmation dialog
 fn show_stop_confirmation_dialog(widget: &gtk4::Button, state: Rc<AppState>) {
-    let window = widget.root().and_then(|root| root.downcast::<gtk4::Window>().ok());
+    let window = widget
+        .root()
+        .and_then(|root| root.downcast::<gtk4::Window>().ok());
 
     if let Some(window) = window {
         let dialog = adw::MessageDialog::builder()
@@ -506,4 +510,3 @@ fn load_cli_config_file() -> Result<DaemonClientConfig, Box<dyn std::error::Erro
     let cli_config: CliConfig = toml::from_str(&contents)?;
     Ok(cli_config.daemon_config)
 }
-

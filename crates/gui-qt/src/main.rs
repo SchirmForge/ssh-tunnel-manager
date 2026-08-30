@@ -5,7 +5,7 @@
 //!
 //! Minimal runnable QML shell; business wiring comes later.
 
-use cxx_qt_lib::{QGuiApplication, QQmlApplicationEngine, QUrl, QString};
+use cxx_qt_lib::{QGuiApplication, QQmlApplicationEngine, QString, QUrl};
 use std::path::PathBuf;
 
 mod daemon;

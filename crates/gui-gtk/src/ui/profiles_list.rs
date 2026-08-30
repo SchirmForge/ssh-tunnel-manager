@@ -3,13 +3,13 @@
 
 // Profiles list page (shows all profiles in app-style list)
 
+use adw::prelude::*;
 use gtk4::prelude::*;
 use libadwaita as adw;
-use adw::prelude::*;
 use std::rc::Rc;
 
-use super::window::AppState;
 use super::auth_dialog;
+use super::window::AppState;
 use crate::models::profile_model::ProfileModel;
 use ssh_tunnel_common::types::TunnelStatus;
 use ssh_tunnel_gui_core::{ProfileViewModel, StatusColor};
@@ -67,7 +67,6 @@ pub fn create(state: Rc<AppState>) -> adw::NavigationPage {
     let chevron = gtk4::Image::from_icon_name("go-next-symbolic");
     config_link_row.add_suffix(&chevron);
 
-
     // Handle click to navigate to configuration page
     {
         let state_clone = state.clone();
@@ -114,7 +113,6 @@ pub fn create(state: Rc<AppState>) -> adw::NavigationPage {
     content_box.append(&clamp);
 
     // Create navigation page
-    
 
     adw::NavigationPage::builder()
         .title("Client")
@@ -152,7 +150,10 @@ pub fn populate_profiles(list_box: &gtk4::ListBox, state: Rc<AppState>) {
         // Get current status from AppCore
         let status = {
             let core = state.core.borrow();
-            core.tunnel_statuses.get(&profile_id).cloned().unwrap_or(TunnelStatus::NotConnected)
+            core.tunnel_statuses
+                .get(&profile_id)
+                .cloned()
+                .unwrap_or(TunnelStatus::NotConnected)
         };
 
         // Create ProfileViewModel using gui-core
@@ -175,16 +176,24 @@ pub fn populate_profiles(list_box: &gtk4::ListBox, state: Rc<AppState>) {
             if let Some(client) = client {
                 match client.get_tunnel_status(profile_id).await {
                     Ok(Some(status_response)) => {
-                        eprintln!("Initial status for profile {}: {:?}", profile_id, status_response.status);
+                        eprintln!(
+                            "Initial status for profile {}: {:?}",
+                            profile_id, status_response.status
+                        );
                         // Update status in AppCore
                         {
                             let mut core = state_clone.core.borrow_mut();
-                            core.tunnel_statuses.insert(profile_id, status_response.status.clone());
+                            core.tunnel_statuses
+                                .insert(profile_id, status_response.status.clone());
                         }
                         update_profile_status(&list_box_clone, profile_id, status_response.status);
                         if let Some(request) = status_response.pending_auth {
                             if let Some(window) = state_clone.window.borrow().as_ref() {
-                                auth_dialog::handle_auth_request(window, request, state_clone.clone());
+                                auth_dialog::handle_auth_request(
+                                    window,
+                                    request,
+                                    state_clone.clone(),
+                                );
                             }
                         }
                     }
@@ -192,7 +201,10 @@ pub fn populate_profiles(list_box: &gtk4::ListBox, state: Rc<AppState>) {
                         eprintln!("No status found for profile {}", profile_id);
                     }
                     Err(e) => {
-                        eprintln!("Failed to get initial status for profile {}: {}", profile_id, e);
+                        eprintln!(
+                            "Failed to get initial status for profile {}: {}",
+                            profile_id, e
+                        );
                     }
                 }
             }
@@ -201,7 +213,11 @@ pub fn populate_profiles(list_box: &gtk4::ListBox, state: Rc<AppState>) {
 }
 
 /// Create a profile row (app-style)
-fn create_profile_row(view_model: &ProfileViewModel, profile_model: &ProfileModel, state: Rc<AppState>) -> adw::ActionRow {
+fn create_profile_row(
+    view_model: &ProfileViewModel,
+    profile_model: &ProfileModel,
+    state: Rc<AppState>,
+) -> adw::ActionRow {
     let row = adw::ActionRow::new();
 
     // Use ProfileViewModel for display - consistent formatting
@@ -209,7 +225,10 @@ fn create_profile_row(view_model: &ProfileViewModel, profile_model: &ProfileMode
     row.set_subtitle(&view_model.connection_summary);
 
     // Add status dot using ProfileViewModel's status
-    eprintln!("Creating profile row for {} with status: {:?}", view_model.name, view_model.status);
+    eprintln!(
+        "Creating profile row for {} with status: {:?}",
+        view_model.name, view_model.status
+    );
     let status_dot = create_status_dot_from_color(&view_model.status_color);
     row.add_prefix(&status_dot);
 
@@ -302,26 +321,35 @@ pub fn update_profile_status(list_box: &gtk4::ListBox, profile_id: Uuid, status:
             // Get profile ID from the action row's data
             if let Some(stored_id) = unsafe { action_row.data::<String>("profile_id") } {
                 let stored_id_str: &String = unsafe { stored_id.as_ref() };
-                eprintln!("    Stored ID: {}, Looking for: {}", stored_id_str, profile_id);
+                eprintln!(
+                    "    Stored ID: {}, Looking for: {}",
+                    stored_id_str, profile_id
+                );
                 let profile_id_str = profile_id.to_string();
                 if stored_id_str == &profile_id_str {
-                    eprintln!("    ✓ Found matching profile row for {}, updating status dot", profile_id);
+                    eprintln!(
+                        "    ✓ Found matching profile row for {}, updating status dot",
+                        profile_id
+                    );
 
                     // Get the stored status dot widget and update it
-                    if let Some(status_dot) = unsafe { action_row.data::<gtk4::Label>("status_dot") } {
+                    if let Some(status_dot) =
+                        unsafe { action_row.data::<gtk4::Label>("status_dot") }
+                    {
                         let status_dot_ref: &gtk4::Label = unsafe { status_dot.as_ref() };
                         eprintln!("    Found stored status dot widget, updating...");
 
                         // Determine new symbol and CSS class
                         let (new_symbol, new_css_class) = match &status {
                             TunnelStatus::Connected => ("●", "status-connected"),
-                            TunnelStatus::Connecting | TunnelStatus::WaitingForAuth |
-                            TunnelStatus::Reconnecting | TunnelStatus::Disconnecting =>
-                                ("●", "status-warning"),
-                            TunnelStatus::Failed(_) =>
-                                ("●", "status-error"),
-                            TunnelStatus::Disconnected | TunnelStatus::NotConnected =>
-                                ("●", "status-inactive"),
+                            TunnelStatus::Connecting
+                            | TunnelStatus::WaitingForAuth
+                            | TunnelStatus::Reconnecting
+                            | TunnelStatus::Disconnecting => ("●", "status-warning"),
+                            TunnelStatus::Failed(_) => ("●", "status-error"),
+                            TunnelStatus::Disconnected | TunnelStatus::NotConnected => {
+                                ("●", "status-inactive")
+                            }
                         };
 
                         // Remove old CSS classes
@@ -334,7 +362,10 @@ pub fn update_profile_status(list_box: &gtk4::ListBox, profile_id: Uuid, status:
                         status_dot_ref.set_text(new_symbol);
                         status_dot_ref.add_css_class(new_css_class);
 
-                        eprintln!("    ✓ Updated status dot to: {} ({})", new_symbol, new_css_class);
+                        eprintln!(
+                            "    ✓ Updated status dot to: {} ({})",
+                            new_symbol, new_css_class
+                        );
                     } else {
                         eprintln!("    ✗ No status dot widget stored!");
                     }

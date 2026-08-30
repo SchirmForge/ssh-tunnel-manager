@@ -14,13 +14,11 @@ use serde::{Deserialize, Serialize};
 pub use ssh_tunnel_common::DaemonClientConfig;
 
 /// CLI configuration (wrapper around DaemonClientConfig with file I/O)
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct CliConfig {
     #[serde(flatten)]
     pub daemon_config: DaemonClientConfig,
 }
-
 
 impl CliConfig {
     /// Load CLI configuration from file

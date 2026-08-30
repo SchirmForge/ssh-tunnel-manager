@@ -84,7 +84,9 @@ impl DaemonHarness {
         let log = std::fs::File::create(&log_path).expect("Should create daemon log");
 
         let child = daemon_command(sandbox.path())
-            .stdout(Stdio::from(log.try_clone().expect("Should clone log handle")))
+            .stdout(Stdio::from(
+                log.try_clone().expect("Should clone log handle"),
+            ))
             .stderr(Stdio::from(log))
             .spawn()
             .expect("Should spawn daemon");
@@ -117,7 +119,10 @@ impl DaemonHarness {
     }
 
     pub fn config_dir(&self) -> PathBuf {
-        self.sandbox.path().join("config").join("ssh-tunnel-manager")
+        self.sandbox
+            .path()
+            .join("config")
+            .join("ssh-tunnel-manager")
     }
 
     pub fn runtime_dir(&self) -> PathBuf {

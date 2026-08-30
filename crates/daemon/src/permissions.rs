@@ -64,11 +64,7 @@ pub fn set_socket_permissions(path: &Path, group_access: bool) -> Result<()> {
         let perms = fs::Permissions::from_mode(mode);
         fs::set_permissions(path, perms)
             .context(format!("Failed to set permissions on {}", path.display()))?;
-        info!(
-            "Set socket permissions to {:o}: {}",
-            mode,
-            path.display()
-        );
+        info!("Set socket permissions to {:o}: {}", mode, path.display());
     }
     Ok(())
 }

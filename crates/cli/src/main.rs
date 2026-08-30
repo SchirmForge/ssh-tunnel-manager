@@ -11,17 +11,16 @@ use clap::{Parser, Subcommand};
 use colored::Colorize;
 use comfy_table::{Attribute, Cell, Color, ContentArrangement, Table};
 use dialoguer::{Confirm, Input, Password};
+use futures::StreamExt;
 use reqwest::Client;
 use std::fs;
 use std::path::PathBuf;
-use futures::StreamExt;
 
 use ssh_tunnel_common::{
     delete_profile_by_name, load_all_profiles, load_profile_by_name, profile_exists_by_name,
-    save_profile, start_tunnel_with_events, stop_tunnel as stop_tunnel_shared,
-    AuthRequest, AuthType, ConnectionConfig, TunnelEvent,
-    ForwardingConfig, ForwardingType, PasswordStorage, Profile, TunnelEventHandler, TunnelOptions,
-    TunnelStatus, TunnelStatusResponse, Uuid,
+    save_profile, start_tunnel_with_events, stop_tunnel as stop_tunnel_shared, AuthRequest,
+    AuthType, ConnectionConfig, ForwardingConfig, ForwardingType, PasswordStorage, Profile,
+    TunnelEvent, TunnelEventHandler, TunnelOptions, TunnelStatus, TunnelStatusResponse, Uuid,
 };
 
 #[derive(Parser)]
@@ -266,7 +265,9 @@ async fn main() -> Result<()> {
             } else if let Some(n) = name {
                 show_tunnel_status(n).await?;
             } else {
-                anyhow::bail!("Either provide a profile name or use --all to show all tunnel statuses");
+                anyhow::bail!(
+                    "Either provide a profile name or use --all to show all tunnel statuses"
+                );
             }
         }
         Commands::Daemon { action } => {
@@ -395,10 +396,19 @@ async fn start_tunnel(name: String) -> Result<()> {
     let client = create_daemon_client()?;
     let cli_config = config::CliConfig::load()?;
 
-    let mut handler = CliEventHandler { profile: profile.clone() };
+    let mut handler = CliEventHandler {
+        profile: profile.clone(),
+    };
 
     // Use the shared SSE-first helper
-    start_tunnel_with_events(&client, &cli_config.daemon_config, tunnel_id, &profile, &mut handler).await
+    start_tunnel_with_events(
+        &client,
+        &cli_config.daemon_config,
+        tunnel_id,
+        &profile,
+        &mut handler,
+    )
+    .await
 }
 
 /// Prompt user for authentication input
@@ -516,7 +526,15 @@ async fn restart_tunnel(name: String) -> Result<()> {
         profile: profile.clone(),
     };
 
-    match start_tunnel_with_events(&client, &cli_config.daemon_config, tunnel_id, &profile, &mut handler).await {
+    match start_tunnel_with_events(
+        &client,
+        &cli_config.daemon_config,
+        tunnel_id,
+        &profile,
+        &mut handler,
+    )
+    .await
+    {
         Ok(_) => {
             println!();
             println!("{}", "✓ Tunnel restarted successfully".green().bold());
@@ -524,7 +542,10 @@ async fn restart_tunnel(name: String) -> Result<()> {
         }
         Err(e) => {
             println!();
-            println!("{}", format!("✗ Failed to start tunnel: {}", e).red().bold());
+            println!(
+                "{}",
+                format!("✗ Failed to start tunnel: {}", e).red().bold()
+            );
             Err(e)
         }
     }
@@ -558,7 +579,10 @@ async fn stop_all_tunnels() -> Result<()> {
         .context("Failed to query daemon for tunnel list")?;
 
     if !response.status().is_success() {
-        anyhow::bail!("Failed to get tunnel list from daemon: {}", response.status());
+        anyhow::bail!(
+            "Failed to get tunnel list from daemon: {}",
+            response.status()
+        );
     }
 
     let list: TunnelsListResponse = response
@@ -659,24 +683,28 @@ async fn show_tunnel_status(name: String) -> Result<()> {
 
     println!(
         "{}",
-        format!("Checking status for '{}' ({})", profile.metadata.name, tunnel_id)
-            .bold()
+        format!(
+            "Checking status for '{}' ({})",
+            profile.metadata.name, tunnel_id
+        )
+        .bold()
     );
     println!();
 
     // Query daemon for tunnel status
     let status_url = format!("{}/api/tunnels/{}/status", base_url, tunnel_id);
-    let status_resp = ssh_tunnel_common::add_auth_header(
-        client.get(&status_url),
-        &cli_config.daemon_config,
-    )?
-    .send()
-    .await
-    .context("Failed to query tunnel status")?;
+    let status_resp =
+        ssh_tunnel_common::add_auth_header(client.get(&status_url), &cli_config.daemon_config)?
+            .send()
+            .await
+            .context("Failed to query tunnel status")?;
 
     if status_resp.status() == reqwest::StatusCode::NOT_FOUND {
         println!("{}", "Status: Not Active".dimmed());
-        println!("{}", "The tunnel is not currently running in the daemon".dimmed());
+        println!(
+            "{}",
+            "The tunnel is not currently running in the daemon".dimmed()
+        );
         return Ok(());
     }
 
@@ -714,10 +742,9 @@ async fn show_tunnel_status(name: String) -> Result<()> {
     // Show profile details
     println!();
     println!("{}", "Profile Details:".bold());
-    println!("  Remote: {}@{}:{}",
-        profile.connection.user,
-        profile.connection.host,
-        profile.connection.port
+    println!(
+        "  Remote: {}@{}:{}",
+        profile.connection.user, profile.connection.host, profile.connection.port
     );
 
     let forwarding_desc = ssh_tunnel_common::format_tunnel_description(&profile.forwarding);
@@ -755,15 +782,16 @@ async fn show_all_tunnels_status() -> Result<()> {
         anyhow::bail!("Failed to get tunnels list: {}", resp.status());
     }
 
-    let tunnels_response: TunnelsListResponse = resp
-        .json()
-        .await
-        .context("Failed to parse tunnels list")?;
+    let tunnels_response: TunnelsListResponse =
+        resp.json().await.context("Failed to parse tunnels list")?;
 
     if tunnels_response.tunnels.is_empty() {
         println!("{}", "No active tunnels found in daemon".yellow());
         println!();
-        println!("{}", "Tip: Use 'ssh-tunnel start <profile>' to start a tunnel".dimmed());
+        println!(
+            "{}",
+            "Tip: Use 'ssh-tunnel start <profile>' to start a tunnel".dimmed()
+        );
         return Ok(());
     }
 
@@ -782,9 +810,7 @@ async fn show_all_tunnels_status() -> Result<()> {
         ]);
 
     for tunnel in &tunnels_response.tunnels {
-        let profile = all_profiles
-            .iter()
-            .find(|p| p.metadata.id == tunnel.id);
+        let profile = all_profiles.iter().find(|p| p.metadata.id == tunnel.id);
 
         let profile_name = profile
             .map(|p| p.metadata.name.as_str())
@@ -798,14 +824,15 @@ async fn show_all_tunnels_status() -> Result<()> {
             TunnelStatus::WaitingForAuth => Cell::new("Waiting Auth").fg(Color::Yellow),
             TunnelStatus::Disconnecting => Cell::new("Disconnecting").fg(Color::Yellow),
             TunnelStatus::Disconnected => Cell::new("Disconnected").fg(Color::Red),
-            TunnelStatus::Failed(reason) => {
-                Cell::new(format!("Failed: {}", reason)).fg(Color::Red)
-            }
+            TunnelStatus::Failed(reason) => Cell::new(format!("Failed: {}", reason)).fg(Color::Red),
             TunnelStatus::NotConnected => Cell::new("Not Connected").fg(Color::DarkGrey),
         };
 
         let remote_str = if let Some(p) = profile {
-            format!("{}@{}:{}", p.connection.user, p.connection.host, p.connection.port)
+            format!(
+                "{}@{}:{}",
+                p.connection.user, p.connection.host, p.connection.port
+            )
         } else {
             "N/A".to_string()
         };
@@ -908,7 +935,10 @@ async fn add_profile(
 
         // Check if the key is encrypted and needs a passphrase
         if is_key_encrypted(&path)? {
-            println!("{}", "SSH key is encrypted and requires a passphrase.".yellow());
+            println!(
+                "{}",
+                "SSH key is encrypted and requires a passphrase.".yellow()
+            );
 
             let passphrase = Password::new()
                 .with_prompt("SSH key passphrase")
@@ -923,7 +953,7 @@ async fn add_profile(
             // The passphrase prompt itself already broke non-interactivity
             let store_passphrase = Confirm::new()
                 .with_prompt("Store passphrase in system keychain?")
-                .default(!non_interactive)  // Default to yes in interactive mode, no in non-interactive
+                .default(!non_interactive) // Default to yes in interactive mode, no in non-interactive
                 .interact()?;
 
             let password_storage = if store_passphrase {
@@ -962,7 +992,10 @@ async fn add_profile(
                 .interact()?;
 
             let password_storage = if store_password {
-                println!("{}", "⚠️  Note: Password cannot be validated until first connection.".yellow());
+                println!(
+                    "{}",
+                    "⚠️  Note: Password cannot be validated until first connection.".yellow()
+                );
                 println!("{}", "    If the password is incorrect, you'll be prompted again when starting the tunnel.".dimmed());
                 if store_password_in_keychain(&profile_id, &password)? {
                     PasswordStorage::Keychain
@@ -992,7 +1025,11 @@ async fn add_profile(
 
                 // Validate the passphrase by attempting to load the key
                 if let Err(e) = validate_key_passphrase(&key_path, &passphrase) {
-                    println!("{}", format!("⚠️  Failed to load SSH key with provided passphrase: {}", e).yellow());
+                    println!(
+                        "{}",
+                        format!("⚠️  Failed to load SSH key with provided passphrase: {}", e)
+                            .yellow()
+                    );
                     println!("{}", "The passphrase will not be stored.".yellow());
                     PasswordStorage::None
                 } else if store_password_in_keychain(&profile_id, &passphrase)? {
@@ -1173,7 +1210,10 @@ async fn add_profile(
     // Success message
     println!();
     println!("{}", "✓ Profile created successfully!".green().bold());
-    println!("  Saved to: {}", profile_path.display().to_string().dimmed());
+    println!(
+        "  Saved to: {}",
+        profile_path.display().to_string().dimmed()
+    );
     println!();
     println!("{}", "Profile Summary:".bold());
     println!("  Name: {}", name.cyan());
@@ -1215,8 +1255,14 @@ fn store_password_in_keychain(profile_id: &Uuid, password: &str) -> Result<bool>
     if !is_keychain_available() {
         // Keyring not available - warn user but don't fail
         println!("{}", "⚠️  System keychain not available".yellow());
-        println!("{}", "    Password will NOT be stored - you'll be prompted when starting tunnels".dimmed());
-        println!("{}", "    (This is normal on headless servers and containers)".dimmed());
+        println!(
+            "{}",
+            "    Password will NOT be stored - you'll be prompted when starting tunnels".dimmed()
+        );
+        println!(
+            "{}",
+            "    (This is normal on headless servers and containers)".dimmed()
+        );
         return Ok(false); // Not stored, but not an error
     }
 
@@ -1229,8 +1275,15 @@ fn store_password_in_keychain(profile_id: &Uuid, password: &str) -> Result<bool>
         Err(e) => {
             // Keyring was available during test, but storage failed
             // This could be: keyring locked, permission issues, etc.
-            println!("{}", format!("⚠️  Failed to store in keychain: {}", e).yellow());
-            println!("{}", "    Password will NOT be stored - you'll be prompted when starting tunnels".dimmed());
+            println!(
+                "{}",
+                format!("⚠️  Failed to store in keychain: {}", e).yellow()
+            );
+            println!(
+                "{}",
+                "    Password will NOT be stored - you'll be prompted when starting tunnels"
+                    .dimmed()
+            );
             Ok(false) // Not stored, but don't fail profile creation
         }
     }
@@ -1289,13 +1342,12 @@ fn is_key_encrypted(key_path: &PathBuf) -> Result<bool> {
     use russh_keys::decode_secret_key;
 
     // Read the key file
-    let key_data = fs::read_to_string(key_path)
-        .context("Failed to read SSH key file")?;
+    let key_data = fs::read_to_string(key_path).context("Failed to read SSH key file")?;
 
     // Try to decode without a passphrase
     match decode_secret_key(&key_data, None) {
-        Ok(_) => Ok(false),  // Key loaded successfully without passphrase - not encrypted
-        Err(_) => Ok(true),  // Failed to load - likely encrypted (or corrupted, but we'll find out)
+        Ok(_) => Ok(false), // Key loaded successfully without passphrase - not encrypted
+        Err(_) => Ok(true), // Failed to load - likely encrypted (or corrupted, but we'll find out)
     }
 }
 
@@ -1303,8 +1355,7 @@ fn validate_key_passphrase(key_path: &PathBuf, passphrase: &str) -> Result<()> {
     use russh_keys::decode_secret_key;
 
     // Read the key file
-    let key_data = fs::read_to_string(key_path)
-        .context("Failed to read SSH key file")?;
+    let key_data = fs::read_to_string(key_path).context("Failed to read SSH key file")?;
 
     // Attempt to decode with the passphrase
     decode_secret_key(&key_data, Some(passphrase))
@@ -1326,9 +1377,9 @@ fn validate_local_port(port: u16, non_interactive: bool) -> Result<()> {
                 .with_prompt("Continue with this port?")
                 .default(false)
                 .interact()?
-            {
-                anyhow::bail!("Aborted due to privileged port selection");
-            }
+        {
+            anyhow::bail!("Aborted due to privileged port selection");
+        }
     }
     Ok(())
 }
@@ -1671,7 +1722,10 @@ async fn show_profile_info(name: String) -> Result<()> {
     let profile = load_profile_by_name(&name)?;
 
     println!();
-    println!("{}", format!("Profile: {}", profile.metadata.name).bold().green());
+    println!(
+        "{}",
+        format!("Profile: {}", profile.metadata.name).bold().green()
+    );
     println!("  ID: {}", profile.metadata.id.to_string().dimmed());
 
     if let Some(desc) = &profile.metadata.description {
@@ -1713,17 +1767,32 @@ async fn show_profile_info(name: String) -> Result<()> {
     println!();
     println!("{}", "  Options:".bold());
     println!("    Compression:       {}", profile.options.compression);
-    println!("    Keepalive:         {} seconds", profile.options.keepalive_interval);
+    println!(
+        "    Keepalive:         {} seconds",
+        profile.options.keepalive_interval
+    );
     println!("    Auto-reconnect:    {}", profile.options.auto_reconnect);
 
     if profile.options.auto_reconnect {
-        println!("    Reconnect Attempts: {}", profile.options.reconnect_attempts);
-        println!("    Reconnect Delay:    {} seconds", profile.options.reconnect_delay);
+        println!(
+            "    Reconnect Attempts: {}",
+            profile.options.reconnect_attempts
+        );
+        println!(
+            "    Reconnect Delay:    {} seconds",
+            profile.options.reconnect_delay
+        );
     }
 
     println!("    TCP Keepalive:     {}", profile.options.tcp_keepalive);
-    println!("    Max Packet Size:   {} bytes", profile.options.max_packet_size);
-    println!("    Window Size:       {} bytes", profile.options.window_size);
+    println!(
+        "    Max Packet Size:   {} bytes",
+        profile.options.max_packet_size
+    );
+    println!(
+        "    Window Size:       {} bytes",
+        profile.options.window_size
+    );
 
     println!();
 

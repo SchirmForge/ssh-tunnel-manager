@@ -3,7 +3,7 @@
 
 //! Framework-agnostic application state
 
-use ssh_tunnel_common::{Profile, TunnelStatus, AuthRequest};
+use ssh_tunnel_common::{AuthRequest, Profile, TunnelStatus};
 use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 

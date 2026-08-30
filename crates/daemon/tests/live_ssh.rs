@@ -187,10 +187,8 @@ async fn read_banner_through_tunnel(local_port: u16) -> anyhow::Result<String> {
 #[tokio::test]
 #[ignore = "needs a live SSH server; run with --ignored"]
 async fn first_connection_prompts_for_host_key_and_remembers_it() {
-    let (target, values) = live_target_or_skip!(&[
-        "SSH_TUNNEL_TEST_USER_PASSWORD",
-        "SSH_TUNNEL_TEST_PASSWORD"
-    ]);
+    let (target, values) =
+        live_target_or_skip!(&["SSH_TUNNEL_TEST_USER_PASSWORD", "SSH_TUNNEL_TEST_PASSWORD"]);
     let (user, password) = (values[0], values[1]);
 
     let daemon = DaemonHarness::start_unix().await;
@@ -208,7 +206,9 @@ async fn first_connection_prompts_for_host_key_and_remembers_it() {
         .unwrap_or_else(|e| panic!("tunnel should start: {e}\n{}", daemon.log()));
 
     assert!(
-        seen.lock().unwrap().contains(&AuthRequestType::HostKeyVerification),
+        seen.lock()
+            .unwrap()
+            .contains(&AuthRequestType::HostKeyVerification),
         "an unknown host must raise host key verification, saw {:?}",
         seen.lock().unwrap()
     );
@@ -223,7 +223,11 @@ async fn first_connection_prompts_for_host_key_and_remembers_it() {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        let mode = std::fs::metadata(&known_hosts).unwrap().permissions().mode() & 0o777;
+        let mode = std::fs::metadata(&known_hosts)
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777;
         assert_eq!(mode, 0o600, "known_hosts must not be world readable");
     }
 }
@@ -231,10 +235,8 @@ async fn first_connection_prompts_for_host_key_and_remembers_it() {
 #[tokio::test]
 #[ignore = "needs a live SSH server; run with --ignored"]
 async fn a_changed_host_key_is_refused() {
-    let (target, values) = live_target_or_skip!(&[
-        "SSH_TUNNEL_TEST_USER_PASSWORD",
-        "SSH_TUNNEL_TEST_PASSWORD"
-    ]);
+    let (target, values) =
+        live_target_or_skip!(&["SSH_TUNNEL_TEST_USER_PASSWORD", "SSH_TUNNEL_TEST_PASSWORD"]);
     let (user, password) = (values[0], values[1]);
 
     let daemon = DaemonHarness::start_unix().await;
@@ -319,7 +321,9 @@ async fn an_encrypted_key_prompts_for_its_passphrase() {
         .unwrap_or_else(|e| panic!("encrypted key should connect: {e}\n{}", daemon.log()));
 
     assert!(
-        seen.lock().unwrap().contains(&AuthRequestType::KeyPassphrase),
+        seen.lock()
+            .unwrap()
+            .contains(&AuthRequestType::KeyPassphrase),
         "an encrypted key must prompt for its passphrase, saw {:?}",
         seen.lock().unwrap()
     );
@@ -330,10 +334,8 @@ async fn an_encrypted_key_prompts_for_its_passphrase() {
 #[tokio::test]
 #[ignore = "needs a live SSH server; run with --ignored"]
 async fn password_authentication_connects() {
-    let (target, values) = live_target_or_skip!(&[
-        "SSH_TUNNEL_TEST_USER_PASSWORD",
-        "SSH_TUNNEL_TEST_PASSWORD"
-    ]);
+    let (target, values) =
+        live_target_or_skip!(&["SSH_TUNNEL_TEST_USER_PASSWORD", "SSH_TUNNEL_TEST_PASSWORD"]);
     let (user, password) = (values[0], values[1]);
 
     let daemon = DaemonHarness::start_unix().await;
@@ -356,10 +358,8 @@ async fn password_authentication_connects() {
 #[tokio::test]
 #[ignore = "needs a live SSH server; run with --ignored"]
 async fn a_wrong_password_is_re_prompted_not_fatal() {
-    let (target, values) = live_target_or_skip!(&[
-        "SSH_TUNNEL_TEST_USER_PASSWORD",
-        "SSH_TUNNEL_TEST_PASSWORD"
-    ]);
+    let (target, values) =
+        live_target_or_skip!(&["SSH_TUNNEL_TEST_USER_PASSWORD", "SSH_TUNNEL_TEST_PASSWORD"]);
     let (user, password) = (values[0], values[1]);
 
     let daemon = DaemonHarness::start_unix().await;
@@ -368,7 +368,8 @@ async fn a_wrong_password_is_re_prompted_not_fatal() {
     let profile = profile_for(target, "password-retry", user, port);
     daemon.install_profile(&profile);
 
-    let mut handler = ScriptedAuth::new().with_passwords(&["definitely-not-the-password", password]);
+    let mut handler =
+        ScriptedAuth::new().with_passwords(&["definitely-not-the-password", password]);
     let seen = handler.seen_handle();
 
     start(&daemon, &profile, &mut handler)
@@ -395,10 +396,8 @@ async fn a_wrong_password_is_re_prompted_not_fatal() {
 #[tokio::test]
 #[ignore = "needs a live SSH server; run with --ignored"]
 async fn a_wrong_2fa_code_is_re_prompted_not_fatal() {
-    let (target, values) = live_target_or_skip!(&[
-        "SSH_TUNNEL_TEST_USER_2FA",
-        "SSH_TUNNEL_TEST_TOTP_SECRET"
-    ]);
+    let (target, values) =
+        live_target_or_skip!(&["SSH_TUNNEL_TEST_USER_2FA", "SSH_TUNNEL_TEST_TOTP_SECRET"]);
     let (user, totp_secret) = (values[0], values[1]);
 
     let daemon = DaemonHarness::start_unix().await;
@@ -446,10 +445,8 @@ async fn a_wrong_2fa_code_is_re_prompted_not_fatal() {
 #[tokio::test]
 #[ignore = "needs a live SSH server; run with --ignored"]
 async fn two_factor_authentication_connects_with_a_valid_code() {
-    let (target, values) = live_target_or_skip!(&[
-        "SSH_TUNNEL_TEST_USER_2FA",
-        "SSH_TUNNEL_TEST_TOTP_SECRET"
-    ]);
+    let (target, values) =
+        live_target_or_skip!(&["SSH_TUNNEL_TEST_USER_2FA", "SSH_TUNNEL_TEST_TOTP_SECRET"]);
     let (user, totp_secret) = (values[0], values[1]);
 
     let daemon = DaemonHarness::start_unix().await;
@@ -483,10 +480,8 @@ async fn two_factor_authentication_connects_with_a_valid_code() {
 #[tokio::test]
 #[ignore = "needs a live SSH server; run with --ignored"]
 async fn stopping_a_connected_tunnel_returns_promptly() {
-    let (target, values) = live_target_or_skip!(&[
-        "SSH_TUNNEL_TEST_USER_PASSWORD",
-        "SSH_TUNNEL_TEST_PASSWORD"
-    ]);
+    let (target, values) =
+        live_target_or_skip!(&["SSH_TUNNEL_TEST_USER_PASSWORD", "SSH_TUNNEL_TEST_PASSWORD"]);
     let (user, password) = (values[0], values[1]);
 
     let daemon = DaemonHarness::start_unix().await;
@@ -524,10 +519,8 @@ async fn stopping_a_connected_tunnel_returns_promptly() {
 #[tokio::test]
 #[ignore = "needs a live SSH server; run with --ignored"]
 async fn stopping_during_authentication_returns_promptly() {
-    let (target, values) = live_target_or_skip!(&[
-        "SSH_TUNNEL_TEST_USER_PASSWORD",
-        "SSH_TUNNEL_TEST_PASSWORD"
-    ]);
+    let (target, values) =
+        live_target_or_skip!(&["SSH_TUNNEL_TEST_USER_PASSWORD", "SSH_TUNNEL_TEST_PASSWORD"]);
     let user = values[0];
 
     let daemon = DaemonHarness::start_unix().await;

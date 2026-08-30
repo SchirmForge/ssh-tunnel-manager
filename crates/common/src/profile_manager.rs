@@ -157,7 +157,11 @@ pub fn save_profile(profile: &Profile, overwrite: bool) -> Result<PathBuf> {
         profile_path.display()
     ))?;
 
-    debug!("Saved profile '{}' to {}", profile.metadata.name, profile_path.display());
+    debug!(
+        "Saved profile '{}' to {}",
+        profile.metadata.name,
+        profile_path.display()
+    );
 
     Ok(profile_path)
 }
@@ -438,7 +442,8 @@ mod tests {
             "password_storage = true must migrate to Keychain"
         );
 
-        let legacy_false = legacy_true.replace("password_storage = true", "password_storage = false");
+        let legacy_false =
+            legacy_true.replace("password_storage = true", "password_storage = false");
         let profile: Profile = toml::from_str(&legacy_false).expect("Legacy boolean should parse");
         assert_eq!(
             profile.connection.password_storage,
@@ -452,7 +457,10 @@ mod tests {
             ("\"none\"", crate::PasswordStorage::None),
             ("\"file\"", crate::PasswordStorage::File),
         ] {
-            let source = legacy_true.replace("password_storage = true", &format!("password_storage = {text}"));
+            let source = legacy_true.replace(
+                "password_storage = true",
+                &format!("password_storage = {text}"),
+            );
             let profile: Profile = toml::from_str(&source).expect("String form should parse");
             assert_eq!(profile.connection.password_storage, expected);
         }

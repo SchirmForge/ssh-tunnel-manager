@@ -3,16 +3,16 @@
 
 // Details panel - Profile details and controls
 
+use adw::prelude::*;
 use gtk4::prelude::*;
 use gtk4::{Box as GtkBox, Label, Orientation};
 use libadwaita as adw;
-use adw::prelude::*;
 use std::rc::Rc;
 
-use crate::models::profile_model::ProfileModel;
 use super::profile_dialog;
-use super::window::AppState;
 use super::sidebar;
+use super::window::AppState;
+use crate::models::profile_model::ProfileModel;
 
 /// Update the details panel with a selected profile
 pub fn update_with_profile(
@@ -66,11 +66,14 @@ fn create_profile_details(
     content_box.append(&buttons);
 
     // SSH Connection section
-    let ssh_section = create_section("SSH Connection", &[
-        ("Host", &profile.host()),
-        ("Port", &profile.port().to_string()),
-        ("User", &profile.user()),
-    ]);
+    let ssh_section = create_section(
+        "SSH Connection",
+        &[
+            ("Host", &profile.host()),
+            ("Port", &profile.port().to_string()),
+            ("User", &profile.user()),
+        ],
+    );
     content_box.append(&ssh_section);
 
     // Authentication section
@@ -78,7 +81,10 @@ fn create_profile_details(
     let key_path = profile.key_path();
 
     let auth_fields: Vec<(&str, &str)> = if auth_type == "SSH Key" {
-        vec![("Auth Type", auth_type.as_str()), ("Key Path", key_path.as_str())]
+        vec![
+            ("Auth Type", auth_type.as_str()),
+            ("Key Path", key_path.as_str()),
+        ]
     } else {
         vec![("Auth Type", auth_type.as_str())]
     };
@@ -100,13 +106,16 @@ fn create_profile_details(
         "Not configured".to_string()
     };
 
-    let forward_section = create_section("Port Forwarding", &[
-        ("Bind Address", &bind_address),
-        ("Local Port", &profile.local_port().to_string()),
-        ("Remote Host", &profile.remote_host()),
-        ("Remote Port", &profile.remote_port().to_string()),
-        ("Mapping", &forwarding_text),
-    ]);
+    let forward_section = create_section(
+        "Port Forwarding",
+        &[
+            ("Bind Address", &bind_address),
+            ("Local Port", &profile.local_port().to_string()),
+            ("Remote Host", &profile.remote_host()),
+            ("Remote Port", &profile.remote_port().to_string()),
+            ("Mapping", &forwarding_text),
+        ],
+    );
     content_box.append(&forward_section);
 
     scrolled.set_child(Some(&content_box));
@@ -136,14 +145,10 @@ fn create_header(profile: &ProfileModel) -> GtkBox {
 
 /// Create a section with key-value pairs
 fn create_section(title: &str, fields: &[(&str, &str)]) -> adw::PreferencesGroup {
-    let group = adw::PreferencesGroup::builder()
-        .title(title)
-        .build();
+    let group = adw::PreferencesGroup::builder().title(title).build();
 
     for (key, value) in fields {
-        let row = adw::ActionRow::builder()
-            .title(*key)
-            .build();
+        let row = adw::ActionRow::builder().title(*key).build();
 
         let value_label = Label::new(Some(*value));
         value_label.add_css_class("dim-label");
@@ -158,13 +163,9 @@ fn create_section(title: &str, fields: &[(&str, &str)]) -> adw::PreferencesGroup
 
 /// Create status section
 fn create_status_section(profile: &ProfileModel, state: Rc<AppState>) -> adw::PreferencesGroup {
-    let group = adw::PreferencesGroup::builder()
-        .title("Status")
-        .build();
+    let group = adw::PreferencesGroup::builder().title("Status").build();
 
-    let status_row = adw::ActionRow::builder()
-        .title("Connection")
-        .build();
+    let status_row = adw::ActionRow::builder().title("Connection").build();
 
     // Status indicator
     let status_box = GtkBox::new(Orientation::Horizontal, 8);
@@ -207,9 +208,7 @@ fn create_action_buttons(
     button_box.set_halign(gtk4::Align::Start);
     button_box.set_margin_top(12);
 
-    let start_button = gtk4::Button::builder()
-        .label("Start Tunnel")
-        .build();
+    let start_button = gtk4::Button::builder().label("Start Tunnel").build();
     start_button.add_css_class("suggested-action");
 
     // Wire up Start button
@@ -350,9 +349,7 @@ fn create_action_buttons(
         });
     }
 
-    let stop_button = gtk4::Button::builder()
-        .label("Stop Tunnel")
-        .build();
+    let stop_button = gtk4::Button::builder().label("Stop Tunnel").build();
 
     // Wire up Stop button
     {
@@ -391,13 +388,9 @@ fn create_action_buttons(
         });
     }
 
-    let edit_button = gtk4::Button::builder()
-        .label("Edit")
-        .build();
+    let edit_button = gtk4::Button::builder().label("Edit").build();
 
-    let delete_button = gtk4::Button::builder()
-        .label("Delete")
-        .build();
+    let delete_button = gtk4::Button::builder().label("Delete").build();
     delete_button.add_css_class("destructive-action");
 
     // Wire up Edit button
@@ -584,11 +577,16 @@ async fn get_tunnel_status_text(
                 TunnelStatus::Connecting => ("Connecting...", "emblem-synchronizing-symbolic"),
                 TunnelStatus::WaitingForAuth => ("Auth Required", "dialog-question-symbolic"),
                 TunnelStatus::Connected => ("Connected", "network-transmit-receive-symbolic"),
-                TunnelStatus::Disconnecting => ("Disconnecting...", "emblem-synchronizing-symbolic"),
+                TunnelStatus::Disconnecting => {
+                    ("Disconnecting...", "emblem-synchronizing-symbolic")
+                }
                 TunnelStatus::Disconnected => ("Disconnected", "network-offline-symbolic"),
                 TunnelStatus::Reconnecting => ("Reconnecting...", "emblem-synchronizing-symbolic"),
                 TunnelStatus::Failed(ref err) => {
-                    return Ok((format!("Failed: {}", err), "dialog-error-symbolic".to_string()))
+                    return Ok((
+                        format!("Failed: {}", err),
+                        "dialog-error-symbolic".to_string(),
+                    ))
                 }
             };
 
@@ -596,7 +594,10 @@ async fn get_tunnel_status_text(
         }
         None => {
             // Tunnel not active in daemon
-            Ok(("Stopped".to_string(), "media-playback-stop-symbolic".to_string()))
+            Ok((
+                "Stopped".to_string(),
+                "media-playback-stop-symbolic".to_string(),
+            ))
         }
     }
 }

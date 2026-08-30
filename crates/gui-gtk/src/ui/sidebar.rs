@@ -7,10 +7,10 @@ use gtk4::prelude::*;
 use gtk4::{Box as GtkBox, Label, ListBox, Orientation};
 use std::rc::Rc;
 
+use super::details;
+use super::window::AppState;
 use crate::models::profile_model::ProfileModel;
 use crate::utils::profiles;
-use super::window::AppState;
-use super::details;
 
 /// Reload the profile list from disk
 pub fn reload_profile_list(state: Rc<AppState>) {
@@ -82,7 +82,10 @@ fn create_profile_row(profile: &ProfileModel, _state: Rc<AppState>) -> gtk4::Lis
     name_label.set_halign(gtk4::Align::Start);
     name_label.add_css_class("heading");
 
-    let host_label = Label::new(Some(&ssh_tunnel_common::format_host_port(&profile.host(), profile.port())));
+    let host_label = Label::new(Some(&ssh_tunnel_common::format_host_port(
+        &profile.host(),
+        profile.port(),
+    )));
     host_label.set_halign(gtk4::Align::Start);
     host_label.add_css_class("dim-label");
     host_label.add_css_class("caption");

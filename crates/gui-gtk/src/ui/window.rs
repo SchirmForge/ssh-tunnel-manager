@@ -3,18 +3,18 @@
 
 // Main application window
 
-use gtk4::{prelude::*, gio};
-use libadwaita as adw;
 use adw::prelude::*;
-use std::rc::Rc;
+use gtk4::{gio, prelude::*};
+use libadwaita as adw;
 use std::cell::RefCell;
 use std::collections::VecDeque;
+use std::rc::Rc;
 
-use super::{navigation, profiles_list, daemon_settings, help_dialog, about_dialog};
-use crate::models::profile_model::ProfileModel;
+use super::{about_dialog, daemon_settings, help_dialog, navigation, profiles_list};
 use crate::daemon::DaemonClient;
+use crate::models::profile_model::ProfileModel;
+use ssh_tunnel_common::{AuthRequest, DaemonClientConfig};
 use ssh_tunnel_gui_core::AppCore;
-use ssh_tunnel_common::{DaemonClientConfig, AuthRequest};
 
 /// Shared application state
 pub struct AppState {
@@ -85,7 +85,10 @@ impl AppState {
         // Use gui-core's helper to load daemon config
         let config = ssh_tunnel_gui_core::load_daemon_config()?;
 
-        eprintln!("Loaded daemon config: connection_mode={:?}", config.connection_mode);
+        eprintln!(
+            "Loaded daemon config: connection_mode={:?}",
+            config.connection_mode
+        );
 
         // Create client with loaded config
         DaemonClient::with_config(config)
@@ -298,7 +301,10 @@ fn start_event_listener(state: Rc<AppState>, status_icon: gtk4::Image) {
             // Try loading from file as fallback
             match ssh_tunnel_gui_core::load_daemon_config() {
                 Ok(config) => {
-                    eprintln!("Loaded daemon config: connection_mode={:?}", config.connection_mode);
+                    eprintln!(
+                        "Loaded daemon config: connection_mode={:?}",
+                        config.connection_mode
+                    );
                     config
                 }
                 Err(_) => return, // Can't load config, skip event listener

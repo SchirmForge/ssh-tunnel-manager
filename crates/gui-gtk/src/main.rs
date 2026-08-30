@@ -7,10 +7,10 @@
 use gtk4::prelude::*;
 use libadwaita as adw;
 
-mod ui;
-mod models;
-mod utils;
 mod daemon;
+mod models;
+mod ui;
+mod utils;
 
 const APP_ID: &str = "com.github.ssh-tunnel-manager";
 
@@ -19,7 +19,7 @@ fn main() {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::from_default_env()
-                .add_directive("ssh_tunnel_gtk=debug".parse().unwrap())
+                .add_directive("ssh_tunnel_gtk=debug".parse().unwrap()),
         )
         .init();
 
@@ -36,9 +36,7 @@ fn main() {
     adw::init().expect("Failed to initialize libadwaita");
 
     // Create application
-    let app = adw::Application::builder()
-        .application_id(APP_ID)
-        .build();
+    let app = adw::Application::builder().application_id(APP_ID).build();
 
     // Connect activate signal to build UI
     app.connect_activate(|app| {

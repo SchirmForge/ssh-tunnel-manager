@@ -3,7 +3,7 @@
 
 //! View models - Data structures prepared for UI display
 
-use ssh_tunnel_common::{Profile, TunnelStatus, AuthType};
+use ssh_tunnel_common::{AuthType, Profile, TunnelStatus};
 use uuid::Uuid;
 
 /// Profile data prepared for UI display
@@ -26,10 +26,10 @@ pub struct ProfileViewModel {
 /// Status color for UI indicators
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StatusColor {
-    Green,   // Connected
-    Orange,  // Transitional (Connecting, Reconnecting, WaitingForAuth)
-    Red,     // Failed
-    Gray,    // NotConnected, Disconnected
+    Green,  // Connected
+    Orange, // Transitional (Connecting, Reconnecting, WaitingForAuth)
+    Red,    // Failed
+    Gray,   // NotConnected, Disconnected
 }
 
 impl ProfileViewModel {
@@ -37,8 +37,14 @@ impl ProfileViewModel {
     pub fn from_profile(profile: &Profile, status: TunnelStatus) -> Self {
         let status_color = Self::status_color_for(&status);
         let status_text = Self::status_text_for(&status);
-        let can_start = matches!(status, TunnelStatus::NotConnected | TunnelStatus::Disconnected | TunnelStatus::Failed(_));
-        let can_stop = !matches!(status, TunnelStatus::NotConnected | TunnelStatus::Disconnected);
+        let can_start = matches!(
+            status,
+            TunnelStatus::NotConnected | TunnelStatus::Disconnected | TunnelStatus::Failed(_)
+        );
+        let can_stop = !matches!(
+            status,
+            TunnelStatus::NotConnected | TunnelStatus::Disconnected
+        );
 
         Self {
             id: profile.metadata.id,
@@ -65,8 +71,7 @@ impl ProfileViewModel {
             | TunnelStatus::Reconnecting
             | TunnelStatus::Disconnecting => StatusColor::Orange,
             TunnelStatus::Failed(_) => StatusColor::Red,
-            TunnelStatus::NotConnected
-            | TunnelStatus::Disconnected => StatusColor::Gray,
+            TunnelStatus::NotConnected | TunnelStatus::Disconnected => StatusColor::Gray,
         }
     }
 
@@ -111,7 +116,7 @@ impl ProfileViewModel {
 /// Create view models for all profiles with current statuses
 pub fn create_profile_view_models(
     profiles: &[Profile],
-    statuses: &std::collections::HashMap<Uuid, TunnelStatus>
+    statuses: &std::collections::HashMap<Uuid, TunnelStatus>,
 ) -> Vec<ProfileViewModel> {
     profiles
         .iter()

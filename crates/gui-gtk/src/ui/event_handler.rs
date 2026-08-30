@@ -9,17 +9,21 @@
 
 use gtk4::prelude::*;
 use libadwaita as adw;
+use ssh_tunnel_common::{AuthRequest, TunnelStatus};
 use std::rc::Rc;
-use ssh_tunnel_common::{TunnelStatus, AuthRequest};
 use uuid::Uuid;
 
 use super::window::AppState;
-use super::{profiles_list, auth_dialog};
+use super::{auth_dialog, profiles_list};
 use crate::daemon::TunnelEvent;
 
 /// Handle a status change event
 pub fn handle_status_changed(state: &Rc<AppState>, profile_id: Uuid, status: TunnelStatus) {
-    tracing::debug!("Event: Status changed for profile {}: {:?}", profile_id, status);
+    tracing::debug!(
+        "Event: Status changed for profile {}: {:?}",
+        profile_id,
+        status
+    );
 
     // Update status in AppCore
     {
@@ -51,7 +55,10 @@ pub fn handle_status_changed(state: &Rc<AppState>, profile_id: Uuid, status: Tun
         TunnelStatus::Connecting => {
             // Intermediate auth step succeeded (e.g., passphrase accepted, now needs 2FA)
             // Clear current dialog reference and process next auth request from queue
-            tracing::debug!("Auth step succeeded for tunnel {} - processing queue", profile_id);
+            tracing::debug!(
+                "Auth step succeeded for tunnel {} - processing queue",
+                profile_id
+            );
             state.active_auth_dialog.replace(None);
             auth_dialog::clear_auth_state(state, profile_id);
 
@@ -67,7 +74,10 @@ pub fn handle_status_changed(state: &Rc<AppState>, profile_id: Uuid, status: Tun
             auth_dialog::clear_auth_state(state, profile_id);
 
             // Clear queue for this tunnel (no more auth will come)
-            state.auth_request_queue.borrow_mut().retain(|req| req.tunnel_id != profile_id);
+            state
+                .auth_request_queue
+                .borrow_mut()
+                .retain(|req| req.tunnel_id != profile_id);
 
             // Clear processing flag and process next tunnel's auth
             *state.processing_auth_request.borrow_mut() = false;
@@ -81,17 +91,26 @@ pub fn handle_status_changed(state: &Rc<AppState>, profile_id: Uuid, status: Tun
 
 /// Handle an auth required event
 pub fn handle_auth_required(state: &Rc<AppState>, request: AuthRequest) {
-    tracing::debug!("Event: Auth required for profile {}: {}", request.tunnel_id, request.prompt);
+    tracing::debug!(
+        "Event: Auth required for profile {}: {}",
+        request.tunnel_id,
+        request.prompt
+    );
 
     // Update status to WaitingForAuth in AppCore
     {
         let mut core = state.core.borrow_mut();
-        core.tunnel_statuses.insert(request.tunnel_id, TunnelStatus::WaitingForAuth);
+        core.tunnel_statuses
+            .insert(request.tunnel_id, TunnelStatus::WaitingForAuth);
     }
 
     // Update profiles list UI
     if let Some(list_box) = state.profile_list.borrow().as_ref() {
-        profiles_list::update_profile_status(list_box, request.tunnel_id, TunnelStatus::WaitingForAuth);
+        profiles_list::update_profile_status(
+            list_box,
+            request.tunnel_id,
+            TunnelStatus::WaitingForAuth,
+        );
     }
 
     // Show auth dialog
@@ -113,7 +132,11 @@ pub fn handle_daemon_connected(state: &Rc<AppState>, connected: bool) {
 
 /// Handle an error event
 pub fn handle_error(state: &Rc<AppState>, profile_id: Option<Uuid>, error: String) {
-    tracing::info!("handle_error called - profile_id: {:?}, error: {}", profile_id, error);
+    tracing::info!(
+        "handle_error called - profile_id: {:?}, error: {}",
+        profile_id,
+        error
+    );
 
     // If error is for a specific profile, update its status
     if let Some(id) = profile_id {
@@ -141,7 +164,10 @@ pub fn handle_error(state: &Rc<AppState>, profile_id: Option<Uuid>, error: Strin
         }
 
         // Clear queue for this tunnel (no more auth will come)
-        state.auth_request_queue.borrow_mut().retain(|req| req.tunnel_id != id);
+        state
+            .auth_request_queue
+            .borrow_mut()
+            .retain(|req| req.tunnel_id != id);
         tracing::info!("Cleared auth queue for tunnel {}", id);
 
         // Clear processing flag and process next tunnel's auth
@@ -168,7 +194,10 @@ pub fn handle_error(state: &Rc<AppState>, profile_id: Option<Uuid>, error: Strin
         toast.set_timeout(5);
 
         // Try to get toast overlay from window
-        if let Some(overlay) = window.child().and_then(|c| c.downcast::<adw::ToastOverlay>().ok()) {
+        if let Some(overlay) = window
+            .child()
+            .and_then(|c| c.downcast::<adw::ToastOverlay>().ok())
+        {
             overlay.add_toast(toast);
             tracing::debug!("Toast shown successfully");
         } else {

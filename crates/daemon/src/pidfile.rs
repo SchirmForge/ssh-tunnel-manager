@@ -4,9 +4,9 @@
 // SSH Tunnel Manager - PID File Management
 // Ensures only one daemon instance runs at a time
 
+use anyhow::{Context, Result};
 use std::fs;
 use std::path::PathBuf;
-use anyhow::{Context, Result};
 use tracing::{debug, info, warn};
 
 /// PID file guard - automatically removes PID file on drop
@@ -50,8 +50,7 @@ impl PidFileGuard {
                                 pid
                             );
                             // Remove stale PID file
-                            fs::remove_file(&path)
-                                .context("Failed to remove stale PID file")?;
+                            fs::remove_file(&path).context("Failed to remove stale PID file")?;
                         }
                     }
                 }
@@ -65,14 +64,12 @@ impl PidFileGuard {
 
         // Create parent directory if it doesn't exist
         if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)
-                .context("Failed to create runtime directory")?;
+            fs::create_dir_all(parent).context("Failed to create runtime directory")?;
         }
 
         // Write our PID to the file
         let pid = std::process::id();
-        fs::write(&path, pid.to_string())
-            .context("Failed to write PID file")?;
+        fs::write(&path, pid.to_string()).context("Failed to write PID file")?;
 
         info!("Created PID file at {} with PID {}", path.display(), pid);
 
@@ -105,8 +102,8 @@ impl PidFileGuard {
             // Check errno to distinguish between different errors
             let errno = *libc::__errno_location();
             match errno {
-                libc::ESRCH => false,  // No such process
-                libc::EPERM => true,   // Process exists but we don't have permission
+                libc::ESRCH => false, // No such process
+                libc::EPERM => true,  // Process exists but we don't have permission
                 _ => false,
             }
         }
@@ -157,7 +154,10 @@ mod tests {
 
         // After first guard is dropped, second instance should succeed
         drop(guard1);
-        assert!(!path.exists(), "Dropping the guard should remove the PID file");
+        assert!(
+            !path.exists(),
+            "Dropping the guard should remove the PID file"
+        );
         let _guard2 =
             PidFileGuard::create_at(path.clone()).expect("Should succeed after first is dropped");
     }

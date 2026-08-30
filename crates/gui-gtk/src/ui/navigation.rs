@@ -3,9 +3,9 @@
 
 // Navigation sidebar (left panel with Profiles and Daemon sections)
 
+use adw::prelude::*;
 use gtk4::prelude::*;
 use libadwaita as adw;
-use adw::prelude::*;
 use std::rc::Rc;
 
 use super::window::AppState;

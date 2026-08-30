@@ -8,12 +8,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
-use axum::{
-    extract::Request,
-    http::StatusCode,
-    middleware::Next,
-    response::Response,
-};
+use axum::{extract::Request, http::StatusCode, middleware::Next, response::Response};
 use tracing::{info, warn};
 use uuid::Uuid;
 use zeroize::Zeroizing;
@@ -65,7 +60,11 @@ pub fn load_or_generate_token(token_path: &PathBuf) -> Result<(String, bool)> {
     info!("Token saved to: {}", token_path.display());
     info!("");
     info!("⚠️  IMPORTANT: Clients must provide this token to connect!");
-    info!("   Token: {} (full token in {})", obfuscate_token(&token), token_path.display());
+    info!(
+        "   Token: {} (full token in {})",
+        obfuscate_token(&token),
+        token_path.display()
+    );
     info!("   Add to CLI config or use X-Tunnel-Token header");
 
     Ok((token, true))

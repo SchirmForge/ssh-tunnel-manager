@@ -3,7 +3,7 @@
 
 //! Event handling traits and types
 
-use ssh_tunnel_common::{TunnelStatus, AuthRequest};
+use ssh_tunnel_common::{AuthRequest, TunnelStatus};
 use uuid::Uuid;
 
 /// Framework-agnostic event handler trait

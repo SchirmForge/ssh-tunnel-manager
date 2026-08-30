@@ -13,9 +13,9 @@ use futures_util::StreamExt;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
+use crate::sse::TunnelEvent;
 use crate::tls::{create_insecure_tls_config, create_pinned_tls_config};
 use crate::{AuthRequest, TunnelStatus, Uuid};
-use crate::sse::TunnelEvent;
 
 /// Connection mode for client to daemon communication
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
@@ -30,7 +30,6 @@ pub enum ConnectionMode {
     /// HTTPS with TLS (network-ready, secure)
     Https,
 }
-
 
 /// Client configuration for connecting to daemon
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -121,7 +120,9 @@ impl DaemonClientConfig {
             let candidate = self.daemon_url.trim();
             // If explicit path provided in config, use it
             if !candidate.is_empty()
-                && (candidate.starts_with('/') || candidate.starts_with("./") || candidate.starts_with("../"))
+                && (candidate.starts_with('/')
+                    || candidate.starts_with("./")
+                    || candidate.starts_with("../"))
             {
                 return Ok(PathBuf::from(candidate));
             }
@@ -163,7 +164,9 @@ impl DaemonClientConfig {
                         .join("ssh-tunnel-manager.sock")
                 }
             })
-            .ok_or_else(|| anyhow::anyhow!("Could not determine runtime directory and no system socket found"))
+            .ok_or_else(|| {
+                anyhow::anyhow!("Could not determine runtime directory and no system socket found")
+            })
     }
 }
 
@@ -172,8 +175,10 @@ impl DaemonClientConfig {
 /// Check if daemon configuration needs IP address for connection
 /// Returns true if daemon_host is empty for HTTP/HTTPS modes
 pub fn config_needs_ip_address(config: &DaemonClientConfig) -> bool {
-    matches!(config.connection_mode, ConnectionMode::Http | ConnectionMode::Https)
-        && config.daemon_host.is_empty()
+    matches!(
+        config.connection_mode,
+        ConnectionMode::Http | ConnectionMode::Https
+    ) && config.daemon_host.is_empty()
 }
 
 /// Validate daemon client configuration completeness
@@ -188,7 +193,7 @@ pub fn validate_client_config(config: &DaemonClientConfig) -> Result<()> {
             match config.connection_mode {
                 ConnectionMode::Http => "HTTP",
                 ConnectionMode::Https => "HTTPS",
-                _ => "this"
+                _ => "this",
             }
         );
     }
@@ -200,7 +205,8 @@ pub fn validate_client_config(config: &DaemonClientConfig) -> Result<()> {
 
     // For HTTPS, validate TLS fingerprint (recommended for security)
     if matches!(config.connection_mode, ConnectionMode::Https)
-        && config.tls_cert_fingerprint.is_empty() {
+        && config.tls_cert_fingerprint.is_empty()
+    {
         anyhow::bail!("TLS certificate fingerprint is required for HTTPS mode but is empty");
     }
 
@@ -351,7 +357,10 @@ mod tests {
             daemon_port: 3443,
             ..Default::default()
         };
-        assert_eq!(config.daemon_base_url().unwrap(), "https://example.com:3443");
+        assert_eq!(
+            config.daemon_base_url().unwrap(),
+            "https://example.com:3443"
+        );
 
         // IPv6 literals must be bracketed (regression guard for the v0.1.7 fix)
         let config = DaemonClientConfig {
@@ -435,7 +444,10 @@ pub async fn start_tunnel_with_events<H: TunnelEventHandler>(
     profile: &crate::Profile,
     handler: &mut H,
 ) -> Result<()> {
-    use crate::{prepare_profile_for_remote, get_remote_key_setup_message, ProfileSourceMode, StartTunnelRequest};
+    use crate::{
+        get_remote_key_setup_message, prepare_profile_for_remote, ProfileSourceMode,
+        StartTunnelRequest,
+    };
 
     let base_url = config.daemon_base_url()?;
 
@@ -447,7 +459,10 @@ pub async fn start_tunnel_with_events<H: TunnelEventHandler>(
     let (sse_ready_tx, mut sse_ready_rx) = tokio::sync::mpsc::channel::<Result<()>>(1);
 
     tokio::spawn(async move {
-        let url = format!("{}/api/events", config_for_events.daemon_base_url().unwrap());
+        let url = format!(
+            "{}/api/events",
+            config_for_events.daemon_base_url().unwrap()
+        );
         let request = match add_auth_header(client_for_events.get(&url), &config_for_events) {
             Ok(req) => req,
             Err(e) => {
@@ -564,7 +579,10 @@ pub async fn start_tunnel_with_events<H: TunnelEventHandler>(
     }
 
     // Determine if daemon is remote (HTTP/HTTPS) vs local (Unix socket)
-    let is_remote_daemon = matches!(config.connection_mode, ConnectionMode::Http | ConnectionMode::Https);
+    let is_remote_daemon = matches!(
+        config.connection_mode,
+        ConnectionMode::Http | ConnectionMode::Https
+    );
 
     // Prepare the start tunnel request
     let (mode, profile_opt) = if is_remote_daemon {

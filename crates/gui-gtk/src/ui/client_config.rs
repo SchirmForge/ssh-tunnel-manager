@@ -3,9 +3,9 @@
 
 // Client Configuration page - displays daemon connection settings (read-only)
 
+use adw::prelude::*;
 use gtk4::prelude::*;
 use libadwaita as adw;
-use adw::prelude::*;
 use std::rc::Rc;
 
 use super::window::AppState;
@@ -60,7 +60,6 @@ pub fn create(state: Rc<AppState>) -> adw::NavigationPage {
     main_box.append(&scrolled);
 
     // Create navigation page
-    
 
     adw::NavigationPage::builder()
         .title("Client Configuration")
@@ -90,10 +89,9 @@ fn add_connection_group(prefs_page: &adw::PreferencesPage, config: &DaemonClient
 
     // Daemon endpoint
     let endpoint = match config.connection_mode {
-        ConnectionMode::UnixSocket => {
-            config.daemon_base_url()
-                .unwrap_or_else(|_| "Unix socket".to_string())
-        }
+        ConnectionMode::UnixSocket => config
+            .daemon_base_url()
+            .unwrap_or_else(|_| "Unix socket".to_string()),
         ConnectionMode::Http | ConnectionMode::Https => {
             format!("{}:{}", config.daemon_host, config.daemon_port)
         }
@@ -120,7 +118,11 @@ fn add_auth_group(prefs_page: &adw::PreferencesPage, config: &DaemonClientConfig
     } else {
         let len = config.auth_token.len();
         if len > 8 {
-            format!("{}...{}", &config.auth_token[..4], &config.auth_token[len-4..])
+            format!(
+                "{}...{}",
+                &config.auth_token[..4],
+                &config.auth_token[len - 4..]
+            )
         } else {
             "****".to_string()
         }
@@ -165,7 +167,11 @@ fn add_auth_group(prefs_page: &adw::PreferencesPage, config: &DaemonClientConfig
 }
 
 /// Add pending configuration group with save button
-fn add_pending_config_group(prefs_page: &adw::PreferencesPage, state: &Rc<AppState>, config: &DaemonClientConfig) {
+fn add_pending_config_group(
+    prefs_page: &adw::PreferencesPage,
+    state: &Rc<AppState>,
+    config: &DaemonClientConfig,
+) {
     let group = adw::PreferencesGroup::builder()
         .title("Pending Configuration")
         .description("This configuration has not been saved yet. Review and save to apply.")
@@ -186,10 +192,9 @@ fn add_pending_config_group(prefs_page: &adw::PreferencesPage, state: &Rc<AppSta
 
     // Daemon endpoint
     let endpoint = match config.connection_mode {
-        ConnectionMode::UnixSocket => {
-            config.daemon_base_url()
-                .unwrap_or_else(|_| "Unix socket".to_string())
-        }
+        ConnectionMode::UnixSocket => config
+            .daemon_base_url()
+            .unwrap_or_else(|_| "Unix socket".to_string()),
         ConnectionMode::Http | ConnectionMode::Https => {
             format!("{}:{}", config.daemon_host, config.daemon_port)
         }
@@ -240,9 +245,7 @@ fn add_pending_config_group(prefs_page: &adw::PreferencesPage, state: &Rc<AppSta
     save_button.set_size_request(200, -1);
     button_box.append(&save_button);
 
-    let button_row = adw::ActionRow::builder()
-        .activatable(false)
-        .build();
+    let button_row = adw::ActionRow::builder().activatable(false).build();
     button_row.set_child(Some(&button_box));
     group.add(&button_row);
 
@@ -266,12 +269,18 @@ fn add_pending_config_group(prefs_page: &adw::PreferencesPage, state: &Rc<AppSta
                             eprintln!("Daemon client updated with saved configuration");
                         }
                         Err(e) => {
-                            eprintln!("Warning: Failed to create daemon client with saved config: {}", e);
+                            eprintln!(
+                                "Warning: Failed to create daemon client with saved config: {}",
+                                e
+                            );
                         }
                     }
 
                     // Show success message
-                    if let Some(window) = button.root().and_then(|r| r.downcast::<gtk4::Window>().ok()) {
+                    if let Some(window) = button
+                        .root()
+                        .and_then(|r| r.downcast::<gtk4::Window>().ok())
+                    {
                         let dialog = adw::MessageDialog::new(
                             Some(&window),
                             Some("Configuration Saved"),
@@ -287,7 +296,10 @@ fn add_pending_config_group(prefs_page: &adw::PreferencesPage, state: &Rc<AppSta
                 }
                 Err(e) => {
                     // Show error dialog
-                    if let Some(window) = button.root().and_then(|r| r.downcast::<gtk4::Window>().ok()) {
+                    if let Some(window) = button
+                        .root()
+                        .and_then(|r| r.downcast::<gtk4::Window>().ok())
+                    {
                         let dialog = adw::MessageDialog::new(
                             Some(&window),
                             Some("Save Failed"),

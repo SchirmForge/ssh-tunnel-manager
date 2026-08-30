@@ -219,7 +219,7 @@ pub struct DaemonInfo {
     pub started_at: String, // ISO 8601 timestamp
 
     // Configuration
-    pub listener_mode: String, // "unix-socket", "tcp-http", "tcp-https"
+    pub listener_mode: String,     // "unix-socket", "tcp-http", "tcp-https"
     pub bind_host: Option<String>, // for TCP modes
     pub bind_port: Option<u16>,    // for TCP modes
     pub socket_path: Option<String>, // for Unix socket mode

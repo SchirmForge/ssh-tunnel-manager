@@ -20,27 +20,12 @@ use crate::{add_auth_header, AuthRequest, DaemonClientConfig};
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum TunnelEvent {
-    Starting {
-        id: Uuid,
-    },
-    Connected {
-        id: Uuid,
-    },
-    Disconnected {
-        id: Uuid,
-        reason: String,
-    },
-    Error {
-        id: Uuid,
-        error: String,
-    },
-    AuthRequired {
-        id: Uuid,
-        request: AuthRequest,
-    },
-    Heartbeat {
-        timestamp: DateTime<Utc>,
-    },
+    Starting { id: Uuid },
+    Connected { id: Uuid },
+    Disconnected { id: Uuid, reason: String },
+    Error { id: Uuid, error: String },
+    AuthRequired { id: Uuid, request: AuthRequest },
+    Heartbeat { timestamp: DateTime<Utc> },
 }
 
 /// Event listener for daemon SSE stream

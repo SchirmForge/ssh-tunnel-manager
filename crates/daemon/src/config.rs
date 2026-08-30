@@ -43,7 +43,6 @@ pub enum ListenerMode {
     TcpHttps,
 }
 
-
 /// Daemon configuration
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct DaemonConfig {
@@ -153,7 +152,10 @@ impl DaemonConfig {
     /// Validate the daemon configuration
     pub fn validate(&self) -> Result<()> {
         // For TCP modes, check if bind host is non-loopback
-        if matches!(self.listener_mode, ListenerMode::TcpHttp | ListenerMode::TcpHttps) {
+        if matches!(
+            self.listener_mode,
+            ListenerMode::TcpHttp | ListenerMode::TcpHttps
+        ) {
             // Parse the bind host to check if it's loopback
             let is_loopback = ssh_tunnel_common::is_loopback_address(&self.bind_host);
 
@@ -188,17 +190,21 @@ impl DaemonConfig {
             return Ok(config);
         }
 
-        let contents = fs::read_to_string(&config_path)
-            .context("Failed to read daemon configuration")?;
+        let contents =
+            fs::read_to_string(&config_path).context("Failed to read daemon configuration")?;
 
-        let config: Self = toml::from_str(&contents)
-            .context("Failed to parse daemon configuration")?;
+        let config: Self =
+            toml::from_str(&contents).context("Failed to parse daemon configuration")?;
 
         // Validate the loaded configuration
-        config.validate()
+        config
+            .validate()
             .context("Configuration validation failed")?;
 
-        info!("Loaded daemon configuration from: {}", config_path.display());
+        info!(
+            "Loaded daemon configuration from: {}",
+            config_path.display()
+        );
         Ok(config)
     }
 
@@ -208,15 +214,13 @@ impl DaemonConfig {
 
         // Ensure directory exists
         if let Some(parent) = config_path.parent() {
-            fs::create_dir_all(parent)
-                .context("Failed to create configuration directory")?;
+            fs::create_dir_all(parent).context("Failed to create configuration directory")?;
         }
 
-        let contents = toml::to_string_pretty(self)
-            .context("Failed to serialize daemon configuration")?;
+        let contents =
+            toml::to_string_pretty(self).context("Failed to serialize daemon configuration")?;
 
-        fs::write(&config_path, contents)
-            .context("Failed to write daemon configuration")?;
+        fs::write(&config_path, contents).context("Failed to write daemon configuration")?;
 
         // Set restrictive permissions on config file (Unix only)
         // Set restrictive permissions
@@ -250,7 +254,8 @@ fn get_snippet_daemon_host(bind_host: &str) -> String {
 fn get_empty_host_comment(bind_host: &str) -> String {
     if bind_host == "0.0.0.0" || bind_host == "::" {
         "# Note: daemon_host is empty because daemon listens on all interfaces (0.0.0.0)\n\
-         # You must specify the actual IP address to connect to (e.g., 192.168.1.100)\n".to_string()
+         # You must specify the actual IP address to connect to (e.g., 192.168.1.100)\n"
+            .to_string()
     } else {
         String::new()
     }
@@ -338,8 +343,7 @@ pub fn write_cli_config_snippet(
     };
 
     // Write the snippet file
-    fs::write(&snippet_path, config_content)
-        .context("Failed to write CLI config snippet")?;
+    fs::write(&snippet_path, config_content).context("Failed to write CLI config snippet")?;
 
     // Set restrictive permissions on snippet file (contains auth token and TLS fingerprint)
     crate::permissions::set_file_permissions_private(&snippet_path)?;
@@ -353,8 +357,10 @@ pub fn write_cli_config_snippet(
     info!("  {}", snippet_path.display());
     info!("");
     info!("To configure your CLI, run:");
-    info!("  cp {} ~/.config/ssh-tunnel-manager/cli.toml",
-        snippet_path.display());
+    info!(
+        "  cp {} ~/.config/ssh-tunnel-manager/cli.toml",
+        snippet_path.display()
+    );
     info!("");
     info!("═══════════════════════════════════════════════════════════");
     info!("");
@@ -514,7 +520,8 @@ mod tests {
             None,
         );
         assert!(result.is_ok());
-        let snippet_path = dirs::config_dir().unwrap()
+        let snippet_path = dirs::config_dir()
+            .unwrap()
             .join("ssh-tunnel-manager")
             .join("cli-config.snippet");
         let content = fs::read_to_string(&snippet_path).unwrap();
@@ -526,8 +533,11 @@ mod tests {
         {
             use std::os::unix::fs::PermissionsExt;
             let metadata = fs::metadata(&snippet_path).unwrap();
-            assert_eq!(metadata.permissions().mode() & 0o777, 0o600,
-                "CLI snippet should have 0600 permissions to protect auth token");
+            assert_eq!(
+                metadata.permissions().mode() & 0o777,
+                0o600,
+                "CLI snippet should have 0600 permissions to protect auth token"
+            );
         }
 
         // Test HTTP mode with auth

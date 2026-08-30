@@ -3,7 +3,7 @@
 
 //! Daemon connection configuration helpers
 
-use anyhow::{Result, Context};
+use anyhow::{Context, Result};
 use ssh_tunnel_common::DaemonClientConfig;
 
 /// Load daemon client configuration from CLI config file
@@ -20,8 +20,7 @@ pub fn load_daemon_config() -> Result<DaemonClientConfig> {
         return Ok(DaemonClientConfig::default());
     }
 
-    let contents = fs::read_to_string(&config_path)
-        .context("Failed to read CLI config file")?;
+    let contents = fs::read_to_string(&config_path).context("Failed to read CLI config file")?;
 
     // Parse the TOML - the CLI config wraps DaemonClientConfig
     #[derive(serde::Deserialize)]
@@ -30,8 +29,8 @@ pub fn load_daemon_config() -> Result<DaemonClientConfig> {
         daemon_config: DaemonClientConfig,
     }
 
-    let cli_config: CliConfig = toml::from_str(&contents)
-        .context("Failed to parse CLI config file")?;
+    let cli_config: CliConfig =
+        toml::from_str(&contents).context("Failed to parse CLI config file")?;
 
     Ok(cli_config.daemon_config)
 }
@@ -93,11 +92,11 @@ pub fn load_snippet_config() -> Result<DaemonClientConfig> {
         anyhow::bail!("Configuration snippet does not exist");
     }
 
-    let contents = fs::read_to_string(&snippet_path)
-        .context("Failed to read configuration snippet")?;
+    let contents =
+        fs::read_to_string(&snippet_path).context("Failed to read configuration snippet")?;
 
-    let config: DaemonClientConfig = toml::from_str(&contents)
-        .context("Failed to parse configuration snippet")?;
+    let config: DaemonClientConfig =
+        toml::from_str(&contents).context("Failed to parse configuration snippet")?;
 
     Ok(config)
 }
@@ -113,8 +112,7 @@ pub fn save_daemon_config(config: &DaemonClientConfig) -> Result<()> {
 
     // Create parent directory if it doesn't exist
     if let Some(parent) = config_path.parent() {
-        fs::create_dir_all(parent)
-            .context("Failed to create config directory")?;
+        fs::create_dir_all(parent).context("Failed to create config directory")?;
     }
 
     // Wrap in CliConfig structure for proper serialization
@@ -128,11 +126,10 @@ pub fn save_daemon_config(config: &DaemonClientConfig) -> Result<()> {
         daemon_config: config.clone(),
     };
 
-    let toml_content = toml::to_string_pretty(&cli_config)
-        .context("Failed to serialize configuration")?;
+    let toml_content =
+        toml::to_string_pretty(&cli_config).context("Failed to serialize configuration")?;
 
-    fs::write(&config_path, toml_content)
-        .context("Failed to write configuration file")?;
+    fs::write(&config_path, toml_content).context("Failed to write configuration file")?;
 
     // Set restrictive permissions on Unix
     #[cfg(unix)]

@@ -20,25 +20,39 @@ pub fn handle_auth_request(
     state: Rc<AppState>,
 ) {
     // Check if this request is already being processed or queued (avoid duplicates from polling)
-    let is_active = state.active_auth_request_id.borrow()
+    let is_active = state
+        .active_auth_request_id
+        .borrow()
         .map(|id| id == request.id)
         .unwrap_or(false);
 
     if is_active {
-        tracing::debug!("Auth request {} is currently active - skipping duplicate", request.id);
+        tracing::debug!(
+            "Auth request {} is currently active - skipping duplicate",
+            request.id
+        );
         return;
     }
 
-    let already_queued = state.auth_request_queue.borrow()
+    let already_queued = state
+        .auth_request_queue
+        .borrow()
         .iter()
         .any(|req| req.id == request.id);
 
     if already_queued {
-        tracing::debug!("Auth request {} already queued - skipping duplicate", request.id);
+        tracing::debug!(
+            "Auth request {} already queued - skipping duplicate",
+            request.id
+        );
         return;
     }
 
-    tracing::debug!("Queueing auth request {} for tunnel {}", request.id, request.tunnel_id);
+    tracing::debug!(
+        "Queueing auth request {} for tunnel {}",
+        request.id,
+        request.tunnel_id
+    );
 
     // Queue the request
     state.auth_request_queue.borrow_mut().push_back(request);
@@ -49,14 +63,13 @@ pub fn handle_auth_request(
 
 /// Process the next auth request in the queue (if not already processing).
 /// This is public so event_handler.rs can call it when status events arrive.
-pub fn process_auth_queue(
-    parent: &adw::ApplicationWindow,
-    state: Rc<AppState>,
-) {
+pub fn process_auth_queue(parent: &adw::ApplicationWindow, state: Rc<AppState>) {
     // Check if we're already showing a dialog
     if *state.processing_auth_request.borrow() {
-        tracing::debug!("Already processing auth request - queue size: {}",
-                  state.auth_request_queue.borrow().len());
+        tracing::debug!(
+            "Already processing auth request - queue size: {}",
+            state.auth_request_queue.borrow().len()
+        );
         return;
     }
 
@@ -69,8 +82,11 @@ pub fn process_auth_queue(
         }
     };
 
-    tracing::info!("Processing auth request {} from queue (remaining: {})",
-              request.id, state.auth_request_queue.borrow().len());
+    tracing::info!(
+        "Processing auth request {} from queue (remaining: {})",
+        request.id,
+        state.auth_request_queue.borrow().len()
+    );
 
     let tunnel_id = request.tunnel_id;
     let request_id = request.id;
@@ -85,7 +101,8 @@ pub fn process_auth_queue(
     {
         let mut core = state.core.borrow_mut();
         core.mark_auth_dialog_open(tunnel_id);
-        core.active_auth_requests.insert(request_id, request.clone());
+        core.active_auth_requests
+            .insert(request_id, request.clone());
     }
 
     // Show dialog
@@ -93,11 +110,7 @@ pub fn process_auth_queue(
 }
 
 /// Show authentication dialog for a tunnel
-fn show_auth_dialog(
-    parent: &adw::ApplicationWindow,
-    request: AuthRequest,
-    state: Rc<AppState>,
-) {
+fn show_auth_dialog(parent: &adw::ApplicationWindow, request: AuthRequest, state: Rc<AppState>) {
     let profile_id = request.tunnel_id;
     let prompt = request.prompt.clone();
     let hidden = request.hidden;
@@ -286,7 +299,11 @@ fn handle_cancel(
     let state_for_cancel = state.clone();
     glib::MainContext::default().spawn_local(async move {
         if let Err(e) = cancel_auth_async(profile_id, &state_for_cancel).await {
-            tracing::warn!("Failed to cancel authentication for tunnel {}: {}", profile_id, e);
+            tracing::warn!(
+                "Failed to cancel authentication for tunnel {}: {}",
+                profile_id,
+                e
+            );
         }
     });
 
@@ -310,9 +327,15 @@ async fn submit_auth_async(
         .clone();
 
     // Submit the auth response with request_id
-    daemon_client.submit_auth_with_id(profile_id, request_id, response).await?;
+    daemon_client
+        .submit_auth_with_id(profile_id, request_id, response)
+        .await?;
 
-    tracing::debug!("Authentication submitted for tunnel {} (request {})", profile_id, request_id);
+    tracing::debug!(
+        "Authentication submitted for tunnel {} (request {})",
+        profile_id,
+        request_id
+    );
 
     // SSE will handle next steps (success, retry, or error)
     // No polling needed - daemon will emit Connected/AuthRequired/Error event
@@ -330,13 +353,16 @@ async fn cancel_auth_async(profile_id: Uuid, state: &Rc<AppState>) -> anyhow::Re
         .clone();
 
     if let Err(e) = daemon_client.stop_tunnel(profile_id).await {
-        tracing::warn!("Failed to stop tunnel {} after auth cancel: {}", profile_id, e);
+        tracing::warn!(
+            "Failed to stop tunnel {} after auth cancel: {}",
+            profile_id,
+            e
+        );
     }
 
     update_status_after_cancel(state, profile_id);
     Ok(())
 }
-
 
 pub fn clear_auth_state(state: &Rc<AppState>, profile_id: Uuid) {
     let mut core = state.core.borrow_mut();
@@ -359,7 +385,12 @@ fn update_status_after_cancel(state: &Rc<AppState>, profile_id: Uuid) {
 
                 if let Some(details_widget) = state.details_widget.borrow().as_ref() {
                     if let Some(window) = state.window.borrow().as_ref() {
-                        details::update_with_profile(details_widget, selected, state.clone(), window);
+                        details::update_with_profile(
+                            details_widget,
+                            selected,
+                            state.clone(),
+                            window,
+                        );
                     }
                 }
             }

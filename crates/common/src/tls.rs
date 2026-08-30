@@ -59,24 +59,21 @@ impl ServerCertVerifier for FingerprintVerifier {
         // Compare with expected fingerprint
         if actual_fingerprint != self.expected_fingerprint {
             return Err(TlsError::InvalidCertificate(
-                rustls::CertificateError::Other(rustls::OtherError(Arc::new(
-                    std::io::Error::new(
-                        std::io::ErrorKind::InvalidData,
-                        format!(
-                            "Certificate fingerprint mismatch. Expected: {}, Got: {}",
-                            self.expected_fingerprint, actual_fingerprint
-                        ),
+                rustls::CertificateError::Other(rustls::OtherError(Arc::new(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!(
+                        "Certificate fingerprint mismatch. Expected: {}, Got: {}",
+                        self.expected_fingerprint, actual_fingerprint
                     ),
-                ))),
+                )))),
             ));
         }
 
         // Verify certificate is within its validity period
         // Even with pinning, we should reject expired certificates to avoid
         // accepting stolen/replayed certs with the same fingerprint
-        let (_, cert) = X509Certificate::from_der(end_entity.as_ref()).map_err(|_| {
-            TlsError::InvalidCertificate(rustls::CertificateError::BadEncoding)
-        })?;
+        let (_, cert) = X509Certificate::from_der(end_entity.as_ref())
+            .map_err(|_| TlsError::InvalidCertificate(rustls::CertificateError::BadEncoding))?;
 
         // Check validity period using the provided timestamp
         let now_seconds = now.as_secs();

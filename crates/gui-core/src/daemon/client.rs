@@ -15,8 +15,8 @@ use uuid::Uuid;
 
 use ssh_tunnel_common::{
     add_auth_header, create_daemon_client, prepare_profile_for_remote, AuthRequest, AuthResponse,
-    ConnectionMode, DaemonClientConfig, DaemonInfo, Profile, ProfileSourceMode,
-    StartTunnelRequest, TunnelStatus,
+    ConnectionMode, DaemonClientConfig, DaemonInfo, Profile, ProfileSourceMode, StartTunnelRequest,
+    TunnelStatus,
 };
 
 /// Daemon client for tunnel operations
@@ -114,7 +114,9 @@ impl DaemonClient {
             let daemon_host = Some(self.config.daemon_host.as_str());
 
             // Try to fetch daemon info to get the actual SSH key directory
-            let daemon_ssh_dir = self.get_daemon_info().await
+            let daemon_ssh_dir = self
+                .get_daemon_info()
+                .await
                 .ok()
                 .map(|info| info.ssh_key_dir);
 
@@ -169,12 +171,9 @@ impl DaemonClient {
         if response.status().is_success() {
             Ok(())
         } else {
-            let error: ErrorResponse = response
-                .json()
-                .await
-                .unwrap_or_else(|_| ErrorResponse {
-                    error: "Unknown error".to_string(),
-                });
+            let error: ErrorResponse = response.json().await.unwrap_or_else(|_| ErrorResponse {
+                error: "Unknown error".to_string(),
+            });
             anyhow::bail!("Failed to start tunnel: {}", error.error)
         }
     }
@@ -193,18 +192,18 @@ impl DaemonClient {
         if response.status().is_success() {
             Ok(())
         } else {
-            let error: ErrorResponse = response
-                .json()
-                .await
-                .unwrap_or_else(|_| ErrorResponse {
-                    error: "Unknown error".to_string(),
-                });
+            let error: ErrorResponse = response.json().await.unwrap_or_else(|_| ErrorResponse {
+                error: "Unknown error".to_string(),
+            });
             anyhow::bail!("Failed to stop tunnel: {}", error.error)
         }
     }
 
     /// Get tunnel status by profile ID
-    pub async fn get_tunnel_status(&self, profile_id: Uuid) -> Result<Option<TunnelStatusResponse>> {
+    pub async fn get_tunnel_status(
+        &self,
+        profile_id: Uuid,
+    ) -> Result<Option<TunnelStatusResponse>> {
         let url = format!("{}/api/tunnels/{}/status", self.base_url()?, profile_id);
         let request = self.client.get(&url);
         let request = add_auth_header(request, &self.config)?;
@@ -223,12 +222,9 @@ impl DaemonClient {
         } else if response.status() == reqwest::StatusCode::NOT_FOUND {
             Ok(None)
         } else {
-            let error: ErrorResponse = response
-                .json()
-                .await
-                .unwrap_or_else(|_| ErrorResponse {
-                    error: "Unknown error".to_string(),
-                });
+            let error: ErrorResponse = response.json().await.unwrap_or_else(|_| ErrorResponse {
+                error: "Unknown error".to_string(),
+            });
             anyhow::bail!("Failed to get tunnel status: {}", error.error)
         }
     }
@@ -251,12 +247,9 @@ impl DaemonClient {
                 .context("Failed to parse tunnels list")?;
             Ok(list.tunnels)
         } else {
-            let error: ErrorResponse = response
-                .json()
-                .await
-                .unwrap_or_else(|_| ErrorResponse {
-                    error: "Unknown error".to_string(),
-                });
+            let error: ErrorResponse = response.json().await.unwrap_or_else(|_| ErrorResponse {
+                error: "Unknown error".to_string(),
+            });
             anyhow::bail!("Failed to list tunnels: {}", error.error)
         }
     }
@@ -281,12 +274,9 @@ impl DaemonClient {
         } else if response.status() == reqwest::StatusCode::NOT_FOUND {
             Ok(None)
         } else {
-            let error: ErrorResponse = response
-                .json()
-                .await
-                .unwrap_or_else(|_| ErrorResponse {
-                    error: "Unknown error".to_string(),
-                });
+            let error: ErrorResponse = response.json().await.unwrap_or_else(|_| ErrorResponse {
+                error: "Unknown error".to_string(),
+            });
             anyhow::bail!("Failed to get pending auth: {}", error.error)
         }
     }
@@ -311,12 +301,9 @@ impl DaemonClient {
         if response.status().is_success() {
             Ok(())
         } else {
-            let error: ErrorResponse = response
-                .json()
-                .await
-                .unwrap_or_else(|_| ErrorResponse {
-                    error: "Unknown error".to_string(),
-                });
+            let error: ErrorResponse = response.json().await.unwrap_or_else(|_| ErrorResponse {
+                error: "Unknown error".to_string(),
+            });
             anyhow::bail!("Failed to submit auth: {}", error.error)
         }
     }
@@ -346,12 +333,9 @@ impl DaemonClient {
         if response.status().is_success() {
             Ok(())
         } else {
-            let error: ErrorResponse = response
-                .json()
-                .await
-                .unwrap_or_else(|_| ErrorResponse {
-                    error: "Unknown error".to_string(),
-                });
+            let error: ErrorResponse = response.json().await.unwrap_or_else(|_| ErrorResponse {
+                error: "Unknown error".to_string(),
+            });
             anyhow::bail!("Failed to submit auth: {}", error.error)
         }
     }
@@ -374,12 +358,9 @@ impl DaemonClient {
                 .context("Failed to parse daemon info")?;
             Ok(info)
         } else {
-            let error: ErrorResponse = response
-                .json()
-                .await
-                .unwrap_or_else(|_| ErrorResponse {
-                    error: "Unknown error".to_string(),
-                });
+            let error: ErrorResponse = response.json().await.unwrap_or_else(|_| ErrorResponse {
+                error: "Unknown error".to_string(),
+            });
             anyhow::bail!("Failed to get daemon info: {}", error.error)
         }
     }
@@ -398,12 +379,9 @@ impl DaemonClient {
         if response.status().is_success() || response.status() == reqwest::StatusCode::ACCEPTED {
             Ok(())
         } else {
-            let error: ErrorResponse = response
-                .json()
-                .await
-                .unwrap_or_else(|_| ErrorResponse {
-                    error: "Unknown error".to_string(),
-                });
+            let error: ErrorResponse = response.json().await.unwrap_or_else(|_| ErrorResponse {
+                error: "Unknown error".to_string(),
+            });
             anyhow::bail!("Failed to shutdown daemon: {}", error.error)
         }
     }
