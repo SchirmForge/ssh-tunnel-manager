@@ -291,6 +291,8 @@ mod tests {
     use super::*;
     use crate::config::ProfileMetadata;
     use crate::{ConnectionConfig, ForwardingConfig, ForwardingType};
+    use std::path::Path;
+    use std::sync::Mutex;
 
     fn create_test_profile(name: &str) -> Profile {
         use chrono::Utc;
@@ -323,17 +325,147 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_profiles_dir() {
-        let dir = profiles_dir().expect("Should get profiles directory");
-        assert!(dir.to_string_lossy().contains("ssh-tunnel-manager"));
-        assert!(dir.to_string_lossy().contains("profiles"));
+    /// Serialises the tests that redirect `XDG_CONFIG_HOME`.
+    ///
+    /// `profiles_dir()` resolves through `dirs::config_dir()`, which reads that variable.
+    /// Environment mutation is process-global, so tests touching it must not run
+    /// concurrently — and must never be allowed to hit the developer's real
+    /// `~/.config/ssh-tunnel-manager`.
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    /// Runs `f` with `XDG_CONFIG_HOME` pointed at a fresh temporary directory,
+    /// restoring the previous value afterwards.
+    fn with_sandboxed_config<R>(f: impl FnOnce(&Path) -> R) -> R {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+
+        let tmp = tempfile::tempdir().expect("Should create temp dir");
+        let previous = std::env::var_os("XDG_CONFIG_HOME");
+        std::env::set_var("XDG_CONFIG_HOME", tmp.path());
+
+        let result = f(tmp.path());
+
+        match previous {
+            Some(value) => std::env::set_var("XDG_CONFIG_HOME", value),
+            None => std::env::remove_var("XDG_CONFIG_HOME"),
+        }
+
+        result
     }
 
     #[test]
-    fn test_load_all_profiles_empty() {
-        // Should not error on non-existent directory
-        let profiles = load_all_profiles().expect("Should load profiles");
-        assert!(profiles.len() >= 0); // May have existing profiles or none
+    fn test_profiles_dir_is_under_config_home() {
+        with_sandboxed_config(|root| {
+            let dir = profiles_dir().expect("Should get profiles directory");
+            assert_eq!(dir, root.join("ssh-tunnel-manager").join("profiles"));
+        });
+    }
+
+    #[test]
+    fn test_load_all_profiles_empty_when_dir_missing() {
+        with_sandboxed_config(|_| {
+            let profiles = load_all_profiles().expect("Should load profiles");
+            assert!(
+                profiles.is_empty(),
+                "A fresh config home must yield no profiles, got {}",
+                profiles.len()
+            );
+        });
+    }
+
+    #[test]
+    fn test_profile_save_load_delete_round_trip() {
+        with_sandboxed_config(|_| {
+            let profile = create_test_profile("round-trip");
+            let id = profile.metadata.id;
+
+            let path = save_profile(&profile, false).expect("Should save profile");
+            assert!(path.exists(), "Saved profile file should exist");
+
+            // Refuses to clobber unless explicitly asked to.
+            assert!(
+                save_profile(&profile, false).is_err(),
+                "Saving over an existing profile without overwrite must fail"
+            );
+            save_profile(&profile, true).expect("Overwrite should succeed");
+
+            let by_id = load_profile_by_id(&id).expect("Should load by id");
+            assert_eq!(by_id.metadata.name, "round-trip");
+            assert_eq!(by_id.connection.host, "test.example.com");
+            assert_eq!(by_id.forwarding.local_port, Some(8080));
+
+            let by_name = load_profile_by_name("round-trip").expect("Should load by name");
+            assert_eq!(by_name.metadata.id, id);
+
+            assert_eq!(load_all_profiles().expect("Should load all").len(), 1);
+            assert!(profile_exists_by_id(&id));
+            assert!(profile_exists_by_name("round-trip"));
+
+            delete_profile_by_id(&id).expect("Should delete profile");
+            assert!(!profile_exists_by_id(&id));
+            assert!(load_all_profiles().expect("Should load all").is_empty());
+        });
+    }
+
+    /// Profiles written before v0.1.7 stored `password_stored` as a boolean.
+    /// `PasswordStorage` replaced it with an enum and must still read the old form.
+    #[test]
+    fn test_password_storage_backward_compatible_with_boolean() {
+        let legacy_true = r#"
+            id = "550e8400-e29b-41d4-a716-446655440000"
+            name = "legacy"
+            created_at = "2024-01-15T10:30:00Z"
+            modified_at = "2024-01-15T10:30:00Z"
+
+            [connection]
+            host = "example.com"
+            port = 22
+            user = "user"
+            auth_type = "key"
+            key_path = "/home/user/.ssh/id_ed25519"
+            password_storage = true
+
+            [forwarding]
+            type = "local"
+            local_port = 5432
+            remote_host = "db.internal"
+            remote_port = 5432
+        "#;
+
+        let profile: Profile = toml::from_str(legacy_true).expect("Legacy boolean should parse");
+        assert_eq!(
+            profile.connection.password_storage,
+            crate::PasswordStorage::Keychain,
+            "password_storage = true must migrate to Keychain"
+        );
+
+        let legacy_false = legacy_true.replace("password_storage = true", "password_storage = false");
+        let profile: Profile = toml::from_str(&legacy_false).expect("Legacy boolean should parse");
+        assert_eq!(
+            profile.connection.password_storage,
+            crate::PasswordStorage::None,
+            "password_storage = false must migrate to None"
+        );
+
+        // And the current string form still round-trips.
+        for (text, expected) in [
+            ("\"keychain\"", crate::PasswordStorage::Keychain),
+            ("\"none\"", crate::PasswordStorage::None),
+            ("\"file\"", crate::PasswordStorage::File),
+        ] {
+            let source = legacy_true.replace("password_storage = true", &format!("password_storage = {text}"));
+            let profile: Profile = toml::from_str(&source).expect("String form should parse");
+            assert_eq!(profile.connection.password_storage, expected);
+        }
+    }
+
+    #[test]
+    fn test_prepare_profile_for_remote_reduces_key_to_filename() {
+        let profile = create_test_profile("remote");
+        let remote = prepare_profile_for_remote(&profile).expect("Should prepare profile");
+        assert_eq!(
+            remote.connection.key_path,
+            Some(PathBuf::from("id_rsa")),
+            "Hybrid mode must send the key filename only, never the local path"
+        );
     }
 }

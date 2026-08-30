@@ -5,7 +5,7 @@
 // Shared daemon connection logic for CLI and GUI
 
 use std::ffi::OsStr;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use anyhow::{Context, Result};
@@ -14,14 +14,16 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
 use crate::tls::{create_insecure_tls_config, create_pinned_tls_config};
-use crate::{AuthRequest, AuthResponse, TunnelStatus, Uuid};
+use crate::{AuthRequest, TunnelStatus, Uuid};
 use crate::sse::TunnelEvent;
 
 /// Connection mode for client to daemon communication
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "kebab-case")]
+#[derive(Default)]
 pub enum ConnectionMode {
     /// Unix domain socket (local-only)
+    #[default]
     UnixSocket,
     /// HTTP (testing/localhost only, no TLS)
     Http,
@@ -29,11 +31,6 @@ pub enum ConnectionMode {
     Https,
 }
 
-impl Default for ConnectionMode {
-    fn default() -> Self {
-        ConnectionMode::UnixSocket
-    }
-}
 
 /// Client configuration for connecting to daemon
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -302,7 +299,7 @@ pub enum ConfigValidationResult {
 ///
 /// # Returns
 /// ConfigValidationResult indicating the status
-pub fn validate_daemon_config(config_path: &PathBuf) -> ConfigValidationResult {
+pub fn validate_daemon_config(config_path: &Path) -> ConfigValidationResult {
     if config_path.exists() {
         return ConfigValidationResult::Valid;
     }
@@ -331,29 +328,39 @@ mod tests {
 
     #[test]
     fn test_daemon_base_url() {
-        let mut config = DaemonClientConfig::default();
-
         // Unix socket mode
-        config.connection_mode = ConnectionMode::UnixSocket;
+        let config = DaemonClientConfig {
+            connection_mode: ConnectionMode::UnixSocket,
+            ..Default::default()
+        };
         assert_eq!(config.daemon_base_url().unwrap(), "http://daemon");
 
         // HTTP mode
-        config.connection_mode = ConnectionMode::Http;
-        config.daemon_host = "127.0.0.1".to_string();
-        config.daemon_port = 3443;
-        assert_eq!(
-            config.daemon_base_url().unwrap(),
-            "http://127.0.0.1:3443"
-        );
+        let config = DaemonClientConfig {
+            connection_mode: ConnectionMode::Http,
+            daemon_host: "127.0.0.1".to_string(),
+            daemon_port: 3443,
+            ..Default::default()
+        };
+        assert_eq!(config.daemon_base_url().unwrap(), "http://127.0.0.1:3443");
 
         // HTTPS mode
-        config.connection_mode = ConnectionMode::Https;
-        config.daemon_host = "example.com".to_string();
-        config.daemon_port = 3443;
-        assert_eq!(
-            config.daemon_base_url().unwrap(),
-            "https://example.com:3443"
-        );
+        let config = DaemonClientConfig {
+            connection_mode: ConnectionMode::Https,
+            daemon_host: "example.com".to_string(),
+            daemon_port: 3443,
+            ..Default::default()
+        };
+        assert_eq!(config.daemon_base_url().unwrap(), "https://example.com:3443");
+
+        // IPv6 literals must be bracketed (regression guard for the v0.1.7 fix)
+        let config = DaemonClientConfig {
+            connection_mode: ConnectionMode::Https,
+            daemon_host: "::1".to_string(),
+            daemon_port: 3443,
+            ..Default::default()
+        };
+        assert_eq!(config.daemon_base_url().unwrap(), "https://[::1]:3443");
     }
 
     #[test]
@@ -367,8 +374,10 @@ mod tests {
         assert!(result.is_ok());
 
         // With token
-        let mut config_with_auth = DaemonClientConfig::default();
-        config_with_auth.auth_token = "test-token-123".to_string();
+        let config_with_auth = DaemonClientConfig {
+            auth_token: "test-token-123".to_string(),
+            ..Default::default()
+        };
         let request = client.get("http://test");
         let result = add_auth_header(request, &config_with_auth);
         assert!(result.is_ok());
@@ -462,8 +471,7 @@ pub async fn start_tunnel_with_events<H: TunnelEventHandler>(
         if !resp.status().is_success() {
             let status = resp.status();
             let err_msg = if status == reqwest::StatusCode::UNAUTHORIZED {
-                format!(
-                    "Authentication failed: 401 Unauthorized\n\n\
+                "Authentication failed: 401 Unauthorized\n\n\
                     The daemon requires authentication but no valid token was provided.\n\
                     \n\
                     To fix this:\n\
@@ -475,8 +483,7 @@ pub async fn start_tunnel_with_events<H: TunnelEventHandler>(
                     \n\
                     3. Or manually add the auth_token to ~/.config/ssh-tunnel-manager/cli.toml\n\
                     \n\
-                    The daemon generates this snippet on first startup when authentication is enabled."
-                )
+                    The daemon generates this snippet on first startup when authentication is enabled.".to_string()
             } else {
                 format!("Daemon returned non-success status for events: {}", status)
             };

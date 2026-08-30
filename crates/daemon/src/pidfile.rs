@@ -21,8 +21,15 @@ impl PidFileGuard {
     /// This will check if a daemon is already running and fail if so.
     /// On success, it creates a PID file that is automatically removed when dropped.
     pub fn create() -> Result<Self> {
-        let path = Self::pid_file_path()?;
+        Self::create_at(Self::pid_file_path()?)
+    }
 
+    /// Create a PID file guard at an explicit path
+    ///
+    /// Same semantics as [`create`](Self::create), but without consulting the runtime
+    /// directory. Tests use this so they never touch the real
+    /// `$XDG_RUNTIME_DIR/ssh-tunnel-manager/daemon.pid` of a running daemon.
+    pub fn create_at(path: PathBuf) -> Result<Self> {
         // Check if PID file exists
         if path.exists() {
             // Try to read the existing PID
@@ -75,7 +82,7 @@ impl PidFileGuard {
     /// Get the path to the PID file
     fn pid_file_path() -> Result<PathBuf> {
         let runtime_dir = dirs::runtime_dir()
-            .or_else(|| dirs::cache_dir())
+            .or_else(dirs::cache_dir)
             .ok_or_else(|| anyhow::anyhow!("Could not determine runtime directory"))?;
 
         Ok(runtime_dir.join("ssh-tunnel-manager").join("daemon.pid"))
@@ -132,19 +139,55 @@ impl Drop for PidFileGuard {
 mod tests {
     use super::*;
 
+    /// Uses an isolated PID file: `create()` would otherwise contend with — and on drop
+    /// delete — the PID file of a daemon actually running on the developer's machine.
     #[test]
     fn test_pid_file_prevents_multiple_instances() {
+        let tmp = tempfile::tempdir().expect("Should create temp dir");
+        let path = tmp.path().join("daemon.pid");
+
         // First instance should succeed
-        let _guard1 = PidFileGuard::create().expect("First instance should succeed");
+        let guard1 = PidFileGuard::create_at(path.clone()).expect("First instance should succeed");
+        assert!(path.exists(), "PID file should have been created");
 
         // Second instance should fail
-        let result = PidFileGuard::create();
+        let result = PidFileGuard::create_at(path.clone());
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("already running"));
 
         // After first guard is dropped, second instance should succeed
-        drop(_guard1);
-        let _guard2 = PidFileGuard::create().expect("Should succeed after first is dropped");
+        drop(guard1);
+        assert!(!path.exists(), "Dropping the guard should remove the PID file");
+        let _guard2 =
+            PidFileGuard::create_at(path.clone()).expect("Should succeed after first is dropped");
+    }
+
+    /// A PID file left behind by a crashed daemon must not block startup.
+    #[test]
+    fn test_stale_pid_file_is_reclaimed() {
+        let tmp = tempfile::tempdir().expect("Should create temp dir");
+        let path = tmp.path().join("daemon.pid");
+
+        // 999999 is beyond any plausible live PID, so this file is stale by construction.
+        std::fs::write(&path, "999999").expect("Should write stale PID file");
+
+        let _guard = PidFileGuard::create_at(path.clone())
+            .expect("A stale PID file should be reclaimed, not fatal");
+        let contents = std::fs::read_to_string(&path).expect("Should read PID file");
+        assert_eq!(contents, std::process::id().to_string());
+    }
+
+    /// A corrupt PID file must not wedge the daemon either.
+    #[test]
+    fn test_unparseable_pid_file_is_replaced() {
+        let tmp = tempfile::tempdir().expect("Should create temp dir");
+        let path = tmp.path().join("daemon.pid");
+        std::fs::write(&path, "not-a-pid").expect("Should write corrupt PID file");
+
+        let _guard = PidFileGuard::create_at(path.clone())
+            .expect("A corrupt PID file should be overwritten, not fatal");
+        let contents = std::fs::read_to_string(&path).expect("Should read PID file");
+        assert_eq!(contents, std::process::id().to_string());
     }
 
     #[test]
