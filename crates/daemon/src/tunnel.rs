@@ -26,6 +26,10 @@ use ssh_tunnel_common::{
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 const AUTH_RESPONSE_TIMEOUT: Duration = Duration::from_secs(60);
+/// How long a tunnel task may take to wind down after being asked to stop,
+/// before it is aborted. The task only has to notice a signal, so this is
+/// generous; it is not a timeout anyone should normally reach.
+const SHUTDOWN_GRACE_PERIOD: Duration = Duration::from_secs(2);
 
 /// Event sent when tunnel state changes (for future WebSocket notifications to GUI)
 #[allow(dead_code)]
@@ -319,74 +323,78 @@ impl TunnelManager {
     }
 
     /// Stop a running tunnel
+    ///
+    /// The `tunnels` lock is deliberately released before awaiting the tunnel
+    /// task. The task needs that same lock to update its own status on the way
+    /// out, so holding it across the await would guarantee the graceful path
+    /// times out and the task was force-aborted every time.
     pub async fn stop(&self, id: &Uuid) -> Result<()> {
-        let mut tunnels = self.tunnels.write().await;
+        // Phase 1: decide what to do and take the handles out, under the lock.
+        let (shutdown_tx, join_handle, was_authenticating) = {
+            let mut tunnels = self.tunnels.write().await;
 
-        let tunnel = tunnels
-            .get_mut(id)
-            .ok_or_else(|| anyhow::anyhow!("Tunnel not found"))?;
+            let tunnel = tunnels
+                .get_mut(id)
+                .ok_or_else(|| anyhow::anyhow!("Tunnel not found"))?;
 
-        match tunnel.status {
-            TunnelStatus::Connecting | TunnelStatus::WaitingForAuth => {
-                info!(
-                    "Aborting connection for tunnel: {}",
-                    tunnel.profile.metadata.name
-                );
+            match tunnel.status {
+                TunnelStatus::Connecting | TunnelStatus::WaitingForAuth => {
+                    info!(
+                        "Aborting connection for tunnel: {}",
+                        tunnel.profile.metadata.name
+                    );
 
-                // Try graceful shutdown first
-                if let Some(tx) = tunnel.shutdown_tx.take() {
-                    // Send shutdown signal - this should cause the tunnel task to exit gracefully
-                    let _ = tx.send(()).await;
+                    // Dropping the pending auth sender makes the oneshot receiver in
+                    // AuthContext::request_input return Err immediately, so the task
+                    // does not sit out the remaining AUTH_RESPONSE_TIMEOUT.
+                    tunnel.pending_auth = None;
+
+                    (tunnel.shutdown_tx.take(), tunnel.join_handle.take(), true)
                 }
-
-                // Drop the pending auth sender - this will cause the oneshot receiver
-                // to return Err, which will be caught as "Auth request was cancelled"
-                tunnel.pending_auth = None;
-
-                // Give the task a moment to respond to shutdown signal
-                // If it doesn't stop within 100ms, abort it forcefully
-                if let Some(mut handle) = tunnel.join_handle.take() {
-                    match tokio::time::timeout(
-                        tokio::time::Duration::from_millis(100),
-                        &mut handle
-                    ).await {
-                        Ok(result) => {
-                            // Task finished gracefully within timeout
-                            if let Err(e) = result {
-                                if e.is_cancelled() {
-                                    debug!("Tunnel task was cancelled");
-                                } else {
-                                    debug!("Tunnel task panicked: {:?}", e);
-                                }
-                            }
-                        }
-                        Err(_) => {
-                            // Timeout elapsed, task didn't finish gracefully
-                            handle.abort();
-                        }
-                    }
+                _ if tunnel.status.is_connected() => {
+                    info!("Stopping tunnel: {}", tunnel.profile.metadata.name);
+                    tunnel.status = TunnelStatus::Disconnecting;
+                    (tunnel.shutdown_tx.take(), None, false)
                 }
-
-                tunnel.status = TunnelStatus::Disconnected;
-
-                // Emit disconnected event
-                if let Err(e) = self.event_tx.send(TunnelEvent::Disconnected {
-                    id: *id,
-                    reason: "Stopped during authentication".to_string(),
-                }) {
-                    debug!("Failed to broadcast Disconnected event for {}: {}", id, e);
+                _ => {
+                    anyhow::bail!("Tunnel is not active");
                 }
             }
-            _ if tunnel.status.is_connected() => {
-                info!("Stopping tunnel: {}", tunnel.profile.metadata.name);
+        };
 
-                tunnel.status = TunnelStatus::Disconnecting;
-                if let Some(tx) = tunnel.shutdown_tx.take() {
-                    let _ = tx.send(()).await;
+        // Phase 2: signal and wait with the lock released.
+        if let Some(tx) = shutdown_tx {
+            let _ = tx.send(()).await;
+        }
+
+        if let Some(mut handle) = join_handle {
+            match tokio::time::timeout(SHUTDOWN_GRACE_PERIOD, &mut handle).await {
+                Ok(Ok(())) => debug!("Tunnel task finished gracefully"),
+                Ok(Err(e)) if e.is_cancelled() => debug!("Tunnel task was cancelled"),
+                Ok(Err(e)) => debug!("Tunnel task panicked: {:?}", e),
+                Err(_) => {
+                    warn!(
+                        "Tunnel {} did not stop within {:?}; aborting it",
+                        id, SHUTDOWN_GRACE_PERIOD
+                    );
+                    handle.abort();
                 }
             }
-            _ => {
-                anyhow::bail!("Tunnel is not active");
+        }
+
+        if was_authenticating {
+            {
+                let mut tunnels = self.tunnels.write().await;
+                if let Some(tunnel) = tunnels.get_mut(id) {
+                    tunnel.status = TunnelStatus::Disconnected;
+                }
+            }
+
+            if let Err(e) = self.event_tx.send(TunnelEvent::Disconnected {
+                id: *id,
+                reason: "Stopped during authentication".to_string(),
+            }) {
+                debug!("Failed to broadcast Disconnected event for {}: {}", id, e);
             }
         }
 
