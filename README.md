@@ -161,7 +161,7 @@ Useful for:
 - Systemd system services
 - Environments where keyring causes issues
 
-See [SYSTEMD.md](docs/SYSTEMD.md) for system service configuration.
+See [SYSTEMD.md](docs/architecture/SYSTEMD.md) for system service configuration.
 
 ### Authentication Methods
 
@@ -210,20 +210,36 @@ rm -rf ~/.config/ssh-tunnel-manager/cli.toml
 # Then restart GUI or run any CLI command to regenerate
 ```
 
+## Documentation
+
+| Document | What it covers |
+|---|---|
+| **[Installation Guide](docs/INSTALLATION.md)** | Install, first run, service setup, troubleshooting |
+| **[Development Guide](docs/DEVELOPMENT.md)** | Build, test (both tiers), dev sandbox |
+| **[User Stories](docs/user-stories/)** | What the product does today, by epic, with status |
+| **[Architecture](docs/architecture/)** | Functional and technical specification, security, requirements |
+| **[Roadmap](docs/ROADMAP.md)** | What is planned, and what is explicitly not |
+| **[Project Status](docs/PROJECT_STATUS.md)** | Current implementation snapshot |
+| **[Known Issues](docs/KNOWN_ISSUES.md)** | Bugs and limitations |
+| **[Changelog](docs/CHANGELOG.md)** | Version history |
+
 ## Architecture
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for detailed architecture documentation including:
-- System architecture and component breakdown
-- Key design decisions and rationale
-- Communication flow diagrams
-- Data flow and API design
-- Security considerations
+- **[Functional Architecture](docs/architecture/FUNCTIONAL_ARCHITECTURE.html)** - components,
+  responsibilities, data flow, configuration and API behaviour
+- **[Technical Architecture](docs/architecture/TECHNICAL_ARCHITECTURE.html)** - design
+  decisions and rationale, crate layout, concurrency model, testing strategy
+- **[Technical Reference](docs/architecture/TECHNICAL_REFERENCE.md)** - module, struct and
+  API-level reference
+
+> The two architecture documents are HTML with embedded diagrams. GitHub shows HTML as
+> source, so open them from a local checkout in a browser.
 
 ## API
 
 The daemon exposes a REST API over Unix socket (default), HTTP (localhost testing), or HTTPS (network access).
 
-For complete API documentation including endpoints, authentication, and examples, see **[docs/TECHNICAL_REFERENCE.md](docs/TECHNICAL_REFERENCE.md#api-description-daemon-httpsse)**.
+For complete API documentation including endpoints, authentication, and examples, see **[docs/architecture/TECHNICAL_REFERENCE.md](docs/architecture/TECHNICAL_REFERENCE.md#api-description-daemon-httpsse)**.
 
 ## Security
 
@@ -236,7 +252,7 @@ SSH Tunnel Manager follows security best practices:
 - **SSH host key verification**: Managed `known_hosts` file with SHA256 fingerprints
 - **Minimal privileges**: Runs as regular user, uses `CAP_NET_BIND_SERVICE` for privileged ports
 
-For comprehensive security documentation including threat model, remote daemon best practices, and vulnerability reporting, see **[docs/SECURITY.md](docs/SECURITY.md)**.
+For comprehensive security documentation including threat model, remote daemon best practices, and vulnerability reporting, see **[docs/architecture/SECURITY.md](docs/architecture/SECURITY.md)**.
 
 ## Known Limitations
 

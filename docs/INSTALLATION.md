@@ -579,6 +579,6 @@ ssh daemon-host "chmod 600 ~/.ssh/id_rsa"
 ```
 
 For more help, check:
-- [Architecture Documentation](ARCHITECTURE.md)
+- [Architecture Documentation](architecture/)
 - [Project Status](PROJECT_STATUS.md)
 - [GitHub Issues](https://github.com/SchirmForge/ssh-tunnel-manager/issues)

@@ -269,7 +269,7 @@ Run `ssh-tunnel --help` for complete CLI documentation.
 ## Getting More Help
 
 - **Installation Guide**: See `docs/INSTALLATION.md` in the project repository
-- **Architecture**: See `docs/ARCHITECTURE.md` for technical details
+- **Architecture**: See `docs/architecture/` for technical details
 - **Project Repository**: https://github.com/SchirmForge/ssh-tunnel-manager
 - **Report Issues**: https://github.com/SchirmForge/ssh-tunnel-manager/issues
 

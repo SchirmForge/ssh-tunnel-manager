@@ -163,7 +163,7 @@ None listed yet
 ### Headless Servers
 - **Issue**: Keyring unavailable without graphical session
 - **Solution**: Set `SSH_TUNNEL_SKIP_KEYRING=1` environment variable
-- See [SYSTEMD.md](SYSTEMD.md) and the "Server and Headless Environments" section of the
+- See [SYSTEMD.md](architecture/SYSTEMD.md) and the "Server and Headless Environments" section of the
   [README](../README.md#server-and-headless-environments) for detailed guidance
 
 ### SELinux/AppArmor
