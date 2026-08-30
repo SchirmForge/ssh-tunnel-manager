@@ -4,7 +4,7 @@ A secure, performant SSH tunnel management application for Linux with CLI interf
 
 ## Status
 
-**Version**: v0.1.10
+**Version**: v0.1.11
 **Status**: Production-ready CLI/Daemon/GUI(GTK) with full REST API architecture
 
 ### Highlights
@@ -14,12 +14,13 @@ A secure, performant SSH tunnel management application for Linux with CLI interf
 - ✅ **Full-featured GUI** - Profile management, real-time status, and markdown documentation
 - ✅ **Enhanced CLI** - Status/restart commands and proactive config validation
 - ✅ **Local port forwarding** - Works end-to-end with interactive auth, keychain storage, and host key verification
+- ✅ **Tested** - A hermetic test tier plus a live SSH tier covering every authentication flow, and CI
 
 ### Limitations
 
 - 🚧 Notification on connection lost or reconnect not implemented yet
 - 🚧 Auto-reconnect wiring pending
-- ⚠️ Some `crates/common` tests are stale
+- 🚧 Qt GUI does not compile; use the GTK GUI
 
 ## Features
 
@@ -262,47 +263,24 @@ For comprehensive security documentation including threat model, remote daemon b
 3. **Platform**: Primary development on Linux; macOS/Windows untested
 4. **SSH Agent**: File-based keys only (no ssh-agent integration yet)
 5. **Privileged Ports**: Requires `sudo` or `CAP_NET_BIND_SERVICE` for ports ≤1024
-6. **Tests**: Some `crates/common` tests are stale and need updates
+6. **Qt GUI**: `crates/gui-qt` does not currently compile and is excluded from the default
+   build; use the GTK GUI
+
+Each of these is documented with its status in the
+**[user stories](docs/user-stories/)**.
 
 ## Roadmap
 
-See [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md) for detailed implementation status and roadmap.
+See **[docs/ROADMAP.md](docs/ROADMAP.md)** for what is planned, what is deliberately not,
+and the design decisions already taken for work that has not started.
 
-### Completed Features ✅
+**Now**: stability and regression testing; packaging (DEB done, RPM in progress).
+**Next**: desktop notifications and auto-reconnect (v0.2.0), configurable daemon config
+path, enhanced logging.
+**Not planned**: remote port forwarding (`ssh -R`) - use OpenSSH directly.
 
-#### v0.1.9 (Latest)
-- ✅ **First-launch configuration wizard** - Interactive GUI setup with automatic snippet detection, manual config dialog, and IP address prompts
-- ✅ **Remote daemon profile support** - Profiles work with HTTP/HTTPS remote daemons in hybrid mode (profile via API, SSH keys on daemon filesystem)
-- ✅ **SSH Key Setup Warning opt-out** - "Don't show this again" checkbox for SSH key setup dialog
-- ✅ **Daemon settings improvements** - Hides restart daemon button for HTTPS mode (remote daemons)
-- ✅ **Enhanced SSH key error messages** - Shows daemon's actual SSH directory paths instead of generic `~/.ssh`
-
-#### v0.1.8
-- ✅ **Enhanced 401 authentication error handling** - Proactive config validation with interactive snippet copy
-- ✅ **CLI status command** - Display tunnel status with `--all` flag for formatted table view
-- ✅ **CLI restart command** - Graceful tunnel restart with two-step stop→start process
-- ✅ **CLI stop --all command** - Stop all active tunnels with status checking
-- ✅ **IPv6 host management** - Proper URL formatting with `[addr]:port` notation for IPv6 literals
-- ✅ **Tunnel description formatting** - Unified display across CLI/GUI with proper local/remote labeling
-
-### Planned Features 🚧
-
-#### High Priority
-- 🚧 **Stability and regression testing** - Automated test coverage, sandboxed test
-  environments, and bug fixing (current focus)
-- 🚧 **Configurable daemon config path** - Pass daemon config file as parameter (default: `~/.config/ssh-tunnel-manager`)
-- 🚧 **Enhanced logging** - Daemon logging with `--debug` option and configurable log levels
-  - Options: journalctl integration or dedicated log files
-
-#### Medium Priority
-- 🚧 **Daemon management GUI** - Graphical interface for daemon configuration and monitoring
-
-#### Future Enhancements
-- Desktop notifications for tunnel status changes
-- Auto-reconnect/health monitoring wiring (global setting with a per-profile override,
-  only where authentication needs no human - see docs/PROJECT_STATUS.md)
-- **Dynamic/SOCKS proxy** (`ssh -D`) - SOCKS5 proxy for dynamic port forwarding
-- Packaging (Flatpak, AUR, deb)
+Release history is in [docs/CHANGELOG.md](docs/CHANGELOG.md) and
+[docs/releases/](docs/releases/).
 
 ## Contributing
 

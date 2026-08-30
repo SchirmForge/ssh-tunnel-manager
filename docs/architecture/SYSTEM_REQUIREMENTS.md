@@ -165,7 +165,7 @@ export $(gnome-keyring-daemon --start)
 ```
 
 See [SYSTEMD.md](SYSTEMD.md) and the "Server and Headless Environments" section of the
-[README](../README.md#server-and-headless-environments) for detailed instructions.
+[README](../../README.md#server-and-headless-environments) for detailed instructions.
 
 ## Performance Characteristics
 
@@ -257,5 +257,5 @@ rustup update stable
 **Arch Linux:**
 - ✅ Rolling release always compatible
 
-See the [Installation Guide](INSTALLATION.md) for per-distribution package names and
+See the [Installation Guide](../INSTALLATION.md) for per-distribution package names and
 setup steps.

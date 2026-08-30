@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+---
+
+## [0.1.11] - 2026-08-30
+
 Stabilisation pass: no new user-facing features. The focus is automated regression
 testing, a fast setup path for manual testing, and bug fixing.
 
@@ -79,16 +83,47 @@ testing, a fast setup path for manual testing, and bug fixing.
 - **Remote port forwarding (`ssh -R`) dropped from the roadmap.** No use case has come
   up; use `ssh -R` directly. `ForwardingType::Remote` stays in the enum because it is
   serialised in existing profile TOML. Dynamic/SOCKS remains a future item.
-- Auto-reconnect design decided and recorded in `docs/PROJECT_STATUS.md` (global setting
-  with a per-profile override, never attempted where authentication needs a human). No
+- Auto-reconnect design decided and recorded in `docs/ROADMAP.md` (global setting with a
+  per-profile override, never attempted where authentication needs a human). No
   implementation yet.
-- Documentation corrected against the code: ARCHITECTURE.md described a health-monitoring
-  loop as if it shipped (`monitor.rs` is an empty stub); KNOWN_ISSUES.md claimed the
-  `crates/common` tests were stale (they were not - they passed, but were unisolated) and
-  that only key passphrases could be stored in the keyring (passwords can too); three
-  dead documentation links fixed.
 - `Makefile` `install` and `run-gui` referenced `ssh-tunnel-gui`, which is neither a
   package (`ssh-tunnel-gui-gtk`) nor a binary (`ssh-tunnel-gtk`).
+- `crates/gui-core` and `crates/gui-qt` hardcoded their version instead of inheriting
+  `version.workspace = true`, which is why they had already drifted to a stale value.
+
+### Documentation
+
+`docs/` was a flat directory mixing release history, current status, roadmap, architecture
+specification, operations guides and development plans. It now separates what the system
+is from what we intend to do next.
+
+- **New structure**: `docs/architecture/` (specification and operations),
+  `docs/user-stories/` (behaviour by epic), `docs/plans/` (unstarted work), with
+  `ROADMAP.md`, `PROJECT_STATUS.md`, `CHANGELOG.md` and `KNOWN_ISSUES.md` at the top level.
+- **New**: `docs/ROADMAP.md`, extracted from the 206-line roadmap section of
+  PROJECT_STATUS.md and reorganised by horizon (Now / Next / Later / Not planned /
+  Technical debt) rather than by priority label.
+- **New**: `docs/user-stories/` — 67 stories across 10 epics, numbered `US-<epic>.<n>`,
+  each with acceptance criteria, implementing files and covering tests. Five are recorded
+  as **not implemented** rather than omitted, so the set reads as an honest specification.
+- **New**: `ARCHITECTURE.md` split into `architecture/FUNCTIONAL_ARCHITECTURE.html` (what
+  the system is and does) and `architecture/TECHNICAL_ARCHITECTURE.html` (why it is built
+  that way, and how). HTML with inline SVG diagrams, self-contained and theme-aware.
+- **New**: index documents for `docs/architecture/` and `docs/user-stories/`, a
+  documentation table in the README, and a "where documentation lives" table in
+  DEVELOPMENT.md.
+- **Corrected against the code**: the architecture document described a 30-second
+  health-monitoring loop as if it shipped (`monitor.rs` is an empty stub), advertised CLI
+  commands that have never existed (`edit`, `logs`, `export`, `import`), documented a
+  `daemon.state` JSON file that does not exist, showed a profile TOML format with a
+  `[profile]` section the code does not use, and ended the connection flow with a
+  WebSocket event where it is SSE. KNOWN_ISSUES.md claimed the `crates/common` tests were
+  stale (they were not — they passed, but were unisolated) and that only key passphrases
+  could be stored in the keyring (passwords can too).
+- **Fixed**: five dead documentation links, and INSTALLATION.md, which was two releases
+  stale with every `.deb` URL pinned to `0.1.9-0`.
+- The GUI's bundled About dialog was on v0.1.9 — it is documentation too, and the only
+  documentation most users see.
 
 ---
 
@@ -780,43 +815,30 @@ Increment for:
 
 ---
 
-## Relationship with PROJECT_STATUS.md
+## Which document to update
 
-### CHANGELOG.md (this file)
-- **Purpose**: Track version history and changes over time
-- **Audience**: Users and developers tracking releases
-- **Content**: Release notes, version numbers, dates, categorized changes
-- **Update When**:
-  - Completing a phase of work
-  - Releasing a new version
-  - Merging significant features
-  - Before creating git tags
+Since v0.1.11 the roadmap lives in its own file and behaviour is specified as user stories.
+This is which document owns what.
 
-### PROJECT_STATUS.md
-- **Purpose**: Current state snapshot and implementation roadmap
-- **Audience**: New developers and contributors
-- **Content**: What's implemented, what's planned, architecture overview
-- **Update When**:
-  - Major feature completion (entire subsystem implemented)
-  - Architecture changes affecting multiple components
-  - Significant milestone achievements
-  - Adding/removing planned features
-  - Status changes (prototype -> beta -> stable)
-  - Not for every patch version
+| Document | Purpose | Update when |
+|---|---|---|
+| **CHANGELOG.md** (this file) | Version history - what changed, when | Every user-visible change, and every version bump |
+| **[ROADMAP.md](ROADMAP.md)** | What is planned, what is not, design decisions taken in advance | Priorities change, something is planned or dropped, or a design decision is made before implementation |
+| **[PROJECT_STATUS.md](PROJECT_STATUS.md)** | Snapshot of what exists | A subsystem lands or its status changes. Not every patch |
+| **[user-stories/](user-stories/)** | What the product does, from the user's point of view | Observable behaviour changes - including flipping a not-implemented marker to implemented |
+| **[architecture/](architecture/)** | How the system is built | Design decisions, component responsibilities, module or API structure |
+| **[KNOWN_ISSUES.md](KNOWN_ISSUES.md)** | Defects and limitations | A defect is found, fixed, or confirmed still present |
+| **[releases/](releases/)** | Per-release notes | A release is cut |
 
-### Update Guidelines
+**The common cases:**
 
-**Update CHANGELOG.md:**
-- Every version bump (patch, minor, major)
-- When completing a todo/task with user-visible changes
-- Before running comprehensive test suites
-
-**Update PROJECT_STATUS.md:**
-- When completing major features (GUI, host key verification)
-- When changing project status (working prototype -> beta -> v1.0)
-- When adding new crates or major modules
-- When architecture decisions affect the big picture
-- Typically with minor version bumps, not patches
+- *A behavioural change* -> the affected user story **and** the changelog.
+- *An internal refactor with no behavioural effect* -> the architecture documents; a
+  changelog entry only if it matters to anyone outside the codebase.
+- *A bug fix* -> the changelog, KNOWN_ISSUES.md, and the user story if it changes what the
+  product does.
+- *Deciding not to build something* -> ROADMAP.md, with the reasoning, so it is not
+  relitigated later.
 
 ---
 

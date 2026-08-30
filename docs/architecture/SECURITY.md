@@ -1,6 +1,6 @@
 # SSH Tunnel Manager - Security Documentation
 
-**Version**: v0.1.9
+**Version**: v0.1.11
 **Last Updated**: 2025-12-31
 
 ## Overview
@@ -152,7 +152,7 @@ SSH Tunnel Manager is designed with security as a first-class concern. This docu
 - Never copied, embedded, or transmitted over network
 - Key files managed by user, not by SSH Tunnel Manager
 
-**Remote Daemon Security (v0.1.9)**
+**Remote Daemon Security**
 - **Hybrid Profile Mode**: Profile data sent via API, SSH keys stay on daemon filesystem
 - **No Key Transmission**: Private keys never sent over network, even with HTTPS
 - **User Responsibility**: User must copy SSH keys to daemon host manually
@@ -226,7 +226,7 @@ AmbientCapabilities=CAP_NET_BIND_SERVICE
   - Only use with trusted users in the group
   - Alternative: Run separate daemon per user (recommended)
 
-## Remote Daemon Security (v0.1.9)
+## Remote Daemon Security
 
 ### Best Practices
 

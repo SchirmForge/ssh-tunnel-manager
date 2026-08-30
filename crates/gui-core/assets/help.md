@@ -91,7 +91,7 @@ Each profile shows a colored dot:
 - **Orange** ● (pulsing): Connecting or transitioning
 - **Red** ●: Failed (hover for error details)
 
-## Remote Daemon Support (v0.1.9)
+## Remote Daemon Support
 
 ### Connecting to a Remote Daemon
 
@@ -275,4 +275,4 @@ Run `ssh-tunnel --help` for complete CLI documentation.
 
 ---
 
-**SSH Tunnel Manager** v0.1.9 | Apache-2.0 License
+**SSH Tunnel Manager** v0.1.11 | Apache-2.0 License

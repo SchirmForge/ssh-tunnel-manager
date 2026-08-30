@@ -1,6 +1,6 @@
 # SSH Tunnel Manager
 
-**Version**: 0.1.9
+**Version**: 0.1.11
 
 ## Description
 
@@ -10,7 +10,17 @@ Supports both local daemon connections via Unix socket and remote daemon connect
 
 ## Features
 
-### New in v0.1.9
+### New in v0.1.11
+
+A stability release. No new user-facing features; the work went into automated
+regression testing, continuous integration and bug fixing.
+
+- **Fixed**: cancelling a tunnel during authentication now stops it cleanly instead of
+  force-aborting after a timeout
+- **Fixed**: several potential crashes in this application, where a daemon request could
+  panic if it overlapped with another action
+
+### Earlier
 
 - **First-Launch Configuration Wizard**: Automatic daemon configuration detection and setup
 - **Remote Daemon Support**: Connect to daemons over HTTPS on other machines
@@ -36,8 +46,7 @@ Supports both local daemon connections via Unix socket and remote daemon connect
 ## Technology Stack
 
 - **Language**: Rust
-- **GUI Framework**: GTK4 + Libadwaita (Gnome)
-- **GUI Framework**: Qt6 +  (KDE)
+- **GUI Framework**: GTK4 + Libadwaita (GNOME)
 - **SSH Library**: russh
 - **HTTP Client**: reqwest with Unix socket and HTTPS support
 - **Architecture**: Client-daemon with SSE for real-time updates
@@ -49,7 +58,7 @@ Supports both local daemon connections via Unix socket and remote daemon connect
 - No network exposure
 - Profiles loaded from `~/.config/ssh-tunnel-manager/profiles/`
 
-### Remote Mode (v0.1.9)
+### Remote Mode
 - HTTPS connection to remote daemon
 - TLS certificate fingerprint pinning
 - Token-based authentication
@@ -61,7 +70,7 @@ Apache-2.0
 
 ## Credits
 
-Built with Rust and modern Gnome/KDE technologies.
+Built with Rust and modern GNOME technologies.
 
 Developed with assistance from Generative AI.
 
@@ -73,4 +82,4 @@ Developed with assistance from Generative AI.
 
 ---
 
-© 2025 SchirmForge
+© 2025-2026 SchirmForge

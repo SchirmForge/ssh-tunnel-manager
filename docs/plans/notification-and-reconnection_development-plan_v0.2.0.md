@@ -18,7 +18,7 @@
 >    rejects unencrypted keys (`PasswordStorage::None`), which are the most common
 >    eligible case, and rejects `Password` + keychain, which the daemon *does* support -
 >    it retrieves stored passwords in `authenticate_with_password()`. Use the eligibility
->    table in [PROJECT_STATUS.md](PROJECT_STATUS.md) instead.
+>    table in [PROJECT_STATUS.md](../PROJECT_STATUS.md) instead.
 > 4. **Auto-reconnect must be a global setting with a per-profile override**, and the
 >    current `auto_reconnect` default of `true` is wrong - it flags 2FA profiles that can
 >    never reconnect unattended. See PROJECT_STATUS.md for the agreed design.
@@ -29,7 +29,7 @@
 > 6. **There is now a test suite to extend.** Add reconnection coverage to
 >    `crates/daemon/tests/`, and note that the live tier
 >    (`crates/daemon/tests/live_ssh.rs`) can drop a connection against a real server. See
->    [DEVELOPMENT.md](DEVELOPMENT.md#testing).
+>    [DEVELOPMENT.md](../DEVELOPMENT.md#testing).
 
 ## Overview
 

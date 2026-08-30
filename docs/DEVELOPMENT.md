@@ -58,7 +58,7 @@ sudo pacman -S gtk4 libadwaita base-devel
   ```bash
   sudo apt install qt6-base-dev qt6-declarative-dev qml6-module-qtquick qml6-module-qtquick-controls qml6-module-qtquick-layouts
   ```
-- See [crates/gui-qt/README.md](crates/gui-qt/README.md) for other distributions
+- See [crates/gui-qt/README.md](../crates/gui-qt/README.md) for other distributions
 
 ### Build
 
