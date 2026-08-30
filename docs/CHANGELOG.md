@@ -109,6 +109,13 @@ is from what we intend to do next.
 - **New**: `ARCHITECTURE.md` split into `architecture/FUNCTIONAL_ARCHITECTURE.html` (what
   the system is and does) and `architecture/TECHNICAL_ARCHITECTURE.html` (why it is built
   that way, and how). HTML with inline SVG diagrams, self-contained and theme-aware.
+- **Rewritten**: the data flow section. The old sequence had three participants and showed
+  every credential as "required" by the SSH server, which is wrong for two of the four. The
+  user is now a participant, and the flow distinguishes what the server is actually part
+  of: the host key decision and the key passphrase are settled between daemon and user and
+  never reach the server, whereas the two-factor code is a server-issued challenge the
+  daemon only relays. A second diagram covers the unattended path — daemon and SSH server
+  alone — which is what makes a profile eligible for auto-reconnect.
 - **New**: index documents for `docs/architecture/` and `docs/user-stories/`, a
   documentation table in the README, and a "where documentation lives" table in
   DEVELOPMENT.md.
