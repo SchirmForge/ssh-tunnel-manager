@@ -1,5 +1,10 @@
 # FreeBSD Porting Guide for SSH Tunnel Manager
 
+> **Status: unscheduled.** This plan is kept for reference but is not part of the current
+> cycle. Two notes since it was written: `crates/tray` has been deleted, and `gui-qt` is
+> now excluded from `default-members`, which removes some of the conditional-member
+> gymnastics in §6.
+
 ## Executive Summary
 
 The SSH Tunnel Manager daemon and CLI are **70-80% compatible** with FreeBSD out of the box. The core functionality (SSH tunneling, REST API, SSE) uses pure Rust libraries that are cross-platform. However, there are **3 critical blockers** that prevent compilation and deployment on FreeBSD:
@@ -265,7 +270,6 @@ additional-members = [
     "crates/gui-gtk",
     "crates/gui-qt",
     "crates/gui-core",
-    "crates/tray",
 ]
 ```
 

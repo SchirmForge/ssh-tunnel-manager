@@ -38,11 +38,12 @@ A secure, performant SSH tunnel management application for Linux with CLI interf
 - **Security Hardening**: Comprehensive file/directory permissions, authentication by default, HTTPS enforcement for network access
 
 ### 🚧 Planned
-- Remote port forwarding
 - Dynamic (SOCKS) port forwarding
 - Auto-reconnect/health monitoring wiring
 - Desktop notifications
 - Additional packages
+
+Remote port forwarding (`ssh -R`) is **not planned**. Use `ssh -R` directly if you need it.
 
 ## Installation
 
@@ -239,7 +240,8 @@ For comprehensive security documentation including threat model, remote daemon b
 
 ## Known Limitations
 
-1. **Forwarding Types**: Only local port forwarding implemented (remote/dynamic pending)
+1. **Forwarding Types**: Only local port forwarding is implemented. Dynamic/SOCKS is a
+   future item; remote forwarding (`ssh -R`) is not planned.
 2. **Auto-Reconnect/Health**: Options exist but reconnection/health monitoring isn't wired yet
 3. **Platform**: Primary development on Linux; macOS/Windows untested
 4. **SSH Agent**: File-based keys only (no ssh-agent integration yet)
@@ -270,8 +272,8 @@ See [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md) for detailed implementation
 ### Planned Features 🚧
 
 #### High Priority
-- 🚧 **Remote port forwarding** (`ssh -R`) - Forward remote server ports to local destinations
-- 🚧 **Dynamic/SOCKS proxy** (`ssh -D`) - SOCKS5 proxy for dynamic port forwarding
+- 🚧 **Stability and regression testing** - Automated test coverage, sandboxed test
+  environments, and bug fixing (current focus)
 - 🚧 **Configurable daemon config path** - Pass daemon config file as parameter (default: `~/.config/ssh-tunnel-manager`)
 - 🚧 **Enhanced logging** - Daemon logging with `--debug` option and configurable log levels
   - Options: journalctl integration or dedicated log files
@@ -281,7 +283,9 @@ See [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md) for detailed implementation
 
 #### Future Enhancements
 - Desktop notifications for tunnel status changes
-- Auto-reconnect/health monitoring wiring
+- Auto-reconnect/health monitoring wiring (global setting with a per-profile override,
+  only where authentication needs no human - see docs/PROJECT_STATUS.md)
+- **Dynamic/SOCKS proxy** (`ssh -D`) - SOCKS5 proxy for dynamic port forwarding
 - Packaging (Flatpak, AUR, deb)
 
 ## Contributing

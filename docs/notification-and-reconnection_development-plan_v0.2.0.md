@@ -1,5 +1,36 @@
 # v0.2.0: Desktop Notifications with Automatic Reconnection
 
+> **Corrections applied 2026-08-30, after the stabilisation pass.** This plan was written
+> against an earlier tree and several of its premises no longer hold. Read these first:
+>
+> 1. **`crates/tray` no longer exists.** It had been outside the workspace build since
+>    v0.1.6 and duplicated the SSE client that `crates/common/src/sse.rs` now owns, so it
+>    was deleted. The "Notification Infrastructure ✓ Already implemented" claim in
+>    *Current State Analysis* is therefore **false** - that code is gone.
+>    **Phase 3 (tray notification actions) and §4.2 (tray event handler) do not apply.**
+>    Phase 2's `crates/gui-gtk/src/ui/notifications.rs` becomes the primary
+>    implementation, not a duplicate of an existing one.
+> 2. **§1.3 is already done - skip it.** It asks to extract `connect_and_forward()` from
+>    `run_tunnel()`. That split already exists: `run_tunnel()` is already just
+>    `establish_connection()` plus `monitor_tunnel()`. The retry loop wraps those two
+>    directly.
+> 3. **§1.1's `can_auto_reconnect_without_auth()` is wrong in both directions.** It
+>    rejects unencrypted keys (`PasswordStorage::None`), which are the most common
+>    eligible case, and rejects `Password` + keychain, which the daemon *does* support -
+>    it retrieves stored passwords in `authenticate_with_password()`. Use the eligibility
+>    table in [PROJECT_STATUS.md](PROJECT_STATUS.md) instead.
+> 4. **Auto-reconnect must be a global setting with a per-profile override**, and the
+>    current `auto_reconnect` default of `true` is wrong - it flags 2FA profiles that can
+>    never reconnect unattended. See PROJECT_STATUS.md for the agreed design.
+> 5. **§1.4, §4.1 and §5 are accurate.** `TunnelStatus::Reconnecting` and
+>    `TunnelDomainEvent::Reconnecting` do already exist unused in
+>    `crates/common/src/types.rs`, while the wire types (`daemon::api::OutgoingEvent` and
+>    `common::sse::TunnelEvent`) genuinely lack the variant.
+> 6. **There is now a test suite to extend.** Add reconnection coverage to
+>    `crates/daemon/tests/`, and note that the live tier
+>    (`crates/daemon/tests/live_ssh.rs`) can drop a connection against a real server. See
+>    [DEVELOPMENT.md](DEVELOPMENT.md#testing).
+
 ## Overview
 
 Implement desktop notifications for tunnel disconnect events with options to manually reconnect or automatically reconnect (when auto_reconnect=true and authentication doesn't require user input). This builds on existing notification infrastructure in the tray app and wires up the auto-reconnect configuration that already exists but isn't implemented.

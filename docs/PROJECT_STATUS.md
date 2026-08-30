@@ -43,6 +43,15 @@
   - Help dialog includes comprehensive remote daemon setup guide
   - Copyright updated to SchirmForge, correct GitHub URLs
 
+**Current cycle (post-v0.1.10): stability, not features**
+- ✅ Sandboxed, isolated test suite: a hermetic tier that always runs and a live SSH tier
+  covering every authentication flow
+- ✅ CI from nothing: fmt, `clippy -D warnings`, tests, release build
+- ✅ Removed the orphaned `crates/tray` (outside the workspace build since v0.1.6)
+- ✅ Fixed a lock held across an await in `TunnelManager::stop` that made every
+  cancellation during auth force-abort the tunnel task
+- 🚧 Bug fixing driven by what the live tier turns up
+
 **Future Enhancements (Planned for v0.2.x):**
 - 🚧 **NEW FEATURE - GUI Notification System** - Desktop notifications for tunnel connection events
   - Connected notifications
@@ -110,7 +119,7 @@
 - Uses `start_tunnel_with_events` and `stop_tunnel` helpers from common module
 - Integrates gui-core for profile management, validation, and view models
 - **Profile management UI** - Full CRUD with shared common crate functions
-- See [crates/gui-gtk/README.md](../crates/gui-gtk/README.md) for complete feature list
+- Complete feature list below
   - Create, edit, delete profiles via unified dialog interface
   - "New Profile" button on profiles list page
   - Edit/Delete buttons on profile details page
@@ -138,8 +147,11 @@
 - Bridges QML declarative UI with gui-core business logic (planned; wiring pending)
 - **Technology**: cxx-qt + Qt6 + QML (Qt Quick)
 - **Architecture**: QML for UI, Rust for logic, gui-core for ~60-70% code reuse (planned)
-- **Status**: Skeleton build running; real data, dialogs, and daemon integration are in progress
-- See [crates/gui-qt/README.md](../crates/gui-qt/README.md) and `local-docs/GUI-QT-SKELETON.md` for current state/roadmap
+- **Status**: **Does not currently compile** - the cxx-qt 0.8.0 bridge macro fails to
+  parse (see [crates/gui-qt/README.md](../crates/gui-qt/README.md)). It is therefore
+  excluded from `default-members` in the root `Cargo.toml`: `cargo build` skips it, while
+  `cargo build -p ssh-tunnel-gui-qt` still works for anyone with Qt6 installed. Use the
+  GTK GUI meanwhile.
 
 ## Current Capabilities
 
@@ -159,12 +171,14 @@
 ✅ GNOME Settings-style UI with proper switch styling
 ✅ DEB packaging
 
-❌ Remote forwarding
-❌ Dynamic/SOCKS forwarding
-❌ Auto-reconnect/health monitoring (options exist but not wired)
-❌ System tray/notifications/systemd integration
+✅ Sandboxed test suite (hermetic tier plus a live SSH tier), CI, clippy clean
+
+❌ Remote forwarding (not planned)
+❌ Dynamic/SOCKS forwarding (future, unscheduled)
+❌ Auto-reconnect/health monitoring (options exist but not wired; design decided below)
+❌ System tray (crate removed in the stabilisation pass; to be rewritten if wanted)
+❌ Desktop notifications
 ❌ Packaging (Flatpak/AUR)
-❌ Stale tests in `crates/common` need fixing
 
 ## Security Notes
 
@@ -243,22 +257,36 @@
   - 🚧 AUR (PKGBUILD needed)
   - 🚧 Flatpak (to be confirned)
 
+#### Stability and Regression Testing (current focus)
+- Status: **In progress**
+- Description: Automated test coverage, sandboxed test environments, and bug fixing,
+  rather than new features
+- Delivered:
+  - ✅ Sandbox isolation via `XDG_CONFIG_HOME`/`XDG_RUNTIME_DIR` (`scripts/sandbox.sh`)
+  - ✅ Tier-1 integration tests against a real daemon (`crates/daemon/tests/daemon_api.rs`)
+  - ✅ Tier-2 live SSH tests covering every auth flow (`crates/daemon/tests/live_ssh.rs`)
+  - ✅ `scripts/dev-env.sh` for one-command manual/GUI testing
+  - ✅ CI (`.github/workflows/ci.yml`); `cargo clippy -- -D warnings` clean
+  - ✅ Removed the orphaned `crates/tray`
+- Remaining:
+  - 🚧 Fix whatever the live tier turns up once the test accounts exist
+  - 🚧 Decide whether `AUTH_RESPONSE_TIMEOUT` (60s) is the right unattended value
+
 #### Remote Port Forwarding (`ssh -R`)
-- Status: **Planned** - Infrastructure ready, implementation needed
-- Files: See `~/.claude/plans/remote-forwarding-implementation.md`
-- Components:
-  - 🚧 Daemon: Implement `run_remote_forward_task()` using russh reverse forwarding API
-  - 🚧 CLI: Add `--forwarding-type` argument for profile creation
-  - 🚧 GUI: Add forwarding type dropdown in profile dialog
-- Estimated effort: 12-19 hours
+- Status: ❌ **Not planned.** Dropped from the roadmap - no use case has come up. Use
+  `ssh -R` directly. `ForwardingType::Remote` remains in the enum because it is
+  serialised in existing profile TOML, but no implementation is intended.
 
 #### Dynamic/SOCKS Proxy (`ssh -D`)
-- Status: **Planned** - Similar to remote forwarding
+- Status: **Future, unscheduled**
 - Description: SOCKS5 proxy for dynamic port forwarding
 - Components:
   - 🚧 Daemon: Implement `run_dynamic_forward_task()` with SOCKS5 protocol handling
   - 🚧 CLI: Support `--forwarding-type dynamic`
   - 🚧 GUI: Add to forwarding type dropdown
+  - Note: `ForwardingType::Local` is currently hardcoded at profile creation in both
+    clients (`crates/cli/src/main.rs`, `crates/gui-gtk/src/ui/profile_dialog.rs`), so
+    this is not a daemon-only change
 
 #### Configurable Daemon Config Path
 - Status: **Planned**
@@ -310,10 +338,47 @@
 ### Future Enhancements 📅
 
 #### Auto-Reconnect/Health Monitoring
-- Status: **Config exists, wiring needed**
-- Description: Wire `auto_reconnect`/monitoring to actual reconnection and health checks
-- Current: Options exist in profile config but not implemented
-- Files: `crates/daemon/src/tunnel.rs`
+- Status: **Config exists, wiring needed. Design decided, not implemented.**
+- Current: `TunnelOptions.auto_reconnect`, `reconnect_attempts` and `reconnect_delay` are
+  read from profiles and surfaced in the CLI and GUI, but nothing acts on them.
+  `run_tunnel()` connects once, and `crates/daemon/src/monitor.rs` is an empty stub.
+- Files: `crates/daemon/src/tunnel.rs`, `crates/daemon/src/monitor.rs`
+
+**Design decisions taken (to implement later):**
+
+1. **Global setting with a per-profile override.** Today `auto_reconnect` is per-profile
+   only. A daemon-wide default belongs in `daemon.toml`, since the daemon is what would
+   perform the reconnection, with the profile field becoming `Option<bool>`: `None`
+   inherits the global, `Some(_)` overrides it. Existing profiles carrying
+   `auto_reconnect = true` still deserialise unchanged, so this is backward compatible.
+
+2. **Never auto-reconnect where authentication needs a human.** Reconnecting is only
+   meaningful when the daemon can authenticate unattended:
+
+   | Auth setup | Can reconnect unattended? |
+   |---|---|
+   | `Key` + unencrypted key (`PasswordStorage::None`) | ✅ yes |
+   | `Key` + passphrase in keychain | ✅ yes |
+   | `Password` + password in keychain | ✅ yes - the daemon does retrieve it |
+   | `Password`, not stored | ❌ prompts |
+   | `PasswordWith2FA` | ❌ **never**, stored password or not - a TOTP code is single-use |
+
+   An unencrypted key cannot be detected without trying to load it, so treat
+   "key + storage None" as eligible and let a failed load fall back to the no-reconnect
+   path.
+
+3. **The current default is wrong and must change with this work.**
+   `default_auto_reconnect()` returns `true`, so every profile - including 2FA ones that
+   can never reconnect unattended - is currently flagged for auto-reconnect. It is
+   harmless only because nothing acts on the flag.
+
+4. **Surface ineligibility in the UI** rather than silently ignoring the setting: where a
+   profile's auth setup makes unattended reconnection impossible, the CLI flag and the
+   GUI's Advanced accordion should show the control as unavailable, with the reason.
+
+> The v0.2.0 plan doc's proposed `can_auto_reconnect_without_auth()` is wrong in both
+> directions - it rejects unencrypted keys (the most common eligible case) and rejects
+> `Password` + keychain (which the daemon does support). Use the table above instead.
 
 #### System Integration
 - Status: **Partial** - systemd units exist - other might not be implemented
@@ -325,10 +390,16 @@
   
 ### Known Issues / Technical Debt 🔧
 
-- ❌ Fix outdated tests in `crates/common` (profile manager schema drift)
+- ✅ ~~Fix outdated tests in `crates/common`~~ - the "schema drift" was a misdiagnosis;
+  the fixtures matched the structs and every test passed once run. The real problems were
+  isolation (two tests read the developer's real `~/.config`, and the pidfile test could
+  delete a running daemon's PID file) and missing coverage. Both fixed.
 - ❌ Clarify token handoff so CLI can consume it without logging secrets
-- 🚧 Remote forwarding not implemented (returns error)
+- ❌ `crates/daemon/src/monitor.rs` is an empty stub, but ARCHITECTURE.md described a
+  health-monitoring loop as if it shipped (corrected)
 - 🚧 Dynamic/SOCKS forwarding not implemented (returns error)
+- 🚧 `crates/gui-qt` does not compile (cxx-qt bridge macro); excluded from
+  `default-members` so it cannot break the default build or CI
 
 ## Quick Commands
 
@@ -336,8 +407,8 @@
 # Build CLI + daemon
 cargo build --package ssh-tunnel-cli --package ssh-tunnel-daemon
 
-# Release build
-cargo build --release --package ssh-tunnel-cli --package ssh-tunnel-daemon
+# Release build (default-members: excludes gui-qt)
+cargo build --release
 
 # Run with logs
 RUST_LOG=debug cargo run --package ssh-tunnel-daemon
@@ -345,6 +416,17 @@ RUST_LOG=debug cargo run --package ssh-tunnel-daemon
 # Start a tunnel (prompts via SSE)
 ssh-tunnel start <profile>
 
-# Tests (fix pending failures in common tests)
-cargo test
+# Tests - hermetic; no network, no credentials
+make test
+
+# Live SSH tests (needs .local/testing/ssh-target.env; skips without it)
+make test-live
+
+# Disposable sandbox with a daemon and seeded profiles
+make sandbox ARGS="--profiles key,password,2fa"
+
+# Everything CI runs
+make check
 ```
+
+See [DEVELOPMENT.md](DEVELOPMENT.md#testing) for the full testing guide.

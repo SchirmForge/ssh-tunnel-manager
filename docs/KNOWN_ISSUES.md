@@ -1,6 +1,6 @@
 # Known Issues & Limitations
 
-This document tracks known bugs, limitations, and missing features in SSH Tunnel Manager v0.1.9.
+This document tracks known bugs, limitations, and missing features in SSH Tunnel Manager v0.1.10.
 
 ## Known Bugs
 
@@ -14,21 +14,25 @@ This document tracks known bugs, limitations, and missing features in SSH Tunnel
   - **Status**: Considering encrypted storage for v0.2.0
 
 #### Edge Cases
-- **60-second timeout when canceling tunnel during auth phase**
+- **60-second wait when no client answers an authentication prompt**
   - Occurs when no GUI/CLI client is connected during authentication
-  - Daemon waits for auth response that never comes
-  - **Impact**: Tunnel stops eventually but takes 60 seconds
-  - **Workaround**: Use GUI or CLI to cancel tunnels properly
-  - **Status**: Investigating async cancellation improvements
+  - The daemon waits out `AUTH_RESPONSE_TIMEOUT` for a response that never comes
+  - **Impact**: The tunnel stops eventually, but takes 60 seconds
+  - **Workaround**: Use the GUI or CLI to cancel tunnels properly
+  - **Status**: Partly addressed. `TunnelManager::stop` used to hold the `tunnels` write
+    lock across the await on the tunnel task, which the task itself needed to finish, so
+    every cancellation during auth force-aborted after a timeout instead of stopping
+    cleanly. That is fixed. The remaining 60 seconds is `AUTH_RESPONSE_TIMEOUT` elapsing
+    when *nothing* cancels, which is the timeout working as designed; whether 60s is the
+    right value is open. Regression test:
+    `stopping_during_authentication_returns_promptly` in `crates/daemon/tests/live_ssh.rs`
 
 #### Testing
-- **Outdated tests in `crates/common`**
-  - Profile manager tests need updating for current ProfileMetadata structure
-  - Daemon client tests need updating for new field structure
-  - All other crates have passing tests
-  - **Impact**: Development only - does not affect production usage
-  - **Workaround**: None needed for users
-  - **Status**: Planned for v0.2.0
+- ~~**Outdated tests in `crates/common`**~~ - **Resolved.** The claim was inaccurate: the
+  fixtures matched the current structs and all tests passed once run. What they actually
+  lacked was isolation (two tests read the developer's real `~/.config`, and the pidfile
+  test could delete a running daemon's PID file) and coverage. Both are fixed, and
+  `cargo test` and `cargo clippy -- -D warnings` are now clean.
 
 ### 🔧 Minor Issues
 
@@ -41,12 +45,12 @@ None listed yet
 #### Not Yet Implemented
 
 **Remote Port Forwarding** (`ssh -R`)
-- **Status**: Planned for v0.2.0
+- **Status**: **Not planned.** Dropped from the roadmap; no use case has come up
 - **Current**: Only local port forwarding (`ssh -L`) is available
 - **Workaround**: Use OpenSSH command-line directly for remote forwarding
 
 **Dynamic/SOCKS Proxy** (`ssh -D`)
-- **Status**: Planned for v0.2.0
+- **Status**: Future item, unscheduled
 - **Current**: Only local port forwarding (`ssh -L`) is available
 - **Workaround**: Use OpenSSH command-line directly for SOCKS proxy
 
@@ -104,11 +108,13 @@ None listed yet
 
 ### ❌ Authentication
 
-**Remote Host Password Storage**
-- **Status**: Planned for future release
-- **Current**: Only SSH key passphrases can be stored in keyring
-- **Impact**: Keyboard-interactive and password auth require manual entry each time
-- **Workaround**: Use SSH keys instead of passwords:
+**Two-factor codes cannot be stored**
+- **Status**: Inherent - a TOTP code is single-use by design
+- **Current**: SSH key passphrases *and* passwords can both be stored in the keyring; the
+  daemon retrieves them automatically (`crates/daemon/src/tunnel.rs`). Only the
+  keyboard-interactive second factor must be entered each time
+- **Impact**: `PasswordWith2FA` profiles always require a human
+- **Workaround**: Use SSH keys where unattended connection matters:
   ```bash
   ssh-keygen -t ed25519
   ssh-copy-id user@remote-host
@@ -157,7 +163,8 @@ None listed yet
 ### Headless Servers
 - **Issue**: Keyring unavailable without graphical session
 - **Solution**: Set `SSH_TUNNEL_SKIP_KEYRING=1` environment variable
-- See [Headless Setup](headless-setup.md) for detailed guide
+- See [SYSTEMD.md](SYSTEMD.md) and the "Server and Headless Environments" section of the
+  [README](../README.md#server-and-headless-environments) for detailed guidance
 
 ### SELinux/AppArmor
 - **Issue**: No official policies
@@ -202,7 +209,8 @@ Quick reference for common issues:
 | GUI disconnected | `systemctl --user restart ssh-tunnel-daemon` |
 | Auth failures | Check token in `~/.config/ssh-tunnel-manager/cli.toml` |
 | Keyring unavailable | `export SSH_TUNNEL_SKIP_KEYRING=1` |
-| Need remote forwarding | Use `ssh -R` directly until v0.2.0 |
-| Need SOCKS proxy | Use `ssh -D` directly until v0.2.0 |
+| Need remote forwarding | Use `ssh -R` directly (not planned here) |
+| Need SOCKS proxy | Use `ssh -D` directly for now |
 
-See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for detailed troubleshooting steps.
+See the [Troubleshooting section of the Installation Guide](INSTALLATION.md#troubleshooting)
+for detailed troubleshooting steps.

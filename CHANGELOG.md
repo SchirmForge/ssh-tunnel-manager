@@ -7,6 +7,89 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Stabilisation pass: no new user-facing features. The focus is automated regression
+testing, a fast setup path for manual testing, and bug fixing.
+
+### Added
+- **Test sandbox** (`scripts/sandbox.sh`) - redirects `XDG_CONFIG_HOME` and
+  `XDG_RUNTIME_DIR` so a test run gets its own profiles, config, token, `known_hosts`,
+  socket and PID file. Needed no production code changes.
+- **Tier-1 integration tests** (`crates/daemon/tests/daemon_api.rs`) - 14 tests running a
+  real daemon per test and driving its REST/SSE API through the real client: health and
+  info per listener mode, token missing/wrong/correct, the loopback-only rule for plain
+  HTTP, socket 0600 / runtime dir 0700 / token 0600, the single-instance PID guard, and
+  SSE connect, heartbeat and auth.
+- **Tier-2 live SSH tests** (`crates/daemon/tests/live_ssh.rs`) - the authentication
+  flows, previously only ever tested by hand: host key verification and refusal of a
+  changed key, key auth, encrypted-key passphrase prompting, password auth,
+  wrong-password re-prompting, 2FA, the keyboard-interactive retry fixed in v0.1.10,
+  traffic actually flowing through the forward, and teardown both while connected and
+  mid-authentication. TOTP codes are generated in-test (verified against the RFC 6238
+  vectors) so 2FA needs no human. All `#[ignore]`d, and they skip when unconfigured.
+- **`scripts/dev-env.sh`** - one command for a disposable sandbox with a daemon, a wired
+  `cli.toml`, seeded profiles per auth type, and the debug binaries on `PATH`. This is how
+  the GTK GUI gets tested.
+- **CI** (`.github/workflows/ci.yml`) - there was none. Runs fmt, `clippy -D warnings`,
+  the hermetic tests and a release build on every push, plus the network-mode script. The
+  live job is `workflow_dispatch` only, so credentials never reach an untrusted PR.
+- New `make` targets: `test-live`, `test-network-modes`, `sandbox`, `run-gui-qt`.
+- Test coverage for the `PasswordStorage` boolean-to-enum migration, profile save/load/
+  delete round-tripping, IPv6 daemon URL bracketing, and stale/corrupt PID file recovery.
+
+### Fixed
+- **`TunnelManager::stop` held the `tunnels` write lock across the await on the tunnel
+  task**, which the task itself needed in order to finish. Every cancellation during
+  connect or authentication therefore timed out and force-aborted the task instead of
+  stopping cleanly. The lock is now released before waiting, and the grace period goes
+  from 100ms to 2s since it no longer has to paper over the deadlock.
+- **Tests could damage a developer's working setup.** `pidfile` tests called
+  `PidFileGuard::create()`, which resolves the real
+  `$XDG_RUNTIME_DIR/ssh-tunnel-manager/daemon.pid`: with a daemon running the test failed,
+  and with none running it would create and then delete the real PID file. `profile_manager`
+  tests read the real `~/.config`. Both are now sandboxed, via a new
+  `PidFileGuard::create_at`.
+- **`cargo clippy` did not compile.** `profiles.len() >= 0` in a common test is always
+  true on a `usize` and trips the deny-by-default `absurd_extreme_comparisons`. All
+  clippy warnings across daemon, cli, common, gui-core and gui-gtk are now clear, so
+  `make clippy` (`-D warnings`) passes.
+- **Six `await_holding_refcell_ref` sites in gui-gtk** held a
+  `RefCell<Option<DaemonClient>>` borrow across an await on a daemon call, risking an
+  "already borrowed" panic since the surrounding code borrows other cell state on the
+  success path. The client is now cloned out of the cell before awaiting.
+- **`scripts/test-network-modes.sh` was destructive** - it ran
+  `rm -rf "$HOME/.config/ssh-tunnel-manager"`. It now runs entirely in a sandbox. One of
+  its assertions was also wrong: it expected HTTPS without a pinned fingerprint to
+  connect, but a self-signed daemon certificate is correctly refused. Its old oracle
+  reported success down both branches of every connection check, so it could not have
+  caught this.
+
+### Removed
+- **`crates/tray`** - outside the workspace build since v0.1.6, so never compiled by
+  `cargo build`, `cargo test` or clippy, and carrying a duplicate of the `TunnelEvent`
+  enum and SSE parser that `crates/common/src/sse.rs` was consolidated to own in v0.1.10.
+  System tray support becomes a future feature to be written against the current
+  architecture.
+- Unused workspace dependencies: `ksni` (tray only), `tokio-tungstenite` and `ashpd`
+  (referenced by no member crate).
+
+### Changed
+- **`gui-qt` excluded from `default-members`.** It requires Qt6 and does not currently
+  compile, so a bare `cargo build` no longer fails because of it. It remains a workspace
+  member, so `cargo build -p ssh-tunnel-gui-qt` still works.
+- **Remote port forwarding (`ssh -R`) dropped from the roadmap.** No use case has come
+  up; use `ssh -R` directly. `ForwardingType::Remote` stays in the enum because it is
+  serialised in existing profile TOML. Dynamic/SOCKS remains a future item.
+- Auto-reconnect design decided and recorded in `docs/PROJECT_STATUS.md` (global setting
+  with a per-profile override, never attempted where authentication needs a human). No
+  implementation yet.
+- Documentation corrected against the code: ARCHITECTURE.md described a health-monitoring
+  loop as if it shipped (`monitor.rs` is an empty stub); KNOWN_ISSUES.md claimed the
+  `crates/common` tests were stale (they were not - they passed, but were unisolated) and
+  that only key passphrases could be stored in the keyring (passwords can too); three
+  dead documentation links fixed.
+- `Makefile` `install` and `run-gui` referenced `ssh-tunnel-gui`, which is neither a
+  package (`ssh-tunnel-gui-gtk`) nor a binary (`ssh-tunnel-gtk`).
+
 ---
 
 ## [0.1.10] - 2026-01-02

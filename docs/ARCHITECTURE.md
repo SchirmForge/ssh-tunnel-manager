@@ -357,7 +357,11 @@ Daemon
     └─→ WebSocket: emit "connected" event
 ```
 
-### Health Monitoring
+### Health Monitoring (planned - not implemented)
+
+`crates/daemon/src/monitor.rs` is an empty stub, and `run_tunnel()` connects exactly once
+with no retry loop. The `auto_reconnect`, `reconnect_attempts` and `reconnect_delay`
+profile options are read from config but nothing acts on them yet. The intended design:
 
 ```
 Daemon (background task)
@@ -369,7 +373,8 @@ Daemon (background task)
         │
         └─→ If failed:
             ├─→ Emit "disconnected" event
-            ├─→ Attempt reconnect (configurable)
+            ├─→ Attempt reconnect (configurable, and only where authentication
+            │   needs no human - see PROJECT_STATUS.md)
             └─→ Emit "reconnected" or "failed" event
 ```
 
@@ -503,9 +508,9 @@ Planned (not yet implemented): profile CRUD endpoints.
 ### GUI Dependencies
 - `gtk4-rs`: GTK4 bindings
 - `libadwaita`: GNOME styling
-- `ksni`: System tray
 - `reqwest`: HTTP client
-- `tokio-tungstenite`: WebSocket
+- `pulldown-cmark`: Markdown rendering for Help/About
+- `notify-rust`: Desktop notifications (declared for the planned notification work)
 
 ### CLI Dependencies
 - `clap`: CLI parsing
@@ -550,29 +555,60 @@ Planned (not yet implemented): profile CRUD endpoints.
 
 ## Testing Strategy
 
-### Unit Tests
-- Configuration parsing/validation
-- State machine transitions
-- API request/response handling
-- Error scenarios
+Tests run in two tiers. The dividing line is whether a real SSH server is needed.
+See [DEVELOPMENT.md](DEVELOPMENT.md#testing) for how to run them.
 
-### Integration Tests
-- Full tunnel lifecycle
-- 2FA workflow
-- Auto-reconnect
-- Multiple simultaneous tunnels
+### Test isolation
 
-### Manual Testing
-- Different SSH server configurations
-- Network interruption scenarios
-- GUI responsiveness
-- System tray behavior
+Every config path resolves through `dirs::config_dir()`, and the socket and PID file
+through `dirs::runtime_dir()`. On Linux those honour `XDG_CONFIG_HOME` and
+`XDG_RUNTIME_DIR`, so redirecting those two variables gives a test run its own private
+tree - profiles, `cli.toml`, `daemon.toml`, `daemon.token`, `known_hosts`, the socket and
+the PID file. Nothing needed to change in production code to make this work.
+
+`scripts/sandbox.sh` provides this for shell scripts; `crates/daemon/tests/harness/` sets
+the same variables on the spawned daemon's environment rather than the test process's, so
+tests still run in parallel. **A test must never touch the developer's real
+`~/.config/ssh-tunnel-manager` or a running daemon.**
+
+### Tier 1: hermetic (`cargo test`)
+
+No network, no secrets, runs on every CI build.
+
+- **Unit** - config parsing and validation, profile TOML round-trip including the
+  `PasswordStorage` boolean-to-enum migration, `known_hosts` entry parsing, token
+  generation, TLS fingerprints, PID file recovery from stale and corrupt files
+- **Integration** (`crates/daemon/tests/daemon_api.rs`) - a real daemon process driven
+  through the REST/SSE API: health and info in each listener mode, token
+  missing/wrong/correct, the loopback-only rule for plain HTTP, socket and directory
+  permissions, the single-instance guard, and SSE connect/heartbeat/auth
+
+### Tier 2: live SSH (`cargo test -- --ignored`)
+
+Real connections to a real server. `#[ignore]`d, and skips when unconfigured, so it never
+runs by accident. Covers what only a real SSH server can exercise:
+
+- Host key verification on first connect, and refusal of a changed key
+- Key auth, encrypted-key passphrase prompting, password auth
+- Wrong password and wrong 2FA code being re-prompted rather than failing the tunnel
+- 2FA with generated TOTP codes
+- Traffic actually flowing through the forward (the SSH banner is read back)
+- Teardown while connected, and teardown mid-authentication
+
+Host names and credentials live only in `.local/testing/ssh-target.env`, which is
+gitignored. No committed file contains them.
+
+### Manual testing
+
+`scripts/dev-env.sh` opens a sandbox with a daemon and seeded profiles, which is how the
+GTK GUI is exercised - it is not automated. `scripts/test-network-modes.sh` drives the CLI
+against all three listener modes including TLS pinning.
 
 ### Security Testing
 - Credential storage audit
 - Process inspection (no secrets in memory dumps)
-- Filesystem permissions
-- API authorization
+- Filesystem permissions (asserted in tier 1)
+- API authorization (asserted in tier 1)
 
 ## Flatpak Packaging
 
