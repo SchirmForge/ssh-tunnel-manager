@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Technical Architecture — SSH Tunnel Manager</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --bg-soft: #f6f7f9;
+    --bg-code: #f2f3f5;
+    --fg: #1c1e21;
+    --fg-muted: #5c6370;
+    --border: #d8dce1;
+    --accent: #2b6cb0;
+    --ok: #2f7d4f;
+    --warn: #9a6700;
+    --bad: #b42318;
+    --diagram-client: #e4eefa;
+    --diagram-daemon: #eef3ea;
+    --diagram-ext: #f4eef7;
+    --diagram-stroke: #7d8794;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16181c;
+      --bg-soft: #1e2128;
+      --bg-code: #23262d;
+      --fg: #e6e8eb;
+      --fg-muted: #9aa2ad;
+      --border: #333842;
+      --accent: #6fa8dc;
+      --ok: #6bbf8a;
+      --warn: #d9a441;
+      --bad: #e57368;
+      --diagram-client: #1d2937;
+      --diagram-daemon: #1e2a22;
+      --diagram-ext: #272033;
+      --diagram-stroke: #6b7280;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0 auto;
+    padding: 2.5rem 1.5rem 5rem;
+    max-width: 62rem;
+    background: var(--bg);
+    color: var(--fg);
+    font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  h1 { font-size: 2rem; margin: 0 0 .25rem; letter-spacing: -.02em; }
+  h2 {
+    font-size: 1.4rem; margin: 3rem 0 .75rem;
+    padding-bottom: .35rem; border-bottom: 2px solid var(--border);
+  }
+  h3 { font-size: 1.1rem; margin: 2rem 0 .5rem; }
+  h4 { font-size: .95rem; margin: 1.25rem 0 .35rem; color: var(--fg-muted); text-transform: uppercase; letter-spacing: .05em; }
+  a { color: var(--accent); }
+  code {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    font-size: .875em; background: var(--bg-code);
+    padding: .12em .35em; border-radius: 4px;
+  }
+  pre {
+    background: var(--bg-code); border: 1px solid var(--border);
+    border-radius: 8px; padding: .9rem 1.1rem; overflow-x: auto;
+  }
+  pre code { background: none; padding: 0; font-size: .84rem; line-height: 1.55; }
+
+  .subtitle { color: var(--fg-muted); margin: 0 0 2rem; }
+  .meta { display: flex; flex-wrap: wrap; gap: .5rem 1.25rem; font-size: .9rem; color: var(--fg-muted); margin-bottom: 2rem; }
+
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .92rem; display: block; overflow-x: auto; }
+  th, td { text-align: left; padding: .55rem .7rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { background: var(--bg-soft); font-weight: 600; white-space: nowrap; }
+  tbody tr:last-child td { border-bottom: none; }
+
+  .note {
+    background: var(--bg-soft); border-left: 3px solid var(--accent);
+    padding: .8rem 1rem; border-radius: 0 6px 6px 0; margin: 1.25rem 0;
+  }
+  .note.warn { border-left-color: var(--warn); }
+  .note p:first-child { margin-top: 0; }
+  .note p:last-child { margin-bottom: 0; }
+
+  .status { font-weight: 600; white-space: nowrap; }
+  .status.ok { color: var(--ok); }
+  .status.partial { color: var(--warn); }
+  .status.no { color: var(--bad); }
+
+  .decision { border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.25rem; margin: 1.25rem 0; }
+  .decision h3 { margin-top: 0; }
+  .decision dl { margin: .5rem 0 0; }
+  .decision dt { font-weight: 600; color: var(--fg-muted); font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; margin-top: .8rem; }
+  .decision dd { margin: .2rem 0 0; }
+
+  figure { margin: 1.75rem 0; }
+  figure svg { width: 100%; height: auto; display: block; }
+  figcaption { color: var(--fg-muted); font-size: .875rem; margin-top: .6rem; text-align: center; }
+
+  .d-label { font: 600 13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; fill: var(--fg); }
+  .d-sub   { font: 11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fill: var(--fg-muted); }
+  .d-title { font: 700 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; fill: var(--fg-muted); letter-spacing: .06em; }
+  .d-edge  { stroke: var(--diagram-stroke); stroke-width: 1.5; fill: none; }
+  .d-box   { stroke: var(--diagram-stroke); stroke-width: 1.2; }
+  .d-client { fill: var(--diagram-client); }
+  .d-daemon { fill: var(--diagram-daemon); }
+  .d-ext    { fill: var(--diagram-ext); }
+  .d-group  { fill: none; stroke: var(--border); stroke-width: 1.5; stroke-dasharray: 5 4; }
+  .d-arrowhead { fill: var(--diagram-stroke); }
+  .d-dim   { opacity: .55; }
+
+  nav.toc { background: var(--bg-soft); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.25rem; }
+  nav.toc ol { margin: .35rem 0 0; padding-left: 1.3rem; }
+  nav.toc li { margin: .15rem 0; }
+
+  footer { margin-top: 4rem; padding-top: 1rem; border-top: 1px solid var(--border); color: var(--fg-muted); font-size: .875rem; }
+
+  @media print {
+    body { max-width: none; padding: 0; font-size: 11pt; color: #000; background: #fff; }
+    h2 { page-break-after: avoid; }
+    figure, table, pre, .decision { page-break-inside: avoid; }
+    nav.toc { display: none; }
+    a { color: #000; text-decoration: underline; }
+  }
+</style>
+</head>
+<body>
+
+<h1>Technical Architecture</h1>
+<p class="subtitle">SSH Tunnel Manager — the decisions behind the implementation, and how the code is organised.</p>
+
+<div class="meta">
+  <span><strong>Version</strong> v0.1.11</span>
+  <span><strong>Audience</strong> Contributors</span>
+  <span><strong>Companion</strong> <a href="FUNCTIONAL_ARCHITECTURE.html">Functional Architecture</a></span>
+</div>
+
+<nav class="toc">
+  <strong>Contents</strong>
+  <ol>
+    <li><a href="#decisions">Key design decisions</a></li>
+    <li><a href="#crates">Crate layout</a></li>
+    <li><a href="#concurrency">Concurrency and task model</a></li>
+    <li><a href="#deps">Dependency strategy</a></li>
+    <li><a href="#testing">Testing strategy</a></li>
+    <li><a href="#build">Build and packaging</a></li>
+  </ol>
+</nav>
+
+<h2 id="decisions">1. Key design decisions</h2>
+
+<div class="decision">
+  <h3>1.1 Event-driven authentication</h3>
+  <dl>
+    <dt>Decision</dt>
+    <dd>The daemon emits an event when it needs a credential; the client prompts and answers over the API. The daemon never blocks on a human.</dd>
+    <dt>Rationale</dt>
+    <dd>Supports multi-step flows (key, then password, then keyboard-interactive) without the daemon knowing which client is attached. It can therefore run as a system service with no controlling terminal, and the CLI and GUI behave identically.</dd>
+    <dt>Implementation</dt>
+    <dd>A <code>oneshot</code> channel per prompt, held in the tunnel's <code>pending_auth</code> slot and answered through <code>POST /api/tunnels/{id}/auth</code>. The request carries an id that must match, so a stale answer cannot be replayed. Dropping the sender cancels the wait immediately, which is how a stop mid-authentication returns without sitting out <code>AUTH_RESPONSE_TIMEOUT</code>.</dd>
+  </dl>
+</div>
+
+<div class="decision">
+  <h3>1.2 REST for commands, SSE for updates</h3>
+  <dl>
+    <dt>Decision</dt>
+    <dd>A small REST API for actions, and a Server-Sent Events stream for state changes.</dd>
+    <dt>Rationale</dt>
+    <dd>REST is trivially debuggable with <code>curl</code>. SSE gives server push without WebSocket framing, works unchanged over a Unix socket, HTTP and HTTPS, and is browser-compatible should a web UI ever appear.</dd>
+    <dt>Alternatives considered</dt>
+    <dd><strong>gRPC</strong> — disproportionate here, and harder to inspect. <strong>WebSocket</strong> — bidirectional framing that nothing needs, since commands already have a natural request/response shape. <strong>D-Bus</strong> — Linux-only and awkward from async Rust.</dd>
+    <dt>Consequence</dt>
+    <dd>SSE is one-directional, so an auth answer travels as a separate POST rather than back up the stream. That split is why the request-id check in 1.1 exists.</dd>
+  </dl>
+</div>
+
+<div class="decision">
+  <h3>1.3 Hybrid profile mode for remote daemons</h3>
+  <dl>
+    <dt>Decision</dt>
+    <dd>When the daemon is remote, the client sends the profile with the start request, but the SSH private key stays on the daemon host and is referenced by filename.</dd>
+    <dt>Rationale</dt>
+    <dd>The private key never crosses the network, in either direction, so there is no key synchronisation, no encrypted transfer format, and no new place for a key to leak. The user copies keys to the daemon host once, deliberately.</dd>
+    <dt>Implementation</dt>
+    <dd><code>ProfileSourceMode::{Local, Hybrid, Remote}</code>. <code>prepare_profile_for_remote()</code> reduces the key path to its filename before transmission; the daemon resolves it against its own SSH directory and reports that directory through <code>DaemonInfo.ssh_key_dir</code> so error messages can name the real path.</dd>
+  </dl>
+</div>
+
+<div class="decision">
+  <h3>1.4 One Tokio task per tunnel</h3>
+  <dl>
+    <dt>Decision</dt>
+    <dd>A single async runtime, with one <code>tokio::spawn</code> per active tunnel.</dd>
+    <dt>Rationale</dt>
+    <dd>Tokio multiplexes tasks over a work-stealing pool, so a tunnel costs a task rather than a thread. Each task owns its state and its own shutdown channel, so tunnels fail and stop independently.</dd>
+    <dt>Alternative considered</dt>
+    <dd>A thread per tunnel — needless overhead, and harder to cancel cleanly.</dd>
+    <dt>Consequence</dt>
+    <dd>Shared state lives behind <code>Arc&lt;RwLock&lt;HashMap&lt;Uuid, ActiveTunnel&gt;&gt;&gt;</code>, which makes lock discipline load-bearing. See <a href="#concurrency">§3</a>.</dd>
+  </dl>
+</div>
+
+<div class="decision">
+  <h3>1.5 Optional keychain</h3>
+  <dl>
+    <dt>Decision</dt>
+    <dd>Use the OS keyring where one exists, and degrade gracefully where it does not.</dd>
+    <dt>Rationale</dt>
+    <dd>Encryption at rest is the OS's job, not ours. But the same binaries have to work on a headless server with no Secret Service, so an unavailable keyring must never be fatal — profile creation still succeeds, and the credential is simply asked for each time.</dd>
+    <dt>Implementation</dt>
+    <dd>Availability is determined by attempting a real keyring operation, not by guessing from environment variables. <code>SSH_TUNNEL_SKIP_KEYRING=1</code> forces it off for automation. <code>PasswordStorage</code> is an enum (<code>none</code> / <code>keychain</code> / <code>file</code>) that still deserialises the pre-v0.1.7 boolean form.</dd>
+  </dl>
+</div>
+
+<h2 id="crates">2. Crate layout</h2>
+
+<figure>
+<svg viewBox="0 0 900 330" role="img" aria-labelledby="crates-title">
+  <title id="crates-title">Crate dependency graph: common underpins daemon, cli and gui-core; gui-core underpins gui-gtk and gui-qt</title>
+  <defs>
+    <marker id="arrow3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" class="d-arrowhead"/>
+    </marker>
+  </defs>
+
+  <!-- binaries row -->
+  <text x="30" y="34" class="d-title">BINARIES</text>
+
+  <rect x="30" y="46" width="180" height="52" rx="6" class="d-box d-daemon"/>
+  <text x="46" y="68" class="d-label">ssh-tunnel-daemon</text>
+  <text x="46" y="85" class="d-sub">crates/daemon</text>
+
+  <rect x="240" y="46" width="180" height="52" rx="6" class="d-box d-client"/>
+  <text x="256" y="68" class="d-label">ssh-tunnel</text>
+  <text x="256" y="85" class="d-sub">crates/cli</text>
+
+  <rect x="450" y="46" width="180" height="52" rx="6" class="d-box d-client"/>
+  <text x="466" y="68" class="d-label">ssh-tunnel-gtk</text>
+  <text x="466" y="85" class="d-sub">crates/gui-gtk</text>
+
+  <rect x="660" y="46" width="210" height="52" rx="6" class="d-box d-ext d-dim"/>
+  <text x="676" y="68" class="d-label">ssh-tunnel-qt</text>
+  <text x="676" y="85" class="d-sub">crates/gui-qt — does not build</text>
+
+  <!-- gui-core -->
+  <text x="30" y="150" class="d-title">SHARED</text>
+  <rect x="450" y="162" width="420" height="48" rx="6" class="d-box d-client"/>
+  <text x="466" y="182" class="d-label">gui-core</text>
+  <text x="466" y="199" class="d-sub">framework-agnostic GUI logic: view models, AppCore state, profile ops</text>
+
+  <path d="M 540 162 L 540 100" class="d-edge" marker-end="url(#arrow3)"/>
+  <path d="M 765 162 L 765 100" class="d-edge d-dim" marker-end="url(#arrow3)"/>
+
+  <!-- common -->
+  <rect x="30" y="246" width="840" height="52" rx="6" class="d-box d-daemon"/>
+  <text x="46" y="268" class="d-label">common</text>
+  <text x="46" y="285" class="d-sub">types · profile I/O · daemon client · SSE EventListener · keychain · TLS · validation</text>
+
+  <path d="M 120 246 L 120 100" class="d-edge" marker-end="url(#arrow3)"/>
+  <path d="M 330 246 L 330 100" class="d-edge" marker-end="url(#arrow3)"/>
+  <path d="M 660 246 L 660 210" class="d-edge" marker-end="url(#arrow3)"/>
+
+  <text x="140" y="230" class="d-sub">depends on</text>
+</svg>
+<figcaption><code>gui-qt</code> is a workspace member but is excluded from <code>default-members</code>; everything else builds by default.</figcaption>
+</figure>
+
+<table>
+  <thead><tr><th>Crate</th><th>Kind</th><th>Holds</th></tr></thead>
+  <tbody>
+    <tr><td><code>common</code></td><td>lib</td><td>Profile and config types, TOML persistence, the SSE <code>EventListener</code>, the daemon HTTP client, keychain access, TLS pinning helpers, the shared SSE-first tunnel control flow</td></tr>
+    <tr><td><code>daemon</code></td><td>bin</td><td>Axum API server, tunnel manager and SSH lifecycle, <code>known_hosts</code>, TLS setup, PID guard, permission enforcement</td></tr>
+    <tr><td><code>cli</code></td><td>bin</td><td>clap command surface, interactive prompts, table and JSON rendering</td></tr>
+    <tr><td><code>gui-core</code></td><td>lib</td><td>View models, <code>AppCore</code> state, profile operations, daemon config helpers — no toolkit dependency</td></tr>
+    <tr><td><code>gui-gtk</code></td><td>bin</td><td>GTK4 / libadwaita widgets, dialogs, the configuration wizard</td></tr>
+    <tr><td><code>gui-qt</code></td><td>bin</td><td>cxx-qt / QML skeleton. <span class="status no">Does not currently compile</span></td></tr>
+  </tbody>
+</table>
+
+<div class="note">
+  <p>
+    <strong>Why <code>common</code> owns the SSE client.</strong> It was duplicated in
+    <code>gui-core</code> and again in a tray crate, which meant three copies of the
+    <code>TunnelEvent</code> enum drifting apart. Consolidating it in v0.1.10 made the CLI
+    and GUI share one wire-protocol definition and one reconnect policy. The tray crate,
+    which had been outside the workspace build since v0.1.6 and never recompiled against the
+    change, was removed in v0.1.11.
+  </p>
+</div>
+
+<h2 id="concurrency">3. Concurrency and task model</h2>
+
+<p>
+  The daemon runs one <code>#[tokio::main]</code> runtime. Tunnel state lives in
+  <code>Arc&lt;RwLock&lt;HashMap&lt;Uuid, ActiveTunnel&gt;&gt;&gt;</code>, and each tunnel is a
+  spawned task holding an <code>mpsc</code> shutdown receiver.
+</p>
+
+<h4>Lifecycle of a tunnel task</h4>
+<pre><code>run_tunnel()
+  ├─ select! {
+  │    establish_connection()   // TCP, key exchange, host key check, authentication
+  │    shutdown_rx.recv()       // cancellable throughout
+  │  }
+  └─ monitor_tunnel()           // runs the forward until it ends or is stopped</code></pre>
+
+<div class="note warn">
+  <p>
+    <strong>Lock discipline is the sharp edge here.</strong> A tunnel task needs the
+    <code>tunnels</code> write lock to record its own final status. Any code that holds that
+    lock while awaiting the task will therefore deadlock until its own timeout.
+  </p>
+  <p>
+    <code>TunnelManager::stop</code> did exactly that until v0.1.11: it held the write lock
+    across the await on the join handle, so every cancellation during connect or
+    authentication timed out and force-aborted the task instead of stopping it cleanly. It is
+    now two phases — classify and take the handles under the lock, then release it before
+    signalling and waiting. <strong>Do not reintroduce an await inside that critical
+    section.</strong>
+  </p>
+</div>
+
+<h4>Timeouts</h4>
+<table>
+  <thead><tr><th>Constant</th><th>Value</th><th>Governs</th></tr></thead>
+  <tbody>
+    <tr><td><code>CONNECT_TIMEOUT</code></td><td>15s</td><td>TCP connect and key exchange</td></tr>
+    <tr><td><code>AUTH_RESPONSE_TIMEOUT</code></td><td>60s</td><td>How long the daemon waits for a client to answer a credential prompt. Reached only when nothing answers and nothing cancels</td></tr>
+    <tr><td><code>SHUTDOWN_GRACE_PERIOD</code></td><td>2s</td><td>How long a task may take to wind down after being asked to stop, before it is aborted. Reaching it logs a warning</td></tr>
+  </tbody>
+</table>
+
+<h4>The GUI side</h4>
+<p>
+  GTK is single-threaded, and async work runs on the GLib main context via
+  <code>spawn_local</code>. Shared client state sits in <code>RefCell</code>, which means a
+  borrow must never be held across an <code>await</code> — if anything borrows the same cell
+  while the future is suspended, the process panics with "already borrowed". The daemon
+  client is <code>Clone</code>, so the pattern is to clone it out of the cell first:
+</p>
+<pre><code>// Correct: the borrow ends before the await.
+let client = state.daemon_client.borrow().clone();
+if let Some(client) = client {
+    match client.get_tunnel_status(id).await { /* ... */ }
+}</code></pre>
+<p>
+  Six sites violated this before v0.1.11. <code>clippy::await_holding_refcell_ref</code>
+  catches it, and CI runs clippy with <code>-D warnings</code>.
+</p>
+
+<h2 id="deps">4. Dependency strategy</h2>
+
+<p>
+  Versions are pinned once in <code>[workspace.dependencies]</code> and inherited with
+  <code>{ workspace = true }</code>, so a bump happens in one place. Crate versions likewise
+  inherit <code>version.workspace = true</code>.
+</p>
+
+<table>
+  <thead><tr><th>Area</th><th>Crates</th><th>Why</th></tr></thead>
+  <tbody>
+    <tr><td>Runtime</td><td><code>tokio</code>, <code>futures-util</code></td><td>Async runtime and stream combinators</td></tr>
+    <tr><td>API server</td><td><code>axum</code>, <code>hyper</code>, <code>hyper-util</code>, <code>tower-http</code>, <code>axum-server</code></td><td>REST plus SSE over Unix socket and TCP, with TLS</td></tr>
+    <tr><td>SSH</td><td><code>russh</code>, <code>russh-keys</code></td><td>Pure-Rust SSH, so no OpenSSH process management or C bindings</td></tr>
+    <tr><td>Client</td><td><code>reqwest</code> (rustls)</td><td>One HTTP client covering Unix socket, HTTP and HTTPS</td></tr>
+    <tr><td>TLS</td><td><code>rustls</code>, <code>webpki-roots</code>, <code>x509-parser</code>, <code>sha2</code></td><td>Certificate generation and fingerprint pinning without OpenSSL</td></tr>
+    <tr><td>Serialisation</td><td><code>serde</code>, <code>serde_json</code>, <code>toml</code></td><td>Profiles and config on disk, JSON on the wire</td></tr>
+    <tr><td>Secrets</td><td><code>keyring</code>, <code>secret-service</code>, <code>zeroize</code></td><td>OS keyring, and zeroing sensitive buffers on drop</td></tr>
+    <tr><td>CLI</td><td><code>clap</code>, <code>dialoguer</code>, <code>indicatif</code>, <code>colored</code></td><td>Argument parsing, prompts, progress, colour</td></tr>
+    <tr><td>GUI</td><td><code>gtk4</code>, <code>libadwaita</code>, <code>pulldown-cmark</code>, <code>notify-rust</code></td><td>Widgets, GNOME styling, Markdown for Help/About. <code>notify-rust</code> is declared for the planned notification work</td></tr>
+    <tr><td>Test support</td><td><code>tempfile</code></td><td>Sandbox directories</td></tr>
+  </tbody>
+</table>
+
+<p>
+  Release builds use full LTO, one codegen unit, symbol stripping and
+  <code>panic = "abort"</code>.
+</p>
+
+<h2 id="testing">5. Testing strategy</h2>
+
+<p>
+  Tests run in two tiers, split by whether a real SSH server is needed. See
+  <a href="../DEVELOPMENT.md#testing">DEVELOPMENT.md</a> for how to run them.
+</p>
+
+<h3>5.1 Test isolation</h3>
+<p>
+  Every config path resolves through <code>dirs::config_dir()</code>, and the socket and PID
+  file through <code>dirs::runtime_dir()</code>. On Linux those honour
+  <code>XDG_CONFIG_HOME</code> and <code>XDG_RUNTIME_DIR</code>, so redirecting two variables
+  gives a test run its own private tree — profiles, <code>cli.toml</code>,
+  <code>daemon.toml</code>, <code>daemon.token</code>, <code>known_hosts</code>, the socket
+  and the PID file. <strong>No production code needed changing to make this work.</strong>
+</p>
+<p>
+  <code>scripts/sandbox.sh</code> provides this for shell scripts.
+  <code>crates/daemon/tests/harness/</code> sets the same variables on the spawned daemon's
+  environment rather than the test process's, so tests still run in parallel.
+</p>
+<div class="note warn">
+  <p>
+    <strong>A test must never touch the developer's real
+    <code>~/.config/ssh-tunnel-manager</code> or a running daemon.</strong> Two tests used to:
+    the pidfile test called <code>PidFileGuard::create()</code>, which resolves the real
+    runtime path and would delete a live daemon's PID file, and the profile-manager tests
+    read the real config directory. Use <code>PidFileGuard::create_at()</code> and the
+    sandbox helpers instead.
+  </p>
+</div>
+
+<h3>5.2 Tier 1 — hermetic (<code>cargo test</code>)</h3>
+<p>No network, no secrets. Runs on every CI build.</p>
+<ul>
+  <li><strong>Unit</strong> — config parsing and validation, profile TOML round-trip including the <code>PasswordStorage</code> boolean-to-enum migration, <code>known_hosts</code> entry parsing, token generation, TLS fingerprints, PID file recovery from stale and corrupt files</li>
+  <li><strong>Integration</strong> (<code>crates/daemon/tests/daemon_api.rs</code>) — a real daemon process per test, driven through the REST/SSE API using the real client from <code>common</code>: health and info per listener mode, token missing/wrong/correct, the loopback-only rule for plain HTTP, socket <code>0600</code> and runtime dir <code>0700</code>, token file <code>0600</code>, the single-instance PID guard, and SSE connect, heartbeat and authentication</li>
+</ul>
+
+<h3>5.3 Tier 2 — live SSH (<code>cargo test -- --ignored</code>)</h3>
+<p>
+  Real connections to a real server, covering what nothing else can reach. Every test is
+  <code>#[ignore]</code>d and skips when unconfigured, so it never runs by accident.
+</p>
+<ul>
+  <li>Host key verification on first connect, and refusal of a changed key</li>
+  <li>Key authentication, encrypted-key passphrase prompting, password authentication</li>
+  <li>A wrong password and a wrong 2FA code being <em>re-prompted</em> rather than failing the tunnel — the v0.1.10 fix, which nothing guarded until v0.1.11</li>
+  <li>2FA with TOTP codes generated in-test, so no human is needed</li>
+  <li>Traffic actually flowing through the forward: the SSH banner is read back through the forwarded port</li>
+  <li>Teardown while connected, and teardown mid-authentication</li>
+</ul>
+<p>
+  Host names and credentials live only in <code>.local/testing/ssh-target.env</code>, which is
+  gitignored in its entirety. <strong>No committed file — script, test, document or CI
+  workflow — may contain them.</strong> The template is
+  <code>docs/testing/ssh-target.env.template</code>.
+</p>
+<div class="note">
+  <p>
+    An unconfigured live test <strong>skips but still reports <code>ok</code></strong>, and
+    the reason only goes to stderr. Run the live tier with <code>--nocapture</code>, as
+    <code>make test-live</code> does, or a completely skipped run looks like a passing one.
+  </p>
+</div>
+
+<h3>5.4 Manual and script-level</h3>
+<ul>
+  <li><code>scripts/dev-env.sh</code> — a sandbox with a daemon, a wired <code>cli.toml</code>, seeded profiles per auth type and the debug binaries on <code>PATH</code>. This is how the GTK GUI is exercised; it is not automated.</li>
+  <li><code>scripts/test-network-modes.sh</code> — drives the CLI against all three listener modes, including TLS certificate generation and fingerprint pinning.</li>
+</ul>
+
+<h3>5.5 CI</h3>
+<p>
+  <code>.github/workflows/ci.yml</code> runs <code>cargo fmt --check</code>, clippy with
+  <code>-D warnings</code>, the hermetic tests and a release build on every push, plus the
+  network-mode script. The live tier is a separate <code>workflow_dispatch</code> job so
+  credentials never reach an untrusted pull request; it writes the target config from a
+  secret and deletes it afterwards.
+</p>
+
+<h2 id="build">6. Build and packaging</h2>
+
+<table>
+  <thead><tr><th>Target</th><th>Command</th><th>Needs</th></tr></thead>
+  <tbody>
+    <tr><td>Daemon and CLI</td><td><code>cargo build -p ssh-tunnel-daemon -p ssh-tunnel-cli</code></td><td>Nothing beyond Rust</td></tr>
+    <tr><td>Default set</td><td><code>cargo build --release</code></td><td>GTK4 ≥ 4.12, libadwaita ≥ 1.5</td></tr>
+    <tr><td>Qt GUI</td><td><code>cargo build -p ssh-tunnel-gui-qt</code></td><td>Qt6 base and declarative. <span class="status no">Currently fails</span></td></tr>
+  </tbody>
+</table>
+
+<p>
+  <code>default-members</code> excludes <code>gui-qt</code> so a bare <code>cargo build</code>
+  cannot fail because of it. Note that <code>cargo test --workspace</code> and
+  <code>--all</code> override <code>default-members</code> and will pull it back in; the
+  <code>Makefile</code> deliberately uses plain <code>cargo test</code>.
+</p>
+
+<h4>Packaging status</h4>
+<table>
+  <thead><tr><th>Format</th><th>Status</th></tr></thead>
+  <tbody>
+    <tr><td>DEB</td><td><span class="status ok">✅ Available</span> for daemon, CLI and GTK GUI</td></tr>
+    <tr><td>RPM</td><td><span class="status partial">⚠️ In progress</span></td></tr>
+    <tr><td>AUR, Flatpak</td><td><span class="status no">❌ Not started</span></td></tr>
+  </tbody>
+</table>
+
+<footer>
+  Part of the SSH Tunnel Manager architecture set —
+  <a href="README.md">index</a> ·
+  <a href="FUNCTIONAL_ARCHITECTURE.html">Functional Architecture</a> ·
+  <a href="TECHNICAL_REFERENCE.md">Technical Reference</a> ·
+  <a href="SECURITY.md">Security</a>
+</footer>
+
+</body>
+</html>

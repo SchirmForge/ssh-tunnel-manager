@@ -395,8 +395,8 @@
   isolation (two tests read the developer's real `~/.config`, and the pidfile test could
   delete a running daemon's PID file) and missing coverage. Both fixed.
 - ❌ Clarify token handoff so CLI can consume it without logging secrets
-- ❌ `crates/daemon/src/monitor.rs` is an empty stub, but ARCHITECTURE.md described a
-  health-monitoring loop as if it shipped (corrected)
+- ❌ `crates/daemon/src/monitor.rs` is an empty stub; the architecture documents used to
+  describe a health-monitoring loop as if it shipped (corrected, and now marked as planned)
 - 🚧 Dynamic/SOCKS forwarding not implemented (returns error)
 - 🚧 `crates/gui-qt` does not compile (cxx-qt bridge macro); excluded from
   `default-members` so it cannot break the default build or CI

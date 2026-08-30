@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Functional Architecture — SSH Tunnel Manager</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --bg-soft: #f6f7f9;
+    --bg-code: #f2f3f5;
+    --fg: #1c1e21;
+    --fg-muted: #5c6370;
+    --border: #d8dce1;
+    --accent: #2b6cb0;
+    --accent-soft: #e4eefa;
+    --ok: #2f7d4f;
+    --warn: #9a6700;
+    --bad: #b42318;
+    --diagram-client: #e4eefa;
+    --diagram-daemon: #eef3ea;
+    --diagram-ext: #f4eef7;
+    --diagram-stroke: #7d8794;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16181c;
+      --bg-soft: #1e2128;
+      --bg-code: #23262d;
+      --fg: #e6e8eb;
+      --fg-muted: #9aa2ad;
+      --border: #333842;
+      --accent: #6fa8dc;
+      --accent-soft: #1d2937;
+      --ok: #6bbf8a;
+      --warn: #d9a441;
+      --bad: #e57368;
+      --diagram-client: #1d2937;
+      --diagram-daemon: #1e2a22;
+      --diagram-ext: #272033;
+      --diagram-stroke: #6b7280;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0 auto;
+    padding: 2.5rem 1.5rem 5rem;
+    max-width: 62rem;
+    background: var(--bg);
+    color: var(--fg);
+    font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  h1 { font-size: 2rem; margin: 0 0 .25rem; letter-spacing: -.02em; }
+  h2 {
+    font-size: 1.4rem; margin: 3rem 0 .75rem;
+    padding-bottom: .35rem; border-bottom: 2px solid var(--border);
+  }
+  h3 { font-size: 1.1rem; margin: 2rem 0 .5rem; }
+  h4 { font-size: .95rem; margin: 1.25rem 0 .35rem; color: var(--fg-muted); text-transform: uppercase; letter-spacing: .05em; }
+  p, li { color: var(--fg); }
+  a { color: var(--accent); }
+  code {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    font-size: .875em; background: var(--bg-code);
+    padding: .12em .35em; border-radius: 4px;
+  }
+  pre {
+    background: var(--bg-code); border: 1px solid var(--border);
+    border-radius: 8px; padding: .9rem 1.1rem; overflow-x: auto;
+  }
+  pre code { background: none; padding: 0; font-size: .84rem; line-height: 1.55; }
+
+  .subtitle { color: var(--fg-muted); margin: 0 0 2rem; }
+  .meta { display: flex; flex-wrap: wrap; gap: .5rem 1.25rem; font-size: .9rem; color: var(--fg-muted); margin-bottom: 2rem; }
+
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .92rem; display: block; overflow-x: auto; }
+  th, td { text-align: left; padding: .55rem .7rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { background: var(--bg-soft); font-weight: 600; white-space: nowrap; }
+  tbody tr:last-child td { border-bottom: none; }
+
+  .note {
+    background: var(--bg-soft); border-left: 3px solid var(--accent);
+    padding: .8rem 1rem; border-radius: 0 6px 6px 0; margin: 1.25rem 0;
+  }
+  .note.warn { border-left-color: var(--warn); }
+  .note p:first-child { margin-top: 0; }
+  .note p:last-child { margin-bottom: 0; }
+
+  .status { font-weight: 600; white-space: nowrap; }
+  .status.ok { color: var(--ok); }
+  .status.partial { color: var(--warn); }
+  .status.no { color: var(--bad); }
+
+  figure { margin: 1.75rem 0; }
+  figure svg { width: 100%; height: auto; display: block; }
+  figcaption { color: var(--fg-muted); font-size: .875rem; margin-top: .6rem; text-align: center; }
+
+  /* Diagram theming: shapes reference CSS variables so they follow light/dark. */
+  .d-label { font: 600 13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; fill: var(--fg); }
+  .d-sub   { font: 11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fill: var(--fg-muted); }
+  .d-title { font: 700 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; fill: var(--fg-muted); letter-spacing: .06em; }
+  .d-edge  { stroke: var(--diagram-stroke); stroke-width: 1.5; fill: none; }
+  .d-box   { stroke: var(--diagram-stroke); stroke-width: 1.2; }
+  .d-client { fill: var(--diagram-client); }
+  .d-daemon { fill: var(--diagram-daemon); }
+  .d-ext    { fill: var(--diagram-ext); }
+  .d-group  { fill: none; stroke: var(--border); stroke-width: 1.5; stroke-dasharray: 5 4; }
+  .d-arrowhead { fill: var(--diagram-stroke); }
+
+  nav.toc { background: var(--bg-soft); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.25rem; }
+  nav.toc ol { margin: .35rem 0 0; padding-left: 1.3rem; }
+  nav.toc li { margin: .15rem 0; }
+
+  footer { margin-top: 4rem; padding-top: 1rem; border-top: 1px solid var(--border); color: var(--fg-muted); font-size: .875rem; }
+
+  @media print {
+    body { max-width: none; padding: 0; font-size: 11pt; color: #000; background: #fff; }
+    h2 { page-break-after: avoid; }
+    figure, table, pre { page-break-inside: avoid; }
+    nav.toc { display: none; }
+    a { color: #000; text-decoration: underline; }
+  }
+</style>
+</head>
+<body>
+
+<h1>Functional Architecture</h1>
+<p class="subtitle">SSH Tunnel Manager — what the system is made of, and how its parts behave.</p>
+
+<div class="meta">
+  <span><strong>Version</strong> v0.1.11</span>
+  <span><strong>Status</strong> Production-ready CLI, daemon and GTK GUI</span>
+  <span><strong>Companion</strong> <a href="TECHNICAL_ARCHITECTURE.html">Technical Architecture</a></span>
+</div>
+
+<nav class="toc">
+  <strong>Contents</strong>
+  <ol>
+    <li><a href="#overview">Overview and principles</a></li>
+    <li><a href="#system">System architecture</a></li>
+    <li><a href="#components">Components and responsibilities</a></li>
+    <li><a href="#flows">Data flow</a></li>
+    <li><a href="#config">Configuration and storage</a></li>
+    <li><a href="#api">API behaviour</a></li>
+  </ol>
+</nav>
+
+<h2 id="overview">1. Overview and principles</h2>
+
+<p>
+  SSH Tunnel Manager is a secure SSH tunnel manager for Linux with both a graphical and a
+  command-line interface. A long-running <strong>daemon</strong> owns every SSH connection;
+  clients drive it over a local REST API and receive live updates over a Server-Sent Events
+  stream. The daemon can also run on a different machine, reached over HTTPS, while SSH
+  private keys stay on that machine.
+</p>
+
+<table>
+  <thead><tr><th>Principle</th><th>What it means in practice</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Security first</strong></td><td>Memory-safe implementation, credentials in the OS keyring, least privilege, authentication on by default, HTTPS required for any non-loopback access.</td></tr>
+    <tr><td><strong>Unix philosophy</strong></td><td>The daemon does one thing. Everything else talks to it through a documented API.</td></tr>
+    <tr><td><strong>User choice</strong></td><td>GUI for interactive use, CLI for scripting and servers. Both are first-class and share the same client logic.</td></tr>
+    <tr><td><strong>Remote capability</strong></td><td>A client can manage a daemon on another host without the private keys ever crossing the network.</td></tr>
+    <tr><td><strong>Event-driven</strong></td><td>The daemon never blocks on a human. When it needs a credential it emits an event and waits for an answer over the API.</td></tr>
+  </tbody>
+</table>
+
+<h2 id="system">2. System architecture</h2>
+
+<figure>
+<svg viewBox="0 0 900 560" role="img" aria-labelledby="sysarch-title">
+  <title id="sysarch-title">System architecture: clients communicate with the daemon over REST and SSE; the daemon connects to SSH servers</title>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" class="d-arrowhead"/>
+    </marker>
+  </defs>
+
+  <!-- Clients group -->
+  <rect x="20" y="20" width="860" height="140" rx="10" class="d-group"/>
+  <text x="38" y="44" class="d-title">CLIENTS</text>
+
+  <rect x="50" y="56" width="230" height="42" rx="6" class="d-box d-client"/>
+  <text x="66" y="76" class="d-label">GTK4 / libadwaita GUI</text>
+  <text x="66" y="91" class="d-sub">crates/gui-gtk</text>
+
+  <rect x="50" y="106" width="230" height="42" rx="6" class="d-box d-client"/>
+  <text x="66" y="126" class="d-label">Framework-agnostic core</text>
+  <text x="66" y="141" class="d-sub">crates/gui-core</text>
+
+  <path d="M 165 98 L 165 106" class="d-edge" marker-end="url(#arrow)"/>
+
+  <rect x="330" y="56" width="230" height="92" rx="6" class="d-box d-client"/>
+  <text x="346" y="76" class="d-label">CLI</text>
+  <text x="346" y="91" class="d-sub">crates/cli — ssh-tunnel</text>
+  <text x="346" y="112" class="d-sub">interactive prompts, JSON output</text>
+  <text x="346" y="128" class="d-sub">scripting and headless use</text>
+
+  <rect x="610" y="56" width="240" height="92" rx="6" class="d-box d-client"/>
+  <text x="626" y="76" class="d-label">Shared client library</text>
+  <text x="626" y="91" class="d-sub">crates/common</text>
+  <text x="626" y="112" class="d-sub">SSE listener, daemon client,</text>
+  <text x="626" y="128" class="d-sub">profile I/O, keychain, types</text>
+
+  <!-- Transport -->
+  <path d="M 300 190 L 300 236" class="d-edge" marker-end="url(#arrow)"/>
+  <text x="312" y="207" class="d-label">REST</text>
+  <text x="312" y="222" class="d-sub">commands</text>
+
+  <path d="M 600 236 L 600 190" class="d-edge" marker-end="url(#arrow)"/>
+  <text x="612" y="207" class="d-label">SSE</text>
+  <text x="612" y="222" class="d-sub">events, auth prompts</text>
+
+  <!-- Daemon group -->
+  <rect x="20" y="250" width="620" height="290" rx="10" class="d-group"/>
+  <text x="38" y="274" class="d-title">DAEMON — ssh-tunnel-daemon</text>
+
+  <rect x="50" y="286" width="560" height="46" rx="6" class="d-box d-daemon"/>
+  <text x="66" y="306" class="d-label">API server (Axum)</text>
+  <text x="66" y="322" class="d-sub">unix socket (default) · tcp-http (loopback only) · tcp-https · token auth</text>
+
+  <path d="M 330 332 L 330 348" class="d-edge" marker-end="url(#arrow)"/>
+
+  <rect x="50" y="348" width="560" height="46" rx="6" class="d-box d-daemon"/>
+  <text x="66" y="368" class="d-label">Tunnel manager</text>
+  <text x="66" y="384" class="d-sub">lifecycle, connection state, one task per tunnel, auth event dispatch</text>
+
+  <path d="M 180 394 L 180 412" class="d-edge" marker-end="url(#arrow)"/>
+  <path d="M 480 394 L 480 412" class="d-edge" marker-end="url(#arrow)"/>
+
+  <rect x="50" y="412" width="260" height="46" rx="6" class="d-box d-daemon"/>
+  <text x="66" y="432" class="d-label">SSH connection</text>
+  <text x="66" y="448" class="d-sub">russh · multi-factor auth</text>
+
+  <rect x="350" y="412" width="260" height="46" rx="6" class="d-box d-daemon"/>
+  <text x="366" y="432" class="d-label">Configuration</text>
+  <text x="366" y="448" class="d-sub">TOML profiles · validation</text>
+
+  <path d="M 180 458 L 180 476" class="d-edge" marker-end="url(#arrow)"/>
+  <path d="M 480 458 L 480 476" class="d-edge" marker-end="url(#arrow)"/>
+
+  <rect x="50" y="476" width="560" height="46" rx="6" class="d-box d-daemon"/>
+  <text x="66" y="496" class="d-label">Security layer</text>
+  <text x="66" y="512" class="d-sub">keyring · known_hosts verification · file permissions · privileged ports</text>
+
+  <!-- SSH servers -->
+  <rect x="680" y="348" width="190" height="110" rx="6" class="d-box d-ext"/>
+  <text x="696" y="376" class="d-label">SSH servers</text>
+  <text x="696" y="396" class="d-sub">key · password</text>
+  <text x="696" y="412" class="d-sub">keyboard-interactive</text>
+  <text x="696" y="434" class="d-sub">forwarded ports</text>
+
+  <path d="M 610 435 L 676 403" class="d-edge" marker-end="url(#arrow)"/>
+  <text x="614" y="466" class="d-sub">SSH</text>
+</svg>
+<figcaption>Clients issue commands over REST and receive state changes over SSE. Only the daemon speaks SSH.</figcaption>
+</figure>
+
+<h2 id="components">3. Components and responsibilities</h2>
+
+<h3>3.1 Daemon — <code>ssh-tunnel-daemon</code></h3>
+<p><span class="status ok">✅ Implemented</span> — owns every SSH connection and all tunnel state.</p>
+
+<table>
+  <thead><tr><th>Responsibility</th><th>Detail</th></tr></thead>
+  <tbody>
+    <tr><td>Establish and hold SSH connections</td><td>One task per tunnel, with an isolated shutdown channel</td></tr>
+    <tr><td>Authenticate</td><td>Key, encrypted key, password, keyboard-interactive (2FA), honouring the server's retry policy</td></tr>
+    <tr><td>Verify host keys</td><td>Managed <code>known_hosts</code>, SHA-256 fingerprints, prompt on first sight, refuse on mismatch</td></tr>
+    <tr><td>Forward ports</td><td>Local forwarding (<code>ssh -L</code>) only. Remote and dynamic return an explicit error</td></tr>
+    <tr><td>Expose control</td><td>REST endpoints plus an SSE event stream</td></tr>
+    <tr><td>Guard single instance</td><td>PID file in the runtime directory, with stale and corrupt file recovery</td></tr>
+  </tbody>
+</table>
+
+<h4>Listener modes</h4>
+<table>
+  <thead><tr><th>Mode</th><th>Bind</th><th>Use</th></tr></thead>
+  <tbody>
+    <tr><td><code>unix-socket</code> <em>(default)</em></td><td>Runtime dir, socket <code>0600</code></td><td>Normal local operation</td></tr>
+    <tr><td><code>tcp-http</code></td><td>Loopback only — a non-loopback bind is refused at startup</td><td>Local development and testing</td></tr>
+    <tr><td><code>tcp-https</code></td><td>Any address, TLS with fingerprint pinning</td><td>Remote daemon access</td></tr>
+  </tbody>
+</table>
+
+<h4>Profile source modes</h4>
+<table>
+  <thead><tr><th>Mode</th><th>Where the profile comes from</th><th>Where the key lives</th></tr></thead>
+  <tbody>
+    <tr><td><code>Local</code></td><td>The daemon's own filesystem</td><td>Daemon host</td></tr>
+    <tr><td><code>Hybrid</code></td><td>Sent by the client with the start request</td><td>Daemon host — the key is never transmitted</td></tr>
+    <tr><td><code>Remote</code></td><td>Reserved, not implemented</td><td>—</td></tr>
+  </tbody>
+</table>
+
+<h3>3.2 Shared library — <code>crates/common</code></h3>
+<p><span class="status ok">✅ Implemented</span> — the spine every client and the daemon build on.</p>
+<ul>
+  <li>Profile types with validation and TOML persistence, including backward-compatible reading of the pre-v0.1.7 boolean <code>password_storage</code> field</li>
+  <li><code>EventListener</code>: the single SSE client, shared by CLI and GUI, reconnecting with exponential backoff</li>
+  <li>Daemon client: connection modes, token header, TLS pinning, socket path discovery, config validation</li>
+  <li><code>start_tunnel_with_events</code> / <code>stop_tunnel</code>: the SSE-first control flow both front-ends use, with a <code>TunnelEventHandler</code> trait for the interactive parts</li>
+  <li>Keychain access with availability detection and graceful headless fallback</li>
+</ul>
+
+<h3>3.3 CLI — <code>ssh-tunnel</code></h3>
+<p><span class="status ok">✅ Implemented</span> — for scripting, servers and power users.</p>
+
+<table>
+  <thead><tr><th>Area</th><th>Commands</th><th>Status</th></tr></thead>
+  <tbody>
+    <tr><td>Profiles</td><td><code>add</code>, <code>list</code>, <code>info</code>, <code>delete</code></td><td><span class="status ok">✅</span></td></tr>
+    <tr><td>Tunnels</td><td><code>start</code>, <code>stop</code> (<code>--all</code>), <code>restart</code>, <code>status</code> (<code>--all</code>)</td><td><span class="status ok">✅</span></td></tr>
+    <tr><td>Events</td><td><code>watch</code></td><td><span class="status ok">✅</span></td></tr>
+    <tr><td>Daemon control</td><td><code>daemon start</code>, <code>daemon stop</code>, <code>daemon status</code></td><td><span class="status no">❌ stubs</span></td></tr>
+  </tbody>
+</table>
+<p>
+  <code>add</code> is interactive by default and fully scriptable with <code>--non-interactive</code>.
+  Output is a formatted table or JSON. Profile editing is done in the GUI or by editing the
+  TOML file; there is no <code>edit</code> command.
+</p>
+
+<h3>3.4 GUI — <code>crates/gui-core</code> + <code>crates/gui-gtk</code></h3>
+<p><span class="status ok">✅ Implemented</span> (GTK4 / libadwaita).</p>
+<p>
+  <code>gui-core</code> holds everything that is not toolkit-specific — profile operations,
+  view models with formatted display data and status colours, the <code>AppCore</code>
+  application state, and the event-handling trait. <code>gui-gtk</code> supplies the widgets.
+  Roughly 60–70% of the GUI is reusable by a second toolkit.
+</p>
+<ul>
+  <li>First-launch configuration wizard with automatic snippet detection</li>
+  <li>Full profile CRUD in a GNOME-Settings-style dialog, with an advanced options section</li>
+  <li>Live status dots driven by the SSE stream, and daemon connection monitoring with heartbeat timeout</li>
+  <li>Authentication dialogs whose state is driven by SSE rather than local guesses</li>
+  <li>Help and About rendered from Markdown bundled in <code>gui-core/assets/</code></li>
+</ul>
+
+<h3>3.5 Qt GUI — <code>crates/gui-qt</code></h3>
+<p><span class="status no">❌ Does not currently compile</span> — the cxx-qt 0.8.0 bridge macro fails to parse.</p>
+<p>
+  It remains a workspace member so it can be built explicitly with
+  <code>cargo build -p ssh-tunnel-gui-qt</code>, but it is excluded from
+  <code>default-members</code> so it cannot break the default build or CI. Use the GTK GUI.
+</p>
+
+<h2 id="flows">4. Data flow</h2>
+
+<h3>4.1 Connection establishment</h3>
+
+<figure>
+<svg viewBox="0 0 900 430" role="img" aria-labelledby="flow-title">
+  <title id="flow-title">Connection establishment: the client starts a tunnel, the daemon requests credentials over SSE, and the client answers over REST</title>
+  <defs>
+    <marker id="arrow2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" class="d-arrowhead"/>
+    </marker>
+  </defs>
+
+  <!-- lifelines -->
+  <rect x="60" y="20" width="170" height="38" rx="6" class="d-box d-client"/>
+  <text x="88" y="44" class="d-label">Client (CLI / GUI)</text>
+  <path d="M 145 58 L 145 400" class="d-edge" stroke-dasharray="4 4"/>
+
+  <rect x="365" y="20" width="170" height="38" rx="6" class="d-box d-daemon"/>
+  <text x="418" y="44" class="d-label">Daemon</text>
+  <path d="M 450 58 L 450 400" class="d-edge" stroke-dasharray="4 4"/>
+
+  <rect x="670" y="20" width="170" height="38" rx="6" class="d-box d-ext"/>
+  <text x="716" y="44" class="d-label">SSH server</text>
+  <path d="M 755 58 L 755 400" class="d-edge" stroke-dasharray="4 4"/>
+
+  <!-- 1 start -->
+  <path d="M 145 88 L 446 88" class="d-edge" marker-end="url(#arrow2)"/>
+  <text x="160" y="82" class="d-sub">1. POST /api/tunnels/{id}/start</text>
+
+  <!-- 2 local work -->
+  <rect x="365" y="104" width="170" height="34" rx="4" class="d-box d-daemon"/>
+  <text x="376" y="118" class="d-sub">2. load profile,</text>
+  <text x="376" y="131" class="d-sub">read keyring, verify host key</text>
+
+  <!-- 3 connect -->
+  <path d="M 450 158 L 751 158" class="d-edge" marker-end="url(#arrow2)"/>
+  <text x="470" y="152" class="d-sub">3. TCP connect + key exchange</text>
+
+  <!-- 4 auth challenge -->
+  <path d="M 755 186 L 454 186" class="d-edge" marker-end="url(#arrow2)"/>
+  <text x="500" y="180" class="d-sub">4. credential required</text>
+
+  <!-- 5 SSE -->
+  <path d="M 450 214 L 149 214" class="d-edge" marker-end="url(#arrow2)"/>
+  <text x="175" y="208" class="d-sub">5. SSE auth_required (prompt, type)</text>
+
+  <!-- 6 prompt -->
+  <rect x="60" y="230" width="170" height="34" rx="4" class="d-box d-client"/>
+  <text x="72" y="244" class="d-sub">6. prompt the user</text>
+  <text x="72" y="257" class="d-sub">(dialog / terminal)</text>
+
+  <!-- 7 answer -->
+  <path d="M 145 284 L 446 284" class="d-edge" marker-end="url(#arrow2)"/>
+  <text x="160" y="278" class="d-sub">7. POST /api/tunnels/{id}/auth</text>
+
+  <!-- 8 retry loop note -->
+  <path d="M 450 312 L 751 312" class="d-edge" marker-end="url(#arrow2)"/>
+  <text x="470" y="306" class="d-sub">8. submit credential — steps 4–7 repeat while the server allows retries</text>
+
+  <!-- 9 forward -->
+  <rect x="365" y="330" width="170" height="34" rx="4" class="d-box d-daemon"/>
+  <text x="376" y="344" class="d-sub">9. bind local port,</text>
+  <text x="376" y="357" class="d-sub">start forwarding</text>
+
+  <!-- 10 connected -->
+  <path d="M 450 390 L 149 390" class="d-edge" marker-end="url(#arrow2)"/>
+  <text x="175" y="384" class="d-sub">10. SSE connected</text>
+</svg>
+<figcaption>The daemon never blocks on a human: it publishes a request and continues when an answer arrives over the API.</figcaption>
+</figure>
+
+<div class="note">
+  <p>
+    <strong>Why this shape.</strong> Because the prompt travels as an event rather than a
+    blocking call, the same daemon serves an interactive GUI, a terminal session and a
+    headless script without knowing which is attached — and it can run as a system service
+    with no controlling terminal.
+  </p>
+</div>
+
+<h3>4.2 Event stream</h3>
+<p>
+  A client subscribes to <code>/api/events</code> and keeps the connection open. The daemon
+  pushes lifecycle events and a periodic heartbeat; the shared <code>EventListener</code>
+  reconnects with exponential backoff, and the GUI treats a missed heartbeat as loss of the
+  daemon.
+</p>
+<pre><code>{"type": "starting",      "id": "..."}
+{"type": "connected",     "id": "..."}
+{"type": "disconnected",  "id": "...", "reason": "..."}
+{"type": "error",         "id": "...", "error": "..."}
+{"type": "auth_required", "id": "...", "request": { ... }}
+{"type": "heartbeat",     "timestamp": "..."}</code></pre>
+
+<h3>4.3 Health monitoring and reconnection</h3>
+<div class="note warn">
+  <p>
+    <span class="status no">❌ Not implemented.</span>
+    <code>crates/daemon/src/monitor.rs</code> is an empty stub and <code>run_tunnel()</code>
+    connects exactly once. The <code>auto_reconnect</code>, <code>reconnect_attempts</code>
+    and <code>reconnect_delay</code> profile options are read and shown in both front-ends,
+    but nothing acts on them. The agreed design — a global setting with a per-profile
+    override, attempted only where authentication needs no human — is recorded in
+    <a href="../ROADMAP.md">ROADMAP.md</a>.
+  </p>
+</div>
+
+<h2 id="config">5. Configuration and storage</h2>
+
+<table>
+  <thead><tr><th>What</th><th>Where</th><th>Permissions</th></tr></thead>
+  <tbody>
+    <tr><td>Profiles</td><td><code>~/.config/ssh-tunnel-manager/profiles/&lt;uuid&gt;.toml</code></td><td>0600</td></tr>
+    <tr><td>Client config</td><td><code>~/.config/ssh-tunnel-manager/cli.toml</code></td><td>0600</td></tr>
+    <tr><td>Daemon config</td><td><code>~/.config/ssh-tunnel-manager/daemon.toml</code></td><td>0600</td></tr>
+    <tr><td>Auth token</td><td><code>~/.config/ssh-tunnel-manager/daemon.token</code></td><td>0600</td></tr>
+    <tr><td>Known hosts</td><td><code>~/.config/ssh-tunnel-manager/known_hosts</code></td><td>0600</td></tr>
+    <tr><td>TLS cert and key</td><td><code>~/.config/ssh-tunnel-manager/server.{crt,key}</code></td><td>0600</td></tr>
+    <tr><td>Socket and PID file</td><td><code>$XDG_RUNTIME_DIR/ssh-tunnel-manager/</code></td><td>0600 socket, 0700 dir</td></tr>
+    <tr><td>Passwords and passphrases</td><td>OS keyring (Secret Service), service <code>ssh-tunnel-manager</code></td><td>OS-managed</td></tr>
+    <tr><td>SSH private keys</td><td>Referenced by path, never copied or transmitted</td><td>0600/0400, verified before use</td></tr>
+  </tbody>
+</table>
+
+<p>
+  Every one of these paths resolves through <code>dirs::config_dir()</code> or
+  <code>dirs::runtime_dir()</code>, which honour <code>XDG_CONFIG_HOME</code> and
+  <code>XDG_RUNTIME_DIR</code>. That is what makes the test sandbox possible without any
+  special-casing in production code — see the testing strategy in
+  <a href="TECHNICAL_ARCHITECTURE.html#testing">Technical Architecture</a>.
+</p>
+
+<h3>Profile format</h3>
+<pre><code>id = "550e8400-e29b-41d4-a716-446655440000"
+name = "Production DB"
+description = "Read replica via jump host"
+created_at = "2026-01-15T10:30:00Z"
+modified_at = "2026-01-15T10:30:00Z"
+tags = ["database", "production"]
+
+[connection]
+host = "ssh.example.com"
+port = 22
+user = "myuser"
+auth_type = "key"              # key | password | passwordwith2fa
+key_path = "/home/user/.ssh/id_ed25519"
+password_storage = "keychain"  # none | keychain | file
+
+[forwarding]
+type = "local"                 # local (remote and dynamic are not implemented)
+bind_address = "127.0.0.1"
+local_port = 5432
+remote_host = "db.internal.example.com"
+remote_port = 5432
+
+[options]
+compression = false
+keepalive_interval = 60
+auto_reconnect = true          # read but not yet acted on
+reconnect_attempts = 3
+reconnect_delay = 5
+tcp_keepalive = false
+max_packet_size = 65536        # 64 KiB
+window_size = 2097152          # 2 MiB</code></pre>
+
+<p>
+  Profile metadata is flattened at the top level rather than nested under a section.
+  <code>password_storage</code> also accepts the pre-v0.1.7 boolean form, so profiles written
+  by older versions still load.
+</p>
+
+<h2 id="api">6. API behaviour</h2>
+
+<p>
+  The default base is the Unix socket at
+  <code>$XDG_RUNTIME_DIR/ssh-tunnel-manager/ssh-tunnel-manager.sock</code>. TCP modes exist
+  for local testing (HTTP, loopback only) and remote access (HTTPS).
+</p>
+
+<table>
+  <thead><tr><th>Endpoint</th><th>Behaviour</th></tr></thead>
+  <tbody>
+    <tr><td><code>GET /api/health</code></td><td>Liveness check</td></tr>
+    <tr><td><code>GET /api/daemon/info</code></td><td>Version, uptime, listener mode, SSH key directory, active tunnel count</td></tr>
+    <tr><td><code>POST /api/daemon/shutdown</code></td><td>Graceful shutdown</td></tr>
+    <tr><td><code>GET /api/tunnels</code></td><td>Active tunnels and their statuses</td></tr>
+    <tr><td><code>POST /api/tunnels/{id}/start</code></td><td>Start a tunnel; body carries the profile source mode, and the profile itself in Hybrid mode</td></tr>
+    <tr><td><code>POST /api/tunnels/{id}/stop</code></td><td>Stop a tunnel, whether connected or mid-authentication</td></tr>
+    <tr><td><code>GET /api/tunnels/{id}/status</code></td><td>Status plus any pending authentication request</td></tr>
+    <tr><td><code>GET /api/tunnels/{id}/auth</code></td><td>Fetch the pending authentication request</td></tr>
+    <tr><td><code>POST /api/tunnels/{id}/auth</code></td><td>Answer it — the request id must match, so a stale answer cannot be replayed</td></tr>
+    <tr><td><code>GET /api/events</code></td><td>SSE stream of lifecycle events and heartbeats</td></tr>
+  </tbody>
+</table>
+
+<h4>Access policy</h4>
+<ul>
+  <li>Authentication is <strong>on by default</strong> in every mode; the token is generated at first start and stored 0600.</li>
+  <li>Plain HTTP is restricted to loopback. Binding <code>tcp-http</code> to a network address is refused at startup.</li>
+  <li>Remote access requires HTTPS, with optional certificate fingerprint pinning. Without a pinned fingerprint the client validates against public roots, so a self-signed daemon certificate is correctly refused — pinning is what makes it usable.</li>
+</ul>
+
+<p>Profile CRUD over the API is not implemented; profiles are managed on the client side.</p>
+
+<footer>
+  Part of the SSH Tunnel Manager architecture set —
+  <a href="README.md">index</a> ·
+  <a href="TECHNICAL_ARCHITECTURE.html">Technical Architecture</a> ·
+  <a href="TECHNICAL_REFERENCE.md">Technical Reference</a> ·
+  <a href="SECURITY.md">Security</a>
+</footer>
+
+</body>
+</html>
