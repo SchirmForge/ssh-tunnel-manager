@@ -1,6 +1,9 @@
 # Known Issues & Limitations
 
-This document tracks known bugs, limitations, and missing features in SSH Tunnel Manager v0.1.10.
+This document tracks known bugs, limitations, and missing features in SSH Tunnel Manager v0.1.11.
+
+For missing features described as user stories with their status, see the
+[user stories](user-stories/). For what is planned about them, see [ROADMAP.md](ROADMAP.md).
 
 ## Known Bugs
 
@@ -36,7 +39,13 @@ This document tracks known bugs, limitations, and missing features in SSH Tunnel
 
 ### 🔧 Minor Issues
 
-None listed yet
+- **`crates/gui-qt` does not compile**
+  - The cxx-qt 0.8.0 bridge macro fails to parse
+  - **Impact**: Development only. The crate is excluded from `default-members`, so
+    `cargo build`, `cargo test` and CI are unaffected; `cargo build -p ssh-tunnel-gui-qt`
+    is the only thing that fails
+  - **Workaround**: Use the GTK GUI (`ssh-tunnel-gtk`)
+  - **Status**: Open — see `crates/gui-qt/README.md`
 
 ## Limitations & Missing Features
 
@@ -186,7 +195,7 @@ The application performs well within tested limits (50 concurrent tunnels, 100+ 
 Found a bug not listed here?
 
 **Before reporting:**
-1. Check [GitHub Issues](https://github.com/yourusername/ssh-tunnel-manager/issues)
+1. Check [GitHub Issues](https://github.com/SchirmForge/ssh-tunnel-manager/issues)
 2. Update to latest version
 3. Check daemon logs: `journalctl --user -u ssh-tunnel-daemon -f`
 

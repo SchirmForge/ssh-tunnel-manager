@@ -1,7 +1,7 @@
 # Installation Guide
 
-**Version**: v0.1.9
-**Last Updated**: 2025-12-31
+**Version**: v0.1.11
+**Last Updated**: 2026-08-30
 
 ## Quick Start
 
@@ -19,15 +19,15 @@ See detailed instructions below for your platform.
 Pre-built .deb packages are available for Ubuntu/Debian systems. Three separate packages are available:
 
 ```bash
-# Download packages from releases (v0.1.9)
-wget https://github.com/SchirmForge/ssh-tunnel-manager/releases/download/v0.1.9/ssh-tunnel-daemon_0.1.9-0_amd64.deb
-wget https://github.com/SchirmForge/ssh-tunnel-manager/releases/download/v0.1.9/ssh-tunnel-cli_0.1.9-0_amd64.deb
-wget https://github.com/SchirmForge/ssh-tunnel-manager/releases/download/v0.1.9/ssh-tunnel-gui-gtk_0.1.9-0_amd64.deb
+# Download packages from releases (v0.1.11)
+wget https://github.com/SchirmForge/ssh-tunnel-manager/releases/download/v0.1.11/ssh-tunnel-daemon_0.1.11-0_amd64.deb
+wget https://github.com/SchirmForge/ssh-tunnel-manager/releases/download/v0.1.11/ssh-tunnel-cli_0.1.11-0_amd64.deb
+wget https://github.com/SchirmForge/ssh-tunnel-manager/releases/download/v0.1.11/ssh-tunnel-gui-gtk_0.1.11-0_amd64.deb
 
 # Install all components:
-sudo dpkg -i ssh-tunnel-daemon_0.1.9-0_amd64.deb \
-                ssh-tunnel-cli_0.1.9-0_amd64.deb \
-                ssh-tunnel-gui-gtk_0.1.9-0_amd64.deb
+sudo dpkg -i ssh-tunnel-daemon_0.1.11-0_amd64.deb \
+                ssh-tunnel-cli_0.1.11-0_amd64.deb \
+                ssh-tunnel-gui-gtk_0.1.11-0_amd64.deb
 sudo apt-get install -f  # Install dependencies if needed
 ```
 
@@ -35,16 +35,16 @@ sudo apt-get install -f  # Install dependencies if needed
 
 ```bash
 # Minimal: Daemon only (for headless servers)
-sudo dpkg -i ssh-tunnel-daemon_0.1.9-0_amd64.deb
+sudo dpkg -i ssh-tunnel-daemon_0.1.11-0_amd64.deb
 
 # CLI: Daemon + CLI tool
-sudo dpkg -i ssh-tunnel-daemon_0.1.9-0_amd64.deb \
-                ssh-tunnel-cli_0.1.9-0_amd64.deb
+sudo dpkg -i ssh-tunnel-daemon_0.1.11-0_amd64.deb \
+                ssh-tunnel-cli_0.1.11-0_amd64.deb
 
 # GUI: All components
-sudo dpkg -i ssh-tunnel-daemon_0.1.9-0_amd64.deb \
-                ssh-tunnel-cli_0.1.9-0_amd64.deb \
-                ssh-tunnel-gui-gtk_0.1.9-0_amd64.deb
+sudo dpkg -i ssh-tunnel-daemon_0.1.11-0_amd64.deb \
+                ssh-tunnel-cli_0.1.11-0_amd64.deb \
+                ssh-tunnel-gui-gtk_0.1.11-0_amd64.deb
 ```
 
 ### What Gets Installed
@@ -207,7 +207,7 @@ ssh-tunnel-daemon &
 ssh-tunnel-gtk
 ```
 
-The **configuration wizard** runs automatically on first launch (v0.1.9):
+The **configuration wizard** runs automatically on first launch:
 - Detects daemon-generated configuration snippet and offers to import it
 - For network access (daemon on `0.0.0.0`), prompts for actual IP address
 - Falls back to manual configuration dialog if snippet not found

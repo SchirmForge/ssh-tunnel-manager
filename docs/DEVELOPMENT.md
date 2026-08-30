@@ -1,7 +1,23 @@
 # Development Guide
 
-**Version**: v0.1.10
+**Version**: v0.1.11
 **Last Updated**: 2026-08-30
+
+## Where documentation lives
+
+| Directory | Holds | Update it when |
+|---|---|---|
+| [architecture/](architecture/) | Functional and technical specification, security, system requirements, systemd | You change how something is built |
+| [user-stories/](user-stories/) | What the product does, by epic, with status | You change observable behaviour |
+| [plans/](plans/) | Development plans for work not yet started | You plan something, or a plan's premises change |
+| [releases/](releases/) | Per-release notes | You cut a release |
+| [ROADMAP.md](ROADMAP.md) | What is planned and what is not | Priorities change |
+| [PROJECT_STATUS.md](PROJECT_STATUS.md) | Implementation snapshot | A subsystem lands or its status changes |
+| [KNOWN_ISSUES.md](KNOWN_ISSUES.md) | Defects and limitations | You find, fix or confirm one |
+| [CHANGELOG.md](CHANGELOG.md) | Version history | Every user-visible change |
+
+A behavioural change usually touches a user story **and** the changelog. A purely internal
+change touches the architecture documents instead.
 
 ## Development
 
