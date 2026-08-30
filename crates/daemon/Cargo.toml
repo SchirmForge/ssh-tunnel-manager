@@ -84,3 +84,6 @@ base64 = "0.22"
 
 [dev-dependencies]
 tempfile = { workspace = true }
+# Integration tests drive the daemon's REST/SSE API through the real client.
+reqwest = { workspace = true }
+futures-util = { workspace = true }
