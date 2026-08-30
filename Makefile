@@ -1,7 +1,8 @@
 # Makefile for development tasks and basic binary installation
 # For full installation with systemd support, use: ./scripts/install.sh
 
-.PHONY: all build clean test clippy fmt run-daemon run-cli run-gui check install help
+.PHONY: all build build-debug clean test test-live test-network-modes sandbox \
+        clippy fmt fmt-check run-daemon run-cli run-gui run-gui-qt check install help
 
 
 # Default target
@@ -19,9 +20,25 @@ build-debug:
 clean:
 	cargo clean
 
-# Run tests (default-members only; --all/--workspace would pull in gui-qt)
+# Run tests (default-members only; --all/--workspace would pull in gui-qt).
+# Live SSH tests are #[ignore]d and excluded here - see test-live.
 test:
 	cargo test
+
+# Live SSH tests against the host in .local/testing/ssh-target.env.
+# Without that file each test skips; --nocapture makes the skip reasons visible.
+# See docs/testing/ssh-target.env.template.
+test-live:
+	cargo test -- --ignored --nocapture
+
+# End-to-end CLI test of all three daemon listener modes, in a sandbox
+test-network-modes:
+	./scripts/test-network-modes.sh
+
+# Disposable sandbox shell with a daemon and seeded profiles
+# e.g. make sandbox ARGS="--mode tcp-https --profiles key,2fa"
+sandbox:
+	./scripts/dev-env.sh $(ARGS)
 
 # Run clippy linter
 clippy:
@@ -81,14 +98,18 @@ help:
 	@echo "  build          - Build all components in release mode"
 	@echo "  build-debug    - Build all components in debug mode"
 	@echo "  clean          - Clean build artifacts"
-	@echo "  test           - Run tests"
+	@echo "  test           - Run tests (hermetic; no network, no secrets)"
+	@echo "  test-live      - Run live SSH tests (needs .local/testing/ssh-target.env)"
+	@echo "  test-network-modes - End-to-end CLI test of all three listener modes"
+	@echo "  sandbox        - Disposable dev environment (ARGS='--profiles key,2fa')"
 	@echo "  clippy         - Run clippy linter"
 	@echo "  fmt            - Format code"
 	@echo "  fmt-check      - Check code formatting"
 	@echo "  check          - Run all checks (format, clippy, test)"
 	@echo "  run-daemon     - Run daemon in debug mode"
 	@echo "  run-cli        - Run CLI (use ARGS='your args' to pass arguments)"
-	@echo "  run-gui        - Run GUI application"
+	@echo "  run-gui        - Run the GTK GUI (ssh-tunnel-gtk)"
+	@echo "  run-gui-qt     - Run the Qt GUI (needs Qt6; excluded from the default build)"
 	@echo "  install        - Install binaries to ~/.local/bin (use scripts/install.sh for systemd)"
 	@echo "  help           - Show this help message"
 	@echo ""

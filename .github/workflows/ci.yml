@@ -1,0 +1,101 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2025 SSH Tunnel Manager Contributors
+
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  # Everything that needs no system libraries beyond the GTK stack, and no
+  # secrets. This is the gate for every push and pull request.
+  check:
+    name: Format, lint and test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install GTK4 and libadwaita
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-4-dev libadwaita-1-dev pkg-config
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      # Operates on default-members: gui-qt needs Qt6 and does not currently
+      # compile (see crates/gui-qt/README.md).
+      - name: Clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      # Tier 1 only. The live SSH tests are #[ignore]d and never run here.
+      - name: Test
+        run: cargo test
+
+      - name: Release build
+        run: cargo build --release
+
+  # Exercises the CLI against a real daemon in all three listener modes,
+  # including TLS certificate generation and fingerprint pinning.
+  network-modes:
+    name: Network modes (CLI end to end)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Run network mode tests
+        run: ./scripts/test-network-modes.sh
+
+  # Tier 2: real SSH connections. Manual only -- it needs credentials, so it
+  # must never run on an untrusted pull request. Every value, the host name
+  # included, comes from repository secrets and is written to a gitignored file
+  # that is deleted afterwards.
+  live-ssh:
+    name: Live SSH (manual)
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    environment: live-ssh-tests
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Write live target configuration
+        env:
+          TARGET_ENV: ${{ secrets.SSH_TARGET_ENV }}
+        run: |
+          if [ -z "$TARGET_ENV" ]; then
+            echo "::notice::SSH_TARGET_ENV secret is not set; live tests will skip."
+            exit 0
+          fi
+          mkdir -p .local/testing
+          printf '%s' "$TARGET_ENV" > .local/testing/ssh-target.env
+          chmod 600 .local/testing/ssh-target.env
+
+      # --nocapture so the SKIP reasons are visible: a skipped live test still
+      # reports "ok", which would otherwise look like it had run.
+      - name: Run live SSH tests
+        run: cargo test -- --ignored --nocapture
+
+      - name: Remove credentials
+        if: always()
+        run: rm -rf .local

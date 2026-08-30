@@ -12,6 +12,8 @@
 
 #![allow(dead_code)] // Each integration test binary uses a different subset.
 
+pub mod live;
+
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
@@ -165,6 +167,28 @@ impl DaemonHarness {
             .send()
             .await
             .unwrap_or_else(|e| panic!("Request to {url} failed: {e}\n{}", self.log()))
+    }
+
+    /// A reqwest client wired for this daemon's connection mode.
+    pub fn http_client(&self) -> reqwest::Client {
+        create_daemon_client(&self.client_config).expect("Should create client")
+    }
+
+    /// Write a profile into the sandbox's profile directory, where the daemon
+    /// will find it in `ProfileSourceMode::Local`.
+    pub fn install_profile(&self, profile: &ssh_tunnel_common::Profile) {
+        let dir = self.config_dir().join("profiles");
+        std::fs::create_dir_all(&dir).expect("Should create profiles dir");
+        let toml = toml::to_string_pretty(profile).expect("Should serialize profile");
+        std::fs::write(dir.join(format!("{}.toml", profile.metadata.id)), toml)
+            .expect("Should write profile");
+    }
+
+    /// Seed `known_hosts` so a connection is not interrupted by host key
+    /// verification. Tests that want to exercise verification skip this.
+    pub fn trust_host_key(&self, entry: &str) {
+        std::fs::write(self.config_dir().join("known_hosts"), entry)
+            .expect("Should write known_hosts");
     }
 
     async fn wait_until_ready(&self) {
