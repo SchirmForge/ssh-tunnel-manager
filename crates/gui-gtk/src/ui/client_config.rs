@@ -60,12 +60,12 @@ pub fn create(state: Rc<AppState>) -> adw::NavigationPage {
     main_box.append(&scrolled);
 
     // Create navigation page
-    let page = adw::NavigationPage::builder()
+    
+
+    adw::NavigationPage::builder()
         .title("Client Configuration")
         .child(&main_box)
-        .build();
-
-    page
+        .build()
 }
 
 /// Add connection information group
@@ -436,10 +436,7 @@ fn create_copy_button(text: &str, tooltip: &str) -> gtk4::Button {
 fn load_client_config() -> DaemonClientConfig {
     // Try to load from CLI config file location
     // This reuses the same configuration structure as the CLI
-    match load_cli_config_file() {
-        Ok(config) => config,
-        Err(_) => DaemonClientConfig::default(),
-    }
+    load_cli_config_file().unwrap_or_default()
 }
 
 /// Load CLI config file (reuses CLI's config structure)

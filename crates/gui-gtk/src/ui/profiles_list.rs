@@ -114,12 +114,12 @@ pub fn create(state: Rc<AppState>) -> adw::NavigationPage {
     content_box.append(&clamp);
 
     // Create navigation page
-    let page = adw::NavigationPage::builder()
+    
+
+    adw::NavigationPage::builder()
         .title("Client")
         .child(&content_box)
-        .build();
-
-    page
+        .build()
 }
 
 /// Populate the list box with profile rows (public for refresh after save)
@@ -169,7 +169,10 @@ pub fn populate_profiles(list_box: &gtk4::ListBox, state: Rc<AppState>) {
         let state_clone = state.clone();
         let list_box_clone = list_box.clone();
         glib::MainContext::default().spawn_local(async move {
-            if let Some(client) = state_clone.daemon_client.borrow().as_ref() {
+            // Clone the client out of the RefCell: holding the borrow across the await
+            // below would panic if anything else borrows daemon_client meanwhile.
+            let client = state_clone.daemon_client.borrow().clone();
+            if let Some(client) = client {
                 match client.get_tunnel_status(profile_id).await {
                     Ok(Some(status_response)) => {
                         eprintln!("Initial status for profile {}: {:?}", profile_id, status_response.status);

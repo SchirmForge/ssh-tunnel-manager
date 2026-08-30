@@ -235,7 +235,10 @@ fn create_action_buttons(
             // Spawn async task to check for warning and handle start
             glib::MainContext::default().spawn_local(async move {
                 // Check if daemon client needs SSH key warning (async)
-                let warning_message = if let Some(client) = state.daemon_client.borrow().as_ref() {
+                // Clone the client out of the RefCell: holding the borrow across the
+                // await would panic if anything else borrows daemon_client meanwhile.
+                let client = state.daemon_client.borrow().clone();
+                let warning_message = if let Some(client) = client {
                     client.needs_ssh_key_warning(&inner_profile).await
                 } else {
                     None
@@ -434,7 +437,7 @@ fn show_delete_confirmation(
     let dialog = adw::MessageDialog::builder()
         .transient_for(parent)
         .heading("Delete Profile")
-        .body(&format!(
+        .body(format!(
             "Are you sure you want to delete the profile '{}'?\n\nThis action cannot be undone.",
             profile.name()
         ))

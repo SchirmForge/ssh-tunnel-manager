@@ -62,7 +62,7 @@ pub fn generate_self_signed_cert(
     crate::permissions::set_file_permissions_private(key_path)?;
 
     // Calculate and display certificate fingerprint
-    let fingerprint = calculate_fingerprint(&cert.der());
+    let fingerprint = calculate_fingerprint(cert.der());
     info!("Certificate generated successfully");
     info!("Certificate: {}", cert_path.display());
     info!("Private key: {}", key_path.display());

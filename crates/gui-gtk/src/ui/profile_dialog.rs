@@ -586,7 +586,7 @@ fn create_dialog(
             let now = chrono::Utc::now();
             let profile = Profile {
                 metadata: ProfileMetadata {
-                    id: profile_id.unwrap_or_else(|| Uuid::new_v4()),
+                    id: profile_id.unwrap_or_else(Uuid::new_v4),
                     name,
                     description: None,
                     created_at: if profile_id.is_some() {

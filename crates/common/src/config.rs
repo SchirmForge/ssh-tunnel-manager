@@ -43,8 +43,10 @@ pub struct ProfileMetadata {
 
 /// Where password/passphrase is stored
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Default)]
 pub enum PasswordStorage {
     /// Not stored - user will be prompted
+    #[default]
     None,
     /// Stored in system keychain/keyring
     Keychain,
@@ -52,11 +54,6 @@ pub enum PasswordStorage {
     File,
 }
 
-impl Default for PasswordStorage {
-    fn default() -> Self {
-        PasswordStorage::None
-    }
-}
 
 impl Serialize for PasswordStorage {
     fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>

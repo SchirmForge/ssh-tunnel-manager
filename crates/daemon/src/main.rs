@@ -123,7 +123,7 @@ fn categorize_connection_error(err: &hyper::Error) -> ConnectionErrorCategory {
 /// [tcp_https] SSE stream closed | type=connection_error | error: connection error
 /// [tcp_https] Server error | source=daemon_internal | type=parse_error | error: ... | action=investigate_required
 /// ```
-fn log_connection_error(err: &Box<dyn std::error::Error + Send + Sync>, listener_mode: &str) {
+fn log_connection_error(err: &(dyn std::error::Error + Send + Sync + 'static), listener_mode: &str) {
     let err_msg = err.to_string();
 
     // Try to downcast to hyper::Error for detailed analysis
@@ -418,7 +418,7 @@ async fn serve_unix_socket(
                                 .serve_connection_with_upgrades(stream, hyper_service)
                                 .await
                             {
-                                log_connection_error(&err, "unix_socket");
+                                log_connection_error(err.as_ref(), "unix_socket");
                             }
                         });
                     }

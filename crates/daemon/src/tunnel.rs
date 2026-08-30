@@ -421,8 +421,7 @@ impl client::Handler for ClientHandler {
 
         // Load known_hosts file from configured path
         let mut known_hosts = KnownHosts::load_from_pathbuf(self.known_hosts_path.clone(), false)
-            .map_err(|e| russh::Error::from(std::io::Error::new(
-                std::io::ErrorKind::Other,
+            .map_err(|e| russh::Error::from(std::io::Error::other(
                 format!("Failed to load known_hosts: {}", e)
             )))?;
 
@@ -463,8 +462,7 @@ impl client::Handler for ClientHandler {
                     ssh_tunnel_common::types::AuthRequestType::HostKeyVerification,
                     &prompt,
                     false,  // not hidden
-                ).await.map_err(|e| russh::Error::from(std::io::Error::new(
-                    std::io::ErrorKind::Other,
+                ).await.map_err(|e| russh::Error::from(std::io::Error::other(
                     format!("Host key verification prompt failed: {}", e)
                 )))?;
 
@@ -473,14 +471,12 @@ impl client::Handler for ClientHandler {
                 if response_lower == "yes" || response_lower == "y" {
                     // User accepted - add to known_hosts
                     known_hosts.add(host, port, server_public_key)
-                        .map_err(|e| russh::Error::from(std::io::Error::new(
-                            std::io::ErrorKind::Other,
+                        .map_err(|e| russh::Error::from(std::io::Error::other(
                             format!("Failed to add host key: {}", e)
                         )))?;
 
                     known_hosts.save()
-                        .map_err(|e| russh::Error::from(std::io::Error::new(
-                            std::io::ErrorKind::Other,
+                        .map_err(|e| russh::Error::from(std::io::Error::other(
                             format!("Failed to save known_hosts: {}", e)
                         )))?;
 
@@ -577,23 +573,23 @@ async fn establish_connection(
     let id = profile.metadata.id;
 
     // --- SSH client configuration ---
-    let mut cfg = Config::default();
+    let cfg = Config {
+        // Use window & packet size from profile options
+        window_size: profile.options.window_size,
+        maximum_packet_size: profile.options.max_packet_size,
+        // disable nagle for lower latency
+        nodelay: true,
+        // keepalives to avoid idle connections dying silently
+        keepalive_interval: Some(Duration::from_secs(30)),
+        keepalive_max: 3,
+        ..Default::default()
+    };
 
-    // Use window & packet size from profile options
-    cfg.window_size = profile.options.window_size;
-    cfg.maximum_packet_size = profile.options.max_packet_size;
     info!(
         "Window Size set to {} k-bytes / Max Packet Size set to {} k-bytes",
         cfg.window_size / 1024,
         cfg.maximum_packet_size / 1024
     );
-
-    // disable nagle for lower latency
-    cfg.nodelay = true;
-
-    // (coudl be removed) keepalives to avoid idle connections dying silently
-    cfg.keepalive_interval = Some(Duration::from_secs(30));
-    cfg.keepalive_max = 3;
 
     let config = Arc::new(cfg);
     // end of ssh client/tunnel configuration
@@ -683,7 +679,7 @@ async fn establish_connection(
     };
 
     // Authenticate (this may trigger AuthRequired event)
-    let authenticated = authenticate(&mut session, &profile, &auth_ctx, event_tx).await?;
+    let authenticated = authenticate(&mut session, profile, &auth_ctx, event_tx).await?;
     if !authenticated {
         let reason = "Authentication failed".to_string();
         error!("{}", reason);
@@ -974,7 +970,7 @@ async fn authenticate_with_key(
                     }
                     _ => {
                         // Other errors (corrupt key, file not found, unsupported type, permissions, etc.)
-                        let msg = build_key_load_error_message(&full_key_path, &key_path);
+                        let msg = build_key_load_error_message(&full_key_path, key_path);
                         return Err(anyhow::anyhow!("{}\n\nOriginal error: {}", msg, e));
                     }
                 }

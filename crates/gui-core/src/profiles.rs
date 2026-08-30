@@ -45,11 +45,10 @@ pub fn validate_profile(profile: &Profile) -> Result<()> {
 
     // SSH key validation
     use ssh_tunnel_common::AuthType;
-    if matches!(profile.connection.auth_type, AuthType::Key) {
-        if profile.connection.key_path.is_none() {
+    if matches!(profile.connection.auth_type, AuthType::Key)
+        && profile.connection.key_path.is_none() {
             anyhow::bail!("SSH key path is required when using key authentication");
         }
-    }
 
     // Forwarding validation
     use ssh_tunnel_common::ForwardingType;
@@ -86,7 +85,7 @@ pub fn profile_name_exists(name: &str, exclude_id: Option<Uuid>) -> bool {
         Ok(profiles) => {
             profiles.iter().any(|p| {
                 p.metadata.name.eq_ignore_ascii_case(name)
-                    && exclude_id.map_or(true, |id| p.metadata.id != id)
+                    && (exclude_id != Some(p.metadata.id))
             })
         }
         Err(_) => false,

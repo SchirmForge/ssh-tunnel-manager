@@ -15,18 +15,12 @@ pub use ssh_tunnel_common::DaemonClientConfig;
 
 /// CLI configuration (wrapper around DaemonClientConfig with file I/O)
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Default)]
 pub struct CliConfig {
     #[serde(flatten)]
     pub daemon_config: DaemonClientConfig,
 }
 
-impl Default for CliConfig {
-    fn default() -> Self {
-        Self {
-            daemon_config: DaemonClientConfig::default(),
-        }
-    }
-}
 
 impl CliConfig {
     /// Load CLI configuration from file

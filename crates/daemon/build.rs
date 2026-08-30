@@ -8,7 +8,7 @@ use std::process::Command;
 fn main() {
     // Get the current timestamp
     let output = Command::new("date")
-        .args(&["+%Y-%m-%d %H:%M:%S %Z"])
+        .args(["+%Y-%m-%d %H:%M:%S %Z"])
         .output()
         .expect("Failed to execute date command");
 
@@ -22,7 +22,7 @@ fn main() {
 
     // Get git commit hash if available
     if let Ok(output) = Command::new("git")
-        .args(&["rev-parse", "--short", "HEAD"])
+        .args(["rev-parse", "--short", "HEAD"])
         .output()
     {
         if output.status.success() {

@@ -38,7 +38,7 @@ pub fn markdown_to_pango(markdown: &str) -> String {
                 Tag::Paragraph => {
                     // Don't add extra spacing in list items
                     if !in_list_item {
-                        output.push_str("\n");
+                        output.push('\n');
                     }
                 }
                 Tag::CodeBlock(_) => {
@@ -47,7 +47,7 @@ pub fn markdown_to_pango(markdown: &str) -> String {
                 }
                 Tag::List(_) => {
                     list_depth += 1;
-                    output.push_str("\n");
+                    output.push('\n');
                 }
                 Tag::Item => {
                     in_list_item = true;
@@ -75,7 +75,7 @@ pub fn markdown_to_pango(markdown: &str) -> String {
                 }
                 TagEnd::Paragraph => {
                     if !in_list_item {
-                        output.push_str("\n");
+                        output.push('\n');
                     }
                 }
                 TagEnd::CodeBlock => {
@@ -84,7 +84,7 @@ pub fn markdown_to_pango(markdown: &str) -> String {
                 }
                 TagEnd::List(_) => {
                     list_depth = list_depth.saturating_sub(1);
-                    output.push_str("\n");
+                    output.push('\n');
                 }
                 TagEnd::Item => {
                     in_list_item = false;

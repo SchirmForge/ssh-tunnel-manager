@@ -32,8 +32,10 @@ pub fn socket_path() -> Result<PathBuf> {
 /// Listener mode for the daemon
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "kebab-case")]
+#[derive(Default)]
 pub enum ListenerMode {
     /// Unix domain socket (local-only, no TLS)
+    #[default]
     UnixSocket,
     /// TCP with HTTP (localhost-only, no TLS)
     TcpHttp,
@@ -41,11 +43,6 @@ pub enum ListenerMode {
     TcpHttps,
 }
 
-impl Default for ListenerMode {
-    fn default() -> Self {
-        ListenerMode::UnixSocket
-    }
-}
 
 /// Daemon configuration
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -237,6 +234,134 @@ impl DaemonConfig {
     }
 }
 
+/// Write CLI config snippet to help users configure their CLI
+/// Get the daemon_host value for client config snippet
+/// Returns empty string if bind_host is 0.0.0.0 or :: (bind-all addresses)
+/// Otherwise returns the bind_host value
+fn get_snippet_daemon_host(bind_host: &str) -> String {
+    if bind_host == "0.0.0.0" || bind_host == "::" {
+        String::new()
+    } else {
+        bind_host.to_string()
+    }
+}
+
+/// Get help comment for empty daemon_host
+fn get_empty_host_comment(bind_host: &str) -> String {
+    if bind_host == "0.0.0.0" || bind_host == "::" {
+        "# Note: daemon_host is empty because daemon listens on all interfaces (0.0.0.0)\n\
+         # You must specify the actual IP address to connect to (e.g., 192.168.1.100)\n".to_string()
+    } else {
+        String::new()
+    }
+}
+
+pub fn write_cli_config_snippet(
+    listener_mode: &ListenerMode,
+    bind_host: &str,
+    bind_port: u16,
+    auth_token: Option<&str>,
+    tls_fingerprint: Option<&str>,
+) -> Result<()> {
+    let config_dir = dirs::config_dir()
+        .ok_or_else(|| anyhow::anyhow!("Could not determine config directory"))?;
+    let snippet_path = config_dir
+        .join("ssh-tunnel-manager")
+        .join("cli-config.snippet");
+
+    // Ensure parent directory exists
+    if let Some(parent) = snippet_path.parent() {
+        fs::create_dir_all(parent).context("Failed to create config directory")?;
+    }
+
+    // Get the actual socket path being used
+    let socket_path_str = socket_path()
+        .map(|p| p.display().to_string())
+        .unwrap_or_else(|_| "auto-detect".to_string());
+
+    // Build the CLI config based on listener mode
+    let config_content = match listener_mode {
+        ListenerMode::UnixSocket => {
+            let mut content = format!(
+                "# CLI Configuration for SSH Tunnel Manager\n\
+                 # Copy this to ~/.config/ssh-tunnel-manager/cli.toml\n\
+                 \n\
+                 connection_mode = \"unix-socket\"\n\
+                 # Socket path (auto-detected by default): {}\n\
+                 # Uncomment to override:\n\
+                 # daemon_url = \"{}\"\n",
+                socket_path_str, socket_path_str
+            );
+            // Add auth token if authentication is required
+            if let Some(token) = auth_token {
+                content.push_str(&format!("auth_token = \"{}\"\n", token));
+            }
+            content
+        }
+        ListenerMode::TcpHttp => {
+            let host_value = get_snippet_daemon_host(bind_host);
+            let mut content = format!(
+                "# CLI Configuration for SSH Tunnel Manager\n\
+                 # Copy this to ~/.config/ssh-tunnel-manager/cli.toml\n\
+                 \n\
+                 connection_mode = \"http\"\n\
+                 daemon_host = \"{}\"\n\
+                 daemon_port = {}\n",
+                host_value, bind_port
+            );
+            content.push_str(&get_empty_host_comment(bind_host));
+            if let Some(token) = auth_token {
+                content.push_str(&format!("auth_token = \"{}\"\n", token));
+            }
+            content
+        }
+        ListenerMode::TcpHttps => {
+            let host_value = get_snippet_daemon_host(bind_host);
+            let mut content = format!(
+                "# CLI Configuration for SSH Tunnel Manager\n\
+                 # Copy this to ~/.config/ssh-tunnel-manager/cli.toml\n\
+                 \n\
+                 connection_mode = \"https\"\n\
+                 daemon_host = \"{}\"\n\
+                 daemon_port = {}\n",
+                host_value, bind_port
+            );
+            content.push_str(&get_empty_host_comment(bind_host));
+            if let Some(token) = auth_token {
+                content.push_str(&format!("auth_token = \"{}\"\n", token));
+            }
+            if let Some(fingerprint) = tls_fingerprint {
+                content.push_str(&format!("tls_cert_fingerprint = \"{}\"\n", fingerprint));
+            }
+            content
+        }
+    };
+
+    // Write the snippet file
+    fs::write(&snippet_path, config_content)
+        .context("Failed to write CLI config snippet")?;
+
+    // Set restrictive permissions on snippet file (contains auth token and TLS fingerprint)
+    crate::permissions::set_file_permissions_private(&snippet_path)?;
+
+    info!("");
+    info!("═══════════════════════════════════════════════════════════");
+    info!("📋 CLI Configuration Snippet Generated");
+    info!("═══════════════════════════════════════════════════════════");
+    info!("");
+    info!("A configuration file has been created at:");
+    info!("  {}", snippet_path.display());
+    info!("");
+    info!("To configure your CLI, run:");
+    info!("  cp {} ~/.config/ssh-tunnel-manager/cli.toml",
+        snippet_path.display());
+    info!("");
+    info!("═══════════════════════════════════════════════════════════");
+    info!("");
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -367,7 +492,7 @@ mod tests {
     fn test_default_require_auth_is_true() {
         let config = DaemonConfig::default();
         // Verify that require_auth defaults to true for security
-        assert_eq!(config.require_auth, true);
+        assert!(config.require_auth);
     }
 
     #[test]
@@ -458,132 +583,4 @@ mod tests {
         let metadata = fs::metadata(&snippet_path).unwrap();
         assert_eq!(metadata.permissions().mode() & 0o777, 0o600);
     }
-}
-
-/// Write CLI config snippet to help users configure their CLI
-/// Get the daemon_host value for client config snippet
-/// Returns empty string if bind_host is 0.0.0.0 or :: (bind-all addresses)
-/// Otherwise returns the bind_host value
-fn get_snippet_daemon_host(bind_host: &str) -> String {
-    if bind_host == "0.0.0.0" || bind_host == "::" {
-        String::new()
-    } else {
-        bind_host.to_string()
-    }
-}
-
-/// Get help comment for empty daemon_host
-fn get_empty_host_comment(bind_host: &str) -> String {
-    if bind_host == "0.0.0.0" || bind_host == "::" {
-        "# Note: daemon_host is empty because daemon listens on all interfaces (0.0.0.0)\n\
-         # You must specify the actual IP address to connect to (e.g., 192.168.1.100)\n".to_string()
-    } else {
-        String::new()
-    }
-}
-
-pub fn write_cli_config_snippet(
-    listener_mode: &ListenerMode,
-    bind_host: &str,
-    bind_port: u16,
-    auth_token: Option<&str>,
-    tls_fingerprint: Option<&str>,
-) -> Result<()> {
-    let config_dir = dirs::config_dir()
-        .ok_or_else(|| anyhow::anyhow!("Could not determine config directory"))?;
-    let snippet_path = config_dir
-        .join("ssh-tunnel-manager")
-        .join("cli-config.snippet");
-
-    // Ensure parent directory exists
-    if let Some(parent) = snippet_path.parent() {
-        fs::create_dir_all(parent).context("Failed to create config directory")?;
-    }
-
-    // Get the actual socket path being used
-    let socket_path_str = socket_path()
-        .map(|p| p.display().to_string())
-        .unwrap_or_else(|_| "auto-detect".to_string());
-
-    // Build the CLI config based on listener mode
-    let config_content = match listener_mode {
-        ListenerMode::UnixSocket => {
-            let mut content = format!(
-                "# CLI Configuration for SSH Tunnel Manager\n\
-                 # Copy this to ~/.config/ssh-tunnel-manager/cli.toml\n\
-                 \n\
-                 connection_mode = \"unix-socket\"\n\
-                 # Socket path (auto-detected by default): {}\n\
-                 # Uncomment to override:\n\
-                 # daemon_url = \"{}\"\n",
-                socket_path_str, socket_path_str
-            );
-            // Add auth token if authentication is required
-            if let Some(token) = auth_token {
-                content.push_str(&format!("auth_token = \"{}\"\n", token));
-            }
-            content
-        }
-        ListenerMode::TcpHttp => {
-            let host_value = get_snippet_daemon_host(bind_host);
-            let mut content = format!(
-                "# CLI Configuration for SSH Tunnel Manager\n\
-                 # Copy this to ~/.config/ssh-tunnel-manager/cli.toml\n\
-                 \n\
-                 connection_mode = \"http\"\n\
-                 daemon_host = \"{}\"\n\
-                 daemon_port = {}\n",
-                host_value, bind_port
-            );
-            content.push_str(&get_empty_host_comment(bind_host));
-            if let Some(token) = auth_token {
-                content.push_str(&format!("auth_token = \"{}\"\n", token));
-            }
-            content
-        }
-        ListenerMode::TcpHttps => {
-            let host_value = get_snippet_daemon_host(bind_host);
-            let mut content = format!(
-                "# CLI Configuration for SSH Tunnel Manager\n\
-                 # Copy this to ~/.config/ssh-tunnel-manager/cli.toml\n\
-                 \n\
-                 connection_mode = \"https\"\n\
-                 daemon_host = \"{}\"\n\
-                 daemon_port = {}\n",
-                host_value, bind_port
-            );
-            content.push_str(&get_empty_host_comment(bind_host));
-            if let Some(token) = auth_token {
-                content.push_str(&format!("auth_token = \"{}\"\n", token));
-            }
-            if let Some(fingerprint) = tls_fingerprint {
-                content.push_str(&format!("tls_cert_fingerprint = \"{}\"\n", fingerprint));
-            }
-            content
-        }
-    };
-
-    // Write the snippet file
-    fs::write(&snippet_path, config_content)
-        .context("Failed to write CLI config snippet")?;
-
-    // Set restrictive permissions on snippet file (contains auth token and TLS fingerprint)
-    crate::permissions::set_file_permissions_private(&snippet_path)?;
-
-    info!("");
-    info!("═══════════════════════════════════════════════════════════");
-    info!("📋 CLI Configuration Snippet Generated");
-    info!("═══════════════════════════════════════════════════════════");
-    info!("");
-    info!("A configuration file has been created at:");
-    info!("  {}", snippet_path.display());
-    info!("");
-    info!("To configure your CLI, run:");
-    info!("  cp {} ~/.config/ssh-tunnel-manager/cli.toml",
-        snippet_path.display());
-    info!("");
-    info!("═══════════════════════════════════════════════════════════");
-    info!("");
-
-    Ok(())
 }

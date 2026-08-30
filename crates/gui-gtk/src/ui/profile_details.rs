@@ -25,7 +25,7 @@ pub fn create(state: Rc<AppState>, profile: &ProfileModel) -> adw::NavigationPag
     content_box.append(&header);
 
     // Connection status banner at top (full-width, sticky)
-    let status_banner = create_status_banner(&profile);
+    let status_banner = create_status_banner(profile);
     content_box.append(&status_banner);
 
     // Store banner reference in state for SSE updates
@@ -44,7 +44,7 @@ pub fn create(state: Rc<AppState>, profile: &ProfileModel) -> adw::NavigationPag
     main_content.set_margin_end(24);
 
     // Profile summary (4 key fields)
-    let summary_group = create_summary_group(&profile);
+    let summary_group = create_summary_group(profile);
     main_content.append(&summary_group);
 
     // Action buttons (Start/Stop/Edit/Delete)
@@ -58,7 +58,7 @@ pub fn create(state: Rc<AppState>, profile: &ProfileModel) -> adw::NavigationPag
     state.profile_details_stop_btn.replace(Some(stop_btn));
 
     // Full details in expandable section (below buttons)
-    let details_expander = create_details_expander(&profile);
+    let details_expander = create_details_expander(profile);
     main_content.append(&details_expander);
 
     scrolled.set_child(Some(&main_content));
@@ -72,7 +72,7 @@ pub fn create(state: Rc<AppState>, profile: &ProfileModel) -> adw::NavigationPag
 
     // Create navigation page
     let page = adw::NavigationPage::builder()
-        .title(&profile.name())
+        .title(profile.name())
         .child(&content_box)
         .build();
 
@@ -83,8 +83,11 @@ pub fn create(state: Rc<AppState>, profile: &ProfileModel) -> adw::NavigationPag
         if let Some(prof) = profile_clone.profile() {
             let profile_id = prof.metadata.id;
 
-            // Query current tunnel status from daemon
-            if let Some(client) = state_clone.daemon_client.borrow().as_ref() {
+            // Query current tunnel status from daemon.
+            // Clone the client out of the RefCell: holding the borrow across the await
+            // below would panic if anything else borrows daemon_client meanwhile.
+            let client = state_clone.daemon_client.borrow().clone();
+            if let Some(client) = client {
                 match client.get_tunnel_status(profile_id).await {
                     Ok(Some(status_response)) => {
                         // Update UI with current status
@@ -275,7 +278,9 @@ fn create_action_buttons(state: Rc<AppState>, profile: &ProfileModel, window: &a
         // Spawn async task to check for warning and handle start
         glib::MainContext::default().spawn_local(async move {
             // Check if daemon client needs SSH key warning (async)
-            let warning_message = if let Some(client) = state.daemon_client.borrow().as_ref() {
+            // Clone out of the RefCell before awaiting (see note above).
+            let client = state.daemon_client.borrow().clone();
+            let warning_message = if let Some(client) = client {
                 client.needs_ssh_key_warning(&inner_profile).await
             } else {
                 None
@@ -519,7 +524,7 @@ fn create_action_buttons(state: Rc<AppState>, profile: &ProfileModel, window: &a
         let dialog = adw::MessageDialog::builder()
             .transient_for(&window)
             .heading("Delete Profile?")
-            .body(&format!("Are you sure you want to delete '{}'?\n\nThis action cannot be undone.", profile_name))
+            .body(format!("Are you sure you want to delete '{}'?\n\nThis action cannot be undone.", profile_name))
             .build();
 
         dialog.add_response("cancel", "Cancel");

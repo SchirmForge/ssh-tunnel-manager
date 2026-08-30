@@ -80,7 +80,10 @@ fn populate_daemon_page(scrolled: &gtk4::ScrolledWindow, state: Rc<AppState>) {
 
     // Fetch daemon info asynchronously using glib's async runtime
     glib::MainContext::default().spawn_local(async move {
-        let daemon_info_result = if let Some(client) = state.daemon_client.borrow().as_ref() {
+        // Clone the client out of the RefCell: holding the borrow across the await
+        // would panic if anything else borrows daemon_client meanwhile.
+        let client = state.daemon_client.borrow().clone();
+        let daemon_info_result = if let Some(client) = client {
             client.get_daemon_info().await
         } else {
             Err(anyhow::anyhow!("No daemon client"))
@@ -216,7 +219,7 @@ fn add_daemon_config_group(prefs_page: &adw::PreferencesPage, daemon_info: &Daem
     // PID
     let pid_row = adw::ActionRow::builder()
         .title("Process ID")
-        .subtitle(&daemon_info.pid.to_string())
+        .subtitle(daemon_info.pid.to_string())
         .build();
     group.add(&pid_row);
 
@@ -380,7 +383,11 @@ fn show_stop_confirmation_dialog(widget: &gtk4::Button, state: Rc<AppState>) {
                 // Spawn async task to shutdown daemon
                 let state = state.clone();
                 glib::MainContext::default().spawn_local(async move {
-                    if let Some(client) = state.daemon_client.borrow().as_ref() {
+                    // Clone out of the RefCell before awaiting: the success path below
+                    // borrows other state, and holding this borrow across the await
+                    // would panic if anything else borrows daemon_client meanwhile.
+                    let client = state.daemon_client.borrow().clone();
+                    if let Some(client) = client {
                         match client.shutdown_daemon().await {
                             Ok(()) => {
                                 eprintln!("Daemon shutdown initiated");
@@ -471,10 +478,7 @@ fn create_copy_button(text: &str, tooltip: &str) -> gtk4::Button {
 /// Load client configuration
 fn load_client_config() -> DaemonClientConfig {
     // Try to load from CLI config file location
-    match load_cli_config_file() {
-        Ok(config) => config,
-        Err(_) => DaemonClientConfig::default(),
-    }
+    load_cli_config_file().unwrap_or_default()
 }
 
 /// Load CLI config file (reuses CLI's config structure)

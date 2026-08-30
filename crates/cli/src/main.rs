@@ -308,11 +308,8 @@ impl TunnelEventHandler for CliEventHandler {
     }
 
     fn on_event(&mut self, event: &TunnelEvent) {
-        match event {
-            TunnelEvent::Starting { .. } => {
-                println!("{}", "Start request accepted, connecting...".dimmed());
-            }
-            _ => {}
+        if let TunnelEvent::Starting { .. } = event {
+            println!("{}", "Start request accepted, connecting...".dimmed());
         }
     }
 }
@@ -837,6 +834,9 @@ async fn show_all_tunnels_status() -> Result<()> {
     Ok(())
 }
 
+// Mirrors the `Commands::Add` clap variant one-for-one; grouping the arguments into a
+// struct would only move the same fields behind another name.
+#[allow(clippy::too_many_arguments)]
 async fn add_profile(
     name: String,
     remote_host: Option<String>,
@@ -1321,15 +1321,14 @@ fn validate_local_port(port: u16, non_interactive: bool) -> Result<()> {
         );
         println!("{}", warning.yellow());
 
-        if !non_interactive {
-            if !Confirm::new()
+        if !non_interactive
+            && !Confirm::new()
                 .with_prompt("Continue with this port?")
                 .default(false)
                 .interact()?
             {
                 anyhow::bail!("Aborted due to privileged port selection");
             }
-        }
     }
     Ok(())
 }
