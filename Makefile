@@ -19,9 +19,9 @@ build-debug:
 clean:
 	cargo clean
 
-# Run tests
+# Run tests (default-members only; --all/--workspace would pull in gui-qt)
 test:
-	cargo test --all
+	cargo test
 
 # Run clippy linter
 clippy:
@@ -43,9 +43,13 @@ run-daemon:
 run-cli:
 	cargo run -p ssh-tunnel-cli -- $(ARGS)
 
-# Run GUI
+# Run GTK GUI
 run-gui:
-	cargo run -p ssh-tunnel-gui
+	cargo run -p ssh-tunnel-gui-gtk
+
+# Run Qt GUI (requires Qt6 - excluded from the default build, see Cargo.toml)
+run-gui-qt:
+	cargo run -p ssh-tunnel-gui-qt
 
 # Full check (format, clippy, test)
 check: fmt-check clippy test
@@ -67,7 +71,7 @@ install:
 	@cargo build --release
 	@install -Dm755 target/release/ssh-tunnel-daemon ~/.local/bin/ssh-tunnel-daemon
 	@install -Dm755 target/release/ssh-tunnel ~/.local/bin/ssh-tunnel
-	@install -Dm755 target/release/ssh-tunnel-gui ~/.local/bin/ssh-tunnel-gui
+	@install -Dm755 target/release/ssh-tunnel-gtk ~/.local/bin/ssh-tunnel-gtk
 	@echo "Installed to ~/.local/bin/"
 	@echo "Make sure ~/.local/bin is in your PATH"
 

@@ -9,6 +9,17 @@ members = [
     "crates/common",
 ]
 
+# gui-qt is a member (so `cargo build -p ssh-tunnel-gui-qt` works) but is excluded
+# from the default build: it requires Qt6 development packages and does not currently
+# compile. See crates/gui-qt/README.md. Everything else builds with GTK4 alone.
+default-members = [
+    "crates/daemon",
+    "crates/cli",
+    "crates/common",
+    "crates/gui-core",
+    "crates/gui-gtk",
+]
+
 [workspace.package]
 version = "0.1.10"
 edition = "2021"
@@ -71,15 +82,15 @@ reqwest = { version = "0.12", features = ["json", "stream", "rustls-tls"], defau
 # GTK (for GUI crate)
 gtk4 = { version = "0.9", features = ["v4_12"] }
 libadwaita = { version = "0.7", features = ["v1_5"] }
-ashpd = "0.12"
 
-# System tray (for tray crate)
-ksni = "0.2"
+# Desktop notifications (for the planned notification work)
 notify-rust = "4.11"
 
-# WebSocket (for GUI crate)
-tokio-tungstenite = "0.24"
+# Async stream utilities
 futures-util = "0.3"
+
+# Test support
+tempfile = "3.12"
 
 [profile.release]
 opt-level = 3
