@@ -182,7 +182,7 @@
 <h2 id="system">2. System architecture</h2>
 
 <figure>
-<svg viewBox="0 0 900 560" role="img" aria-labelledby="sysarch-title">
+<svg viewBox="0 0 900 730" role="img" aria-labelledby="sysarch-title">
   <title id="sysarch-title">System architecture: clients communicate with the daemon over REST and SSE; the daemon connects to SSH servers</title>
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
@@ -258,14 +258,14 @@
   <text x="66" y="512" class="d-sub">keyring · known_hosts verification · file permissions · privileged ports</text>
 
   <!-- SSH servers -->
-  <rect x="680" y="348" width="190" height="110" rx="6" class="d-box d-ext"/>
-  <text x="696" y="376" class="d-label">SSH servers</text>
-  <text x="696" y="396" class="d-sub">key · password</text>
-  <text x="696" y="412" class="d-sub">keyboard-interactive</text>
-  <text x="696" y="434" class="d-sub">forwarded ports</text>
+  <rect x="220" y="615" width="200" height="110" rx="6" class="d-box d-ext"/>
+  <text x="230" y="638" class="d-label">SSH servers</text>
+  <text x="230" y="658" class="d-sub">key · password</text>
+  <text x="230" y="694" class="d-sub">keyboard-interactive</text>
+  <text x="230" y="716" class="d-sub">forwarded ports</text>
 
-  <path d="M 610 435 L 676 403" class="d-edge" marker-end="url(#arrow)"/>
-  <text x="614" y="466" class="d-sub">SSH</text>
+  <path d="M 320 550 L 320 605" class="d-edge" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+  <text x="330" y="575" class="d-sub">SSH</text>
 </svg>
 <figcaption>Clients issue commands over REST and receive state changes over SSE. Only the daemon speaks SSH.</figcaption>
 </figure>
@@ -436,7 +436,7 @@
   <text x="24" y="374" class="d-title">B · KEY PASSPHRASE — ENCRYPTED KEY ONLY · SERVER NOT INVOLVED</text>
 
   <rect x="14" y="600" width="872" height="285" rx="8" class="d-band"/>
-  <text x="24" y="618" class="d-title">C · SECOND FACTOR — SERVER-ISSUED CHALLENGE</text>
+  <text x="24" y="618" class="d-title">C · SECOND FACTOR — SERVER-ISSUED CHALLENGE - RUN TWICE FOR 2FA + PASSWORD </text>
 
   <!-- participants -->
   <rect x="20" y="20" width="150" height="40" rx="6" class="d-box d-user"/>
