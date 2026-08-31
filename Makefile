@@ -1,8 +1,9 @@
 # Makefile for development tasks and basic binary installation
 # For full installation with systemd support, use: ./scripts/install.sh
 
-.PHONY: all build build-debug clean test test-live test-network-modes sandbox \
-        clippy fmt fmt-check run-daemon run-cli run-gui check install help
+.PHONY: all build build-debug clean test test-live test-live-fixture test-network-modes \
+        ssh-fixture-up ssh-fixture-down sandbox clippy fmt fmt-check run-daemon run-cli \
+        run-gui check check-all audit audit-tools install help
 
 
 # Default target
@@ -63,8 +64,22 @@ run-cli:
 run-gui:
 	cargo run -p ssh-tunnel-gui-gtk
 
+# Supply-chain and dependency audit. Policy lives in deny.toml; every ignored
+# advisory there carries a written reason.
+audit:
+	cargo audit
+	cargo deny check
+	cargo machete
+
+# Install the audit tooling (slow; only needed once per environment)
+audit-tools:
+	cargo install --locked cargo-audit cargo-deny cargo-machete cargo-nextest
+
 # Full check (format, clippy, test)
 check: fmt-check clippy test
+
+# Everything CI gates on, in one command
+check-all: fmt-check clippy test test-live-fixture audit
 
 # Install binaries and optionally systemd units
 # NOTE: Use scripts/install.sh for full installation with systemd support
@@ -94,13 +109,17 @@ help:
 	@echo "  build-debug    - Build all components in debug mode"
 	@echo "  clean          - Clean build artifacts"
 	@echo "  test           - Run tests (hermetic; no network, no secrets)"
-	@echo "  test-live      - Run live SSH tests (needs .local/testing/ssh-target.env)"
+	@echo "  test-live      - Live SSH tests vs a provisioned host (see scripts/provision-test-target.sh)"
+	@echo "  test-live-fixture - Live SSH tests vs a local unprivileged sshd (no setup needed)"
 	@echo "  test-network-modes - End-to-end CLI test of all three listener modes"
 	@echo "  sandbox        - Disposable dev environment (ARGS='--profiles key,2fa')"
 	@echo "  clippy         - Run clippy linter"
 	@echo "  fmt            - Format code"
 	@echo "  fmt-check      - Check code formatting"
 	@echo "  check          - Run all checks (format, clippy, test)"
+	@echo "  check-all      - Everything CI gates on (adds live fixture tests and audit)"
+	@echo "  audit          - cargo audit + cargo deny + cargo machete"
+	@echo "  audit-tools    - Install the audit tooling (once per environment)"
 	@echo "  run-daemon     - Run daemon in debug mode"
 	@echo "  run-cli        - Run CLI (use ARGS='your args' to pass arguments)"
 	@echo "  run-gui        - Run the GTK GUI (ssh-tunnel-gtk)"

@@ -69,9 +69,11 @@ See [../DEVELOPMENT.md](../DEVELOPMENT.md#testing) for how to run any of this.
 - `/.local/` is gitignored in its entirety
 - **No committed file** — script, test, document or CI workflow — contains the host name or any credential
 - A template with placeholders is committed at `docs/testing/ssh-target.env.template`
-- CI writes the file from a secret at runtime and deletes it afterwards
+- The gating CI tier needs **no credentials at all**: it generates a throwaway localhost fixture per run
+- The manual tier writes the file from a secret at runtime and deletes it afterwards
+- `gitleaks` runs on every pull request, so the rule is enforced rather than merely stated
 
-**Implementation**: `.gitignore`, `docs/testing/ssh-target.env.template`, `crates/daemon/tests/harness/live.rs`
+**Implementation**: `.gitignore`, `docs/testing/ssh-target.env.template`, `crates/daemon/tests/harness/live.rs`, `scripts/ssh-fixture.sh`, `.github/workflows/ci.yml`
 
 ---
 
@@ -89,7 +91,16 @@ See [../DEVELOPMENT.md](../DEVELOPMENT.md#testing) for how to run any of this.
 > `--nocapture` — as `make test-live` does — or a completely skipped run looks like a
 > passing one.
 
-**Implementation**: `crates/daemon/tests/harness/live.rs` (`live_target_or_skip!`), `Makefile`
+In CI that trap is closed rather than documented. `SSH_TUNNEL_TEST_STRICT` turns a skip into
+a failure, at two levels because the two live tiers can support different amounts:
+
+| Value | Meaning | Used by |
+|---|---|---|
+| unset | skip freely — a fresh clone runs `cargo test` with no setup | developers |
+| `1` | the target file must exist; an account it does not configure still skips | tier 2, local fixture |
+| `all` | the target file must exist **and** every account a test asks for must be configured | tier 4, provisioned host |
+
+**Implementation**: `crates/daemon/tests/harness/live.rs` (`live_target_or_skip!`, `Strictness`), `Makefile`
 
 ---
 
@@ -117,7 +128,11 @@ See [../DEVELOPMENT.md](../DEVELOPMENT.md#testing) for how to run any of this.
 **Acceptance criteria**
 - Every push and pull request runs `cargo fmt --check`, `cargo clippy -- -D warnings`, the hermetic tests and a release build
 - The network-mode script runs too, covering the CLI against all three listener modes
-- The live tier is `workflow_dispatch` only, so credentials never reach an untrusted pull request
+- **Real SSH connections are exercised on every pull request**, against an unprivileged localhost sshd — no credentials, so this can run on untrusted pull requests safely
+- The tier needing real credentials stays `workflow_dispatch` only
+- The supply chain is checked: advisories, licences, dependency sources and unused dependencies
+- Secrets are scanned for on every pull request
 - Every workspace member builds, so `--workspace` needs no carve-out
+- Actions are pinned to commit SHAs and the toolchain is pinned by `rust-toolchain.toml`; neither floats
 
-**Implementation**: `.github/workflows/ci.yml`
+**Implementation**: `.github/workflows/ci.yml`, `deny.toml`, `rust-toolchain.toml`, `.github/dependabot.yml`

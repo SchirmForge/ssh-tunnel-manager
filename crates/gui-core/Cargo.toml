@@ -1,11 +1,12 @@
 [package]
 name = "ssh-tunnel-gui-core"
 version.workspace = true
-edition = "2021"
-authors = ["SSH Tunnel Manager Contributors"]
-license = "Apache-2.0"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
 description = "Framework-agnostic GUI core for SSH Tunnel Manager"
-repository = "https://github.com/yourusername/ssh-tunnel-manager"
+repository.workspace = true
 
 [dependencies]
 ssh-tunnel-common = { path = "../common" }

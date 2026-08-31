@@ -5,6 +5,7 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
+publish.workspace = true
 
 [[bin]]
 name = "ssh-tunnel"
@@ -20,7 +21,6 @@ tokio = { workspace = true }
 # CLI framework
 clap = { workspace = true }
 dialoguer = { workspace = true }
-indicatif = { workspace = true }
 colored = { workspace = true }
 
 # Table formatting
@@ -36,14 +36,8 @@ toml = { workspace = true }
 
 # Error handling
 anyhow = { workspace = true }
-thiserror = { workspace = true }
 
-# Logging
-tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
-
-# Date/Time
-chrono = { workspace = true }
 
 # Config directories
 dirs = { workspace = true }

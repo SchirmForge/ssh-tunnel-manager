@@ -201,17 +201,19 @@ async fn read_banner_through_tunnel(local_port: u16) -> anyhow::Result<String> {
 #[ignore = "needs a live SSH server; run with --ignored"]
 async fn first_connection_prompts_for_host_key_and_remembers_it() {
     let (target, values) =
-        live_target_or_skip!(&["SSH_TUNNEL_TEST_USER_PASSWORD", "SSH_TUNNEL_TEST_PASSWORD"]);
-    let (user, password) = (values[0], values[1]);
+        live_target_or_skip!(&["SSH_TUNNEL_TEST_USER_KEY", "SSH_TUNNEL_TEST_KEY_PATH"]);
+    let (user, key_path) = (values[0], values[1]);
 
     let daemon = DaemonHarness::start_unix().await;
     // Deliberately no trust_host_key(): known_hosts starts empty.
 
     let port = free_local_port();
-    let profile = profile_for(target, "hostkey", user, port);
+    let mut profile = profile_for(target, "hostkey", user, port);
+    profile.connection.auth_type = AuthType::Key;
+    profile.connection.key_path = Some(key_path.into());
     daemon.install_profile(&profile);
 
-    let mut handler = ScriptedAuth::new().with_passwords(&[password]);
+    let mut handler = ScriptedAuth::new();
     let seen = handler.seen_handle();
 
     start(&daemon, &profile, &mut handler)
@@ -249,8 +251,8 @@ async fn first_connection_prompts_for_host_key_and_remembers_it() {
 #[ignore = "needs a live SSH server; run with --ignored"]
 async fn a_changed_host_key_is_refused() {
     let (target, values) =
-        live_target_or_skip!(&["SSH_TUNNEL_TEST_USER_PASSWORD", "SSH_TUNNEL_TEST_PASSWORD"]);
-    let (user, password) = (values[0], values[1]);
+        live_target_or_skip!(&["SSH_TUNNEL_TEST_USER_KEY", "SSH_TUNNEL_TEST_KEY_PATH"]);
+    let (user, key_path) = (values[0], values[1]);
 
     let daemon = DaemonHarness::start_unix().await;
 
@@ -264,10 +266,12 @@ async fn a_changed_host_key_is_refused() {
     ));
 
     let port = free_local_port();
-    let profile = profile_for(target, "hostkey-changed", user, port);
+    let mut profile = profile_for(target, "hostkey-changed", user, port);
+    profile.connection.auth_type = AuthType::Key;
+    profile.connection.key_path = Some(key_path.into());
     daemon.install_profile(&profile);
 
-    let mut handler = ScriptedAuth::new().with_passwords(&[password]);
+    let mut handler = ScriptedAuth::new();
     let result = start(&daemon, &profile, &mut handler).await;
 
     assert!(
@@ -495,16 +499,18 @@ async fn two_factor_authentication_connects_with_a_valid_code() {
 #[ignore = "needs a live SSH server; run with --ignored"]
 async fn stopping_a_connected_tunnel_returns_promptly() {
     let (target, values) =
-        live_target_or_skip!(&["SSH_TUNNEL_TEST_USER_PASSWORD", "SSH_TUNNEL_TEST_PASSWORD"]);
-    let (user, password) = (values[0], values[1]);
+        live_target_or_skip!(&["SSH_TUNNEL_TEST_USER_KEY", "SSH_TUNNEL_TEST_KEY_PATH"]);
+    let (user, key_path) = (values[0], values[1]);
 
     let daemon = DaemonHarness::start_unix().await;
 
     let port = free_local_port();
-    let profile = profile_for(target, "stop-connected", user, port);
+    let mut profile = profile_for(target, "stop-connected", user, port);
+    profile.connection.auth_type = AuthType::Key;
+    profile.connection.key_path = Some(key_path.into());
     daemon.install_profile(&profile);
 
-    let mut handler = ScriptedAuth::new().with_passwords(&[password]);
+    let mut handler = ScriptedAuth::new();
     start(&daemon, &profile, &mut handler)
         .await
         .unwrap_or_else(|e| panic!("tunnel should start: {e}\n{}", daemon.log()));
@@ -534,13 +540,15 @@ async fn stopping_a_connected_tunnel_returns_promptly() {
 #[ignore = "needs a live SSH server; run with --ignored"]
 async fn stopping_during_authentication_returns_promptly() {
     let (target, values) =
-        live_target_or_skip!(&["SSH_TUNNEL_TEST_USER_PASSWORD", "SSH_TUNNEL_TEST_PASSWORD"]);
-    let user = values[0];
+        live_target_or_skip!(&["SSH_TUNNEL_TEST_USER_KEY", "SSH_TUNNEL_TEST_KEY_PATH"]);
+    let (user, key_path) = (values[0], values[1]);
 
     let daemon = DaemonHarness::start_unix().await;
 
     let port = free_local_port();
-    let profile = profile_for(target, "stop-during-auth", user, port);
+    let mut profile = profile_for(target, "stop-during-auth", user, port);
+    profile.connection.auth_type = AuthType::Key;
+    profile.connection.key_path = Some(key_path.into());
     daemon.install_profile(&profile);
     let tunnel_id = profile.metadata.id;
 

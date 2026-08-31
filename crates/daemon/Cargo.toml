@@ -5,6 +5,7 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
+publish.workspace = true
 
 [[bin]]
 name = "ssh-tunnel-daemon"
@@ -16,7 +17,6 @@ ssh-tunnel-common = { path = "../common" }
 
 # Async runtime
 tokio = { workspace = true }
-tokio-util = { workspace = true }
 tokio-stream = { version = "0.1", features = ["sync"] }
 
 # HTTP/REST API
@@ -32,7 +32,6 @@ futures = { version = "0.3" }
 # not needed anymore: russh-keys = { version = "0.49.2" }
 # old version on crate: russh-util = "0.52.0"
 russh = { git = "https://github.com/Eugeny/russh.git", branch = "main" }
-russh-util = { git = "https://github.com/Eugeny/russh.git", branch = "main", package = "russh-util" }
 
 # Serialization
 serde = { workspace = true }
@@ -41,14 +40,11 @@ toml = { workspace = true }
 
 # Error handling
 anyhow = { workspace = true }
-thiserror = { workspace = true }
 
 # Logging
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 
-# Security
-secret-service = { workspace = true }
 zeroize = { workspace = true }
 
 # TLS
@@ -57,7 +53,6 @@ rcgen = "0.13"
 rustls = { version = "0.23", features = ["aws-lc-rs"] }
 rustls-pemfile = "2.2"
 x509-parser = "0.16"
-tokio-rustls = "0.26"
 sha2 = "0.10"
 time = { version = "0.3", features = ["macros"] }
 
@@ -69,9 +64,6 @@ uuid = { workspace = true }
 
 # Config directories
 dirs = { workspace = true }
-
-# Async channels
-async-trait = "0.1"
 
 # User information
 users = "0.11"

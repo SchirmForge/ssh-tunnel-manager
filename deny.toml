@@ -1,0 +1,97 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2025 SSH Tunnel Manager Contributors
+#
+# Supply-chain policy, enforced in CI by `cargo deny check`.
+#
+# Run locally with `make audit`.
+
+[graph]
+targets = [
+    "x86_64-unknown-linux-gnu",
+    "aarch64-unknown-linux-gnu",
+]
+all-features = true
+
+# --- Known vulnerabilities ---------------------------------------------------
+
+[advisories]
+db-urls = ["https://github.com/rustsec/advisory-db"]
+yanked = "deny"
+
+# Every entry here is an accepted risk, and every entry needs a reason and an
+# exit condition. An ignore without a written justification is a bug in this
+# file: it hides the next real advisory behind a wall of noise.
+ignore = [
+    # RSA: Marvin attack, key recovery via a timing side channel.
+    #
+    # There is no fixed version. The advisory affects every published release of
+    # `rsa`, including the 0.10.0-rc line that russh depends on -- verified
+    # against OSV, not assumed. The only way out is dropping RSA support
+    # entirely, which would break any user holding an RSA key: unacceptable for
+    # a general-purpose SSH tunnel manager.
+    #
+    # Exposure is narrower than the advisory title suggests: the attack targets
+    # RSA *decryption*, while SSH public-key auth uses *signing*.
+    #
+    # Revisit if: a fixed `rsa` release appears, or russh makes the `rsa`
+    # feature practical to disable for our users.
+    { id = "RUSTSEC-2023-0071", reason = "no fixed version exists in any rsa release; dropping RSA support would break users' keys" },
+
+    # rustls-pemfile is unmaintained. It still works correctly and its
+    # functionality has moved into `rustls-pki-types`.
+    #
+    # Revisit if: scheduled for migration in the dependency upgrade's Phase 4.
+    # This is a cleanup, not a fix -- there is no known vulnerability.
+    { id = "RUSTSEC-2025-0134", reason = "unmaintained but functional; migration to rustls-pki-types scheduled" },
+]
+
+# --- Licences ----------------------------------------------------------------
+
+[licenses]
+# This project is Apache-2.0. These are the licences we accept underneath it.
+allow = [
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "MIT",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-3.0",
+    "Zlib",
+    "MPL-2.0",
+    "CDLA-Permissive-2.0",
+    "OpenSSL",
+]
+confidence-threshold = 0.9
+
+# --- Dependency hygiene ------------------------------------------------------
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+# The workspace's own crates are referenced by path with no version, which
+# cargo-deny counts as a wildcard. That is fine for private path dependencies;
+# the check still catches a real `foo = "*"` from crates.io.
+allow-wildcard-paths = true
+
+# --- Where code may come from ------------------------------------------------
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+
+# crates.io only. No git dependencies.
+#
+# This rule is the whole reason this file exists. The daemon spent nine months
+# pinned to `russh` at a git branch, which meant:
+#
+#   * no semver contract at all -- `cargo update` would jump to whatever HEAD
+#     happened to be, across breaking changes, with no way to say "patches only";
+#   * invisibility to `cargo audit`, which matches crates.io name+version, so
+#     the twelve advisories against that snapshot were never going to be
+#     reported by the very tool meant to catch them.
+#
+# A clean advisory report is only trustworthy if every dependency is one the
+# scanner can actually see. Adding a git dependency must be a deliberate,
+# reviewed act -- add it to `allow-git` below with a reason and a plan to leave.
+allow-git = []

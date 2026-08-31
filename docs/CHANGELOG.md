@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Supply-chain audit** (`make audit`) — `cargo audit`, `cargo deny` and `cargo machete`,
+  with policy in `deny.toml`. The `sources` check **bans git dependencies**: one has no
+  semver contract, and `cargo audit` matches crates.io name and version, so it cannot see a
+  git dependency at all. Every ignored advisory carries a written reason and a revisit
+  condition.
+- **Tier-2 live SSH fixture** (`scripts/ssh-fixture.sh`, `make test-live-fixture`) — an
+  unprivileged sshd on localhost. No root, no container, no credentials, nothing to install.
+  Covers the six key-based live tests, both host key verification tests among them, so the
+  SSH client path is now exercised on **every pull request** rather than on demand.
+- **`SSH_TUNNEL_TEST_STRICT`** — turns a skipped live test into a failure. `=1` requires the
+  target file (tier 2); `=all` additionally requires every account a test asks for (tier 4).
+  Closes the trap documented in US-10.5, where a fully skipped run still reported `ok`.
+- **Dev container** (`containers/Containerfile.dev`) — a bare workstation cannot build this
+  project, because `aws-lc-sys` needs cmake and a C toolchain. Previously undocumented.
+- **CI**: gating live-SSH job, supply-chain audit job, and `gitleaks` secret scanning, which
+  enforces the no-credentials-in-repo rule US-10.4 previously only stated.
+- `rust-toolchain.toml` and `.github/dependabot.yml` (cargo lockfile updates and actions).
+
+### Changed
+- **CI actions are pinned to commit SHAs** rather than moving tags, and the toolchain is
+  pinned rather than floating on `@stable`. These workflows handle repository secrets.
+- The manual live-SSH job now **fails** when its secret is absent instead of exiting 0. It
+  previously reported green whether the tests passed, all skipped, or were never configured.
+- Four live tests were coupled to the password account for no reason — they need a working
+  connection, not a particular authentication method. They now use key authentication and so
+  can run against the unprivileged fixture.
+
+### Removed
+- **11 unused dependencies** from the CLI, daemon and common crates, found by
+  `cargo machete` and each verified by hand: `async-trait`, `russh-util`, `secret-service`,
+  `thiserror`, `tokio-rustls`, `tokio-util`, `chrono`, `indicatif`, `tracing`, `zeroize`.
+  465 lines out of `Cargo.lock`; `secret-service` alone pulled an entire dbus stack, while
+  the daemon's keychain access actually goes through `keyring` in `ssh-tunnel-common`.
+- Workspace crates are marked `publish = false`; they are application binaries and their
+  private support crates, never published to crates.io. `gui-core` also carried a
+  placeholder repository URL.
+
 ### Fixed
 - **A wrong SSH password no longer kills the tunnel.** `authenticate_with_password` prompted
   once and gave up on failure, even while the server still offered `password`. The v0.1.10

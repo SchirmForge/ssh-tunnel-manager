@@ -1,0 +1,55 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2025 SSH Tunnel Manager Contributors
+#
+# Development container for SSH Tunnel Manager.
+#
+#   podman build -t ssh-tunnel-builder -f containers/Containerfile.dev containers/
+#   distrobox create --name ssh-tunnel-builder --image ssh-tunnel-builder
+#   distrobox enter ssh-tunnel-builder
+#
+# Fedora `toolbox` works with the same image:
+#   toolbox create --image ssh-tunnel-builder ssh-tunnel-builder
+#   toolbox run -c ssh-tunnel-builder cargo build
+#
+# Why this exists: a bare workstation cannot build this project. `aws-lc-sys`,
+# pulled in by both rustls and russh, needs cmake and a C compiler. Commands
+# that never compile -- `cargo metadata`, `cargo fmt`, `cargo update --dry-run`
+# -- succeed outside the container and make it easy to assume a full build would
+# too. It will not.
+#
+# The Rust toolchain deliberately is NOT installed here: distrobox and toolbox
+# share the host home directory, so ~/.cargo and rust-toolchain.toml already
+# provide it, pinned to one version for the container and CI alike.
+
+FROM registry.fedoraproject.org/fedora-toolbox:42
+
+RUN dnf install -y \
+        # aws-lc-sys: builds C code, needs cmake plus a compiler and linker.
+        cmake \
+        gcc \
+        gcc-c++ \
+        make \
+        perl-interpreter \
+        pkgconf-pkg-config \
+        # GTK front-end.
+        gtk4-devel \
+        libadwaita-devel \
+        glib2-devel \
+        # Live SSH tests: `sshd` for the tier-2 unprivileged fixture (see
+        # scripts/ssh-fixture.sh), the client tools for key generation, and
+        # ssh-askpass-free batch use.
+        openssh-server \
+        openssh-clients \
+        # Tier-3 sshd matrix and the test target provisioning script.
+        podman \
+        # General tooling used by the scripts and Makefile.
+        git \
+        jq \
+        python3 \
+        procps-ng \
+        iproute \
+    && dnf clean all
+
+# The audit tooling is installed with `make audit-tools` rather than baked in:
+# it compiles from source, would bloat the image, and belongs to the same
+# ~/.cargo the host shares. See the Makefile.

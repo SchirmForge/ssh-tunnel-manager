@@ -28,13 +28,41 @@ design — not in a plan file.
 ### Prerequisites
 
 #### Rust Toolchain
-- Rust 1.75+ (install via [rustup](https://rustup.rs/))
+- Pinned by [`rust-toolchain.toml`](../rust-toolchain.toml); rustup installs it automatically
+  on the first `cargo` command. Do not rely on whatever `stable` happens to be.
 - Linux (primary development platform)
+
+#### The dev container (recommended)
+
+**A bare workstation cannot build this project.** `aws-lc-sys`, pulled in by both `rustls`
+and `russh`, compiles C and needs `cmake` plus a C toolchain. This is easy to miss: commands
+that never compile — `cargo metadata`, `cargo fmt`, `cargo update --dry-run` — all succeed
+without it, so the first sign of trouble is a failed build.
+
+[`containers/Containerfile.dev`](../containers/Containerfile.dev) defines an environment with
+everything, and CI installs the same set:
+
+```bash
+podman build -t ssh-tunnel-builder -f containers/Containerfile.dev containers/
+
+# distrobox
+distrobox create --name ssh-tunnel-builder --image ssh-tunnel-builder
+distrobox enter ssh-tunnel-builder
+
+# or Fedora toolbox
+toolbox create --image ssh-tunnel-builder ssh-tunnel-builder
+toolbox run -c ssh-tunnel-builder cargo build
+```
+
+Both share your home directory, so `~/.cargo` and `rust-toolchain.toml` supply the toolchain;
+the image deliberately does not bake one in.
 
 #### System Dependencies
 
-**For CLI and Daemon only:**
-- No additional system dependencies required
+Only needed if you are building on the host rather than in the container.
+
+**For CLI and Daemon:**
+- `cmake`, a C compiler and `pkg-config` (for `aws-lc-sys`)
 
 **For GTK GUI:**
 - GTK4 (≥4.12)
@@ -159,12 +187,44 @@ daemon per test and drives its REST/SSE API through the client in `crates/common
 make test-network-modes    # CLI end-to-end against all three listener modes, incl. TLS pinning
 ```
 
-### Tier 2: live SSH - needs a real server
+### Tier 2: live SSH against a local fixture - no setup
 
 These cover the authentication flows, which cannot be exercised any other way. They are
 `#[ignore]`d, so `cargo test` never runs them.
 
-**Setup** - copy the template and fill it in:
+The quickest way to run them needs no server, no credentials and no root: `sshd` runs
+perfectly well as a normal user on a high port with its own config and host key.
+
+```bash
+make test-live-fixture
+```
+
+That starts an unprivileged sshd on localhost, runs the live tier against it, and tears it
+down. It covers the six key-based tests, **including both host key verification tests**.
+Password and 2FA go through PAM, which must read the shadow database and therefore needs
+privilege; those four skip here and are covered by tier 4.
+
+Drive the fixture directly with `scripts/ssh-fixture.sh up|down|status` when debugging.
+
+This is what CI runs on every pull request, so the SSH client path is exercised on every
+change rather than on demand.
+
+### Tier 4: live SSH against a real server
+
+For the full ten, including password and 2FA, you need a real target with three accounts.
+[`scripts/provision-test-target.sh`](../scripts/provision-test-target.sh) builds one:
+
+```bash
+scripts/provision-test-target.sh --host <host> --user <admin-user> --key <ssh-key>
+make test-live
+```
+
+It creates the accounts, generates every key and secret, configures sshd and PAM, and writes
+`.local/testing/ssh-target.env`. It is idempotent, takes the host as an argument and
+hardcodes nothing. Every `sshd_config` change is scoped with `Match User` to the test
+accounts and validated with `sshd -t` before reload, so it cannot lock you out of the host.
+
+**Setup by hand**, if you would rather not use the script - copy the template and fill it in:
 
 ```bash
 mkdir -p .local/testing
@@ -178,7 +238,7 @@ and private keys belong only there** - never in a committed file, script, test o
 workflow. The tests read the target from that file; nothing is hardcoded.
 
 The file describes three accounts on the target server: key-only, password-only, and
-publickey + keyboard-interactive 2FA. Supplying the TOTP secret lets the tests generate
+password + keyboard-interactive 2FA. Supplying the TOTP secret lets the tests generate
 valid codes, so 2FA is covered without a human.
 
 ```bash
@@ -188,6 +248,10 @@ make test-live     # or: cargo test -- --ignored --nocapture
 `--nocapture` matters: an unconfigured live test **skips but still reports `ok`**, and the
 reason is only printed to stderr. If you do not see connections happening, read the SKIP
 lines.
+
+`SSH_TUNNEL_TEST_STRICT` closes that trap where it matters. `=1` makes a missing target file
+a failure (tier 2); `=all` additionally requires every account a test asks for (tier 4). CI
+sets both accordingly. Leave it unset locally and skipping stays harmless.
 
 ### Manual testing and the dev sandbox
 
@@ -214,4 +278,21 @@ still opens an empty sandbox and tells you what is missing.
 
 ```bash
 make check         # fmt-check, clippy -D warnings, tests
+make check-all     # the above plus the live fixture tier and the audit
 ```
+
+### Auditing dependencies
+
+```bash
+make audit-tools   # once per environment: installs cargo-audit, deny, machete, nextest
+make audit         # advisories, licences, sources, unused dependencies
+```
+
+Policy lives in [`deny.toml`](../deny.toml). Every ignored advisory there carries a written
+reason and the condition under which it should be revisited — an ignore without one hides
+the next real finding.
+
+The `sources` check bans git dependencies. That is deliberate: a git dependency has no
+semver contract, and `cargo audit` matches crates.io name and version, so it cannot see one
+at all. A clean advisory report only means something if every dependency is one the scanner
+can actually read.

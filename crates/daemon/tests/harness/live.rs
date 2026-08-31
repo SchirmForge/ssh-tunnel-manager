@@ -98,29 +98,69 @@ impl LiveTarget {
     }
 }
 
+/// How strictly a skipped live test should be treated.
+///
+/// A skipped test still reports `ok`, so an unconfigured run looks exactly like
+/// a passing one. `SSH_TUNNEL_TEST_STRICT` turns that silence into a failure.
+/// It has two levels because the two live tiers can support different amounts:
+///
+/// * unset — skip freely. A fresh clone runs `cargo test` with no setup.
+/// * `1` — the target file must exist. An account it does not configure still
+///   skips. This is the tier-2 localhost fixture, which can offer key-based
+///   authentication but not password or 2FA (those need PAM, hence privilege).
+/// * `all` — the target file must exist *and* every account a test asks for
+///   must be configured. This is the tier-4 real target, where all three
+///   accounts exist and any skip means something is wrong.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Strictness {
+    Off,
+    TargetRequired,
+    FullyConfigured,
+}
+
+pub fn strictness() -> Strictness {
+    match std::env::var("SSH_TUNNEL_TEST_STRICT").as_deref() {
+        Ok("all") => Strictness::FullyConfigured,
+        Ok("1") | Ok("true") => Strictness::TargetRequired,
+        _ => Strictness::Off,
+    }
+}
+
 /// Resolve the live target and the named variables, or skip the test.
 ///
 /// Prints why it skipped so an unconfigured run is legible rather than silent.
+/// Under `SSH_TUNNEL_TEST_STRICT=1` it panics instead: see [`strict`].
 #[macro_export]
 macro_rules! live_target_or_skip {
     ($keys:expr) => {{
         match $crate::harness::live::LiveTarget::get() {
             None => {
-                eprintln!(
-                    "SKIP {}: no live SSH target configured ({} absent). \
+                let reason = format!(
+                    "no live SSH target configured ({} absent). \
                      See docs/testing/ssh-target.env.template.",
-                    std::any::type_name_of_val(&|| {}),
                     $crate::harness::live::env_file_path().display()
                 );
+                if $crate::harness::live::strictness() != $crate::harness::live::Strictness::Off {
+                    panic!("SSH_TUNNEL_TEST_STRICT is set but {reason}");
+                }
+                eprintln!("SKIP {}: {reason}", std::any::type_name_of_val(&|| {}));
                 return;
             }
             Some(target) => match target.require($keys) {
                 None => {
-                    eprintln!(
-                        "SKIP: live target is configured but {:?} is incomplete. \
+                    let reason = format!(
+                        "live target is configured but {:?} is incomplete. \
                          See docs/testing/ssh-target.env.template.",
                         $keys
                     );
+                    // Only `all` treats an unconfigured account as a failure:
+                    // the tier-2 fixture legitimately cannot provide them.
+                    if $crate::harness::live::strictness()
+                        == $crate::harness::live::Strictness::FullyConfigured
+                    {
+                        panic!("SSH_TUNNEL_TEST_STRICT=all but {reason}");
+                    }
+                    eprintln!("SKIP: {reason}");
                     return;
                 }
                 Some(values) => (target, values),

@@ -1,0 +1,26 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2025 SSH Tunnel Manager Contributors
+version: 2
+updates:
+  # Lockfile-only updates. Manifest ranges are not touched, so this delivers
+  # patch and compatible-minor security fixes without semver churn -- the
+  # automatic patching the dependency plan asks for.
+  - package-ecosystem: cargo
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    versioning-strategy: lockfile-only
+    groups:
+      cargo-lockfile:
+        patterns: ["*"]
+
+  # Actions are pinned to commit SHAs; this keeps them current. Without it,
+  # pinning means silently rotting rather than staying secure.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]

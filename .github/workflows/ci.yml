@@ -13,6 +13,15 @@ env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
 
+# Actions are pinned to commit SHAs, not tags. A tag can be moved, and these
+# workflows handle repository secrets and produce release artifacts, so an
+# action that silently changes underneath us is a supply-chain hole. Dependabot
+# (.github/dependabot.yml) keeps the pins current.
+#
+# The Rust toolchain is not installed by an action either: rust-toolchain.toml
+# pins the version and components, and rustup honours it on the first cargo
+# invocation. Previously CI used `@stable`, which floats.
+
 jobs:
   # Everything that needs no system libraries beyond the GTK stack, and no
   # secrets. This is the gate for every push and pull request.
@@ -20,31 +29,74 @@ jobs:
     name: Format, lint and test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install GTK4 and libadwaita
         run: |
           sudo apt-get update
           sudo apt-get install -y libgtk-4-dev libadwaita-1-dev pkg-config
 
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
-
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
       - name: Check formatting
         run: cargo fmt --all -- --check
 
+      # Every workspace member builds, so --workspace needs no carve-out.
       - name: Clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
-      # Tier 1 only. The live SSH tests are #[ignore]d and never run here.
+      # Tier 1 only. Live SSH tests are #[ignore]d; see live-ssh-fixture.
       - name: Test
-        run: cargo test
+        run: cargo test --workspace
 
       - name: Release build
-        run: cargo build --release
+        run: cargo build --release --workspace
+
+  # Tier 2: real SSH connections against an unprivileged sshd on localhost.
+  #
+  # No root, no container, no secrets, nothing to install beyond sshd itself,
+  # which runs fine as a normal user on a high port. This covers the key-based
+  # half of the live tier, including both host key verification tests, so the
+  # SSH client path is exercised on every pull request rather than on demand.
+  #
+  # Password and 2FA go through PAM, which must read the shadow database and so
+  # needs privilege. Those four tests skip here and run in live-ssh.
+  live-ssh-fixture:
+    name: Live SSH (local fixture)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+
+      - name: Install sshd
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y openssh-server
+
+      # SSH_TUNNEL_TEST_STRICT=1 (set by the make target) makes a missing
+      # fixture a failure. Without it a broken fixture would skip every test and
+      # still report "ok" -- the trap documented in US-10.5.
+      #
+      # Defence in depth: strict mode catches a missing target, but an account
+      # the fixture cannot provide still skips by design, so assert the exact
+      # counts too. A silently degraded fixture then fails instead of passing
+      # with ten skips.
+      - name: Run live SSH tests against the fixture
+        run: |
+          ./scripts/ssh-fixture.sh up
+          set +e
+          SSH_TUNNEL_TEST_STRICT=1 cargo test -p ssh-tunnel-daemon --test live_ssh \
+            -- --ignored --nocapture 2>&1 | tee /tmp/live.log
+          status=${PIPESTATUS[0]}
+          set -e
+          ./scripts/ssh-fixture.sh down
+          [ "$status" -eq 0 ] || { echo "::error::live fixture tests failed"; exit "$status"; }
+          skips=$(grep -c '^SKIP' /tmp/live.log || true)
+          if [ "$skips" -ne 4 ]; then
+            echo "::error::expected exactly 4 skipped live tests (password + 2FA), saw $skips"
+            exit 1
+          fi
 
   # Exercises the CLI against a real daemon in all three listener modes,
   # including TLS certificate generation and fingerprint pinning.
@@ -52,47 +104,98 @@ jobs:
     name: Network modes (CLI end to end)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: dtolnay/rust-toolchain@stable
-
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
       - name: Run network mode tests
         run: ./scripts/test-network-modes.sh
 
-  # Tier 2: real SSH connections. Manual only -- it needs credentials, so it
-  # must never run on an untrusted pull request. Every value, the host name
-  # included, comes from repository secrets and is written to a gitignored file
-  # that is deleted afterwards.
+  # Supply chain: known vulnerabilities, licence policy, dependency sources
+  # (including the ban on git dependencies) and unused dependencies.
+  audit:
+    name: Supply chain audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+
+      - name: Install audit tooling
+        run: cargo install --locked cargo-audit cargo-deny cargo-machete
+
+      # Licences, dependency hygiene and sources are enforced now.
+      - name: Licences and dependency hygiene
+        run: cargo deny check licenses bans
+
+      # Reported but not yet blocking. Both are expected to fail until the
+      # dependency upgrade lands, and a permanently red gate teaches people to
+      # ignore it:
+      #
+      #   * sources     - fails while the daemon pins russh to a git branch.
+      #                   Goes green when that moves to crates.io (Phase 1).
+      #   * advisories  - 25 known vulnerabilities in the current tree. Goes
+      #                   green after `cargo update` (Phase 3), leaving only the
+      #                   documented ignores in deny.toml.
+      #   * machete     - gui-core and gui-gtk still declare unused deps.
+      #
+      # TODO: delete `continue-on-error` once Phase 3 is done; the job is then a
+      # real gate and any new advisory fails the build.
+      - name: Advisories, sources and unused dependencies (not yet blocking)
+        continue-on-error: true
+        run: |
+          cargo deny check sources
+          cargo audit
+          cargo machete
+
+  # Credentials must never reach the repository. US-10.4 states that rule;
+  # until now nothing enforced it but reviewer attention.
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Tier 4: real SSH connections against a provisioned remote host. Manual only
+  # -- it needs credentials, so it must never run on an untrusted pull request.
+  # Set the target up with scripts/provision-test-target.sh, then put the
+  # generated .local/testing/ssh-target.env into the SSH_TARGET_ENV secret.
   live-ssh:
-    name: Live SSH (manual)
+    name: Live SSH (provisioned host, manual)
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     environment: live-ssh-tests
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
-      - uses: Swatinem/rust-cache@v2
-
+      # Fail rather than exit 0: a manually triggered live run that quietly
+      # tests nothing and reports green is worse than no run at all.
       - name: Write live target configuration
         env:
           TARGET_ENV: ${{ secrets.SSH_TARGET_ENV }}
         run: |
           if [ -z "$TARGET_ENV" ]; then
-            echo "::notice::SSH_TARGET_ENV secret is not set; live tests will skip."
-            exit 0
+            echo "::error::SSH_TARGET_ENV is not set; there is nothing to test against."
+            exit 1
           fi
           mkdir -p .local/testing
           printf '%s' "$TARGET_ENV" > .local/testing/ssh-target.env
           chmod 600 .local/testing/ssh-target.env
 
-      # --nocapture so the SKIP reasons are visible: a skipped live test still
-      # reports "ok", which would otherwise look like it had run.
+      # STRICT=all: a fully provisioned target has all three accounts, so any
+      # skip means something is wrong.
       - name: Run live SSH tests
-        run: cargo test -- --ignored --nocapture
+        run: |
+          SSH_TUNNEL_TEST_STRICT=all \
+            cargo test -p ssh-tunnel-daemon --test live_ssh -- --ignored --nocapture
 
       - name: Remove credentials
         if: always()
