@@ -20,7 +20,6 @@ logs/
 # Local-only data: test host names, credentials, keys, personal data.
 # Nothing under here is ever committed. See docs/testing/ssh-target.env.template.
 /.local/
-/.prompts/
 /.plan/
 /.ui-mockups/
 
