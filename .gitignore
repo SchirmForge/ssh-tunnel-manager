@@ -22,6 +22,7 @@ logs/
 /.local/
 /.prompts/
 /.plan/
+/.ui-mockups/
 
 # Packaging outputs
 *.deb
@@ -33,3 +34,4 @@ logs/
 *.flatpak
 *.flatpakref
 *.flatpakrepo
+.ui-mockups
