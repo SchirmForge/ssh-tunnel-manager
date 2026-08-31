@@ -803,19 +803,12 @@ fn validate_ssh_key(key_path: &std::path::Path) -> Result<(), String> {
 }
 
 /// Validate that the passphrase works with the SSH key
+///
+/// Delegates to `ssh-tunnel-common`, like the keychain helpers below: the check
+/// is about SSH keys rather than about this front-end, and the CLI asks the same
+/// question.
 fn validate_key_passphrase(key_path: &std::path::Path, passphrase: &str) -> Result<(), String> {
-    use russh_keys::decode_secret_key;
-    use std::fs;
-
-    // Read the key file
-    let key_data =
-        fs::read_to_string(key_path).map_err(|e| format!("Failed to read SSH key file: {}", e))?;
-
-    // Attempt to decode with the passphrase
-    decode_secret_key(&key_data, Some(passphrase))
-        .map_err(|e| format!("Invalid passphrase or corrupted key: {}", e))?;
-
-    Ok(())
+    ssh_tunnel_common::validate_key_passphrase(key_path, passphrase).map_err(|e| format!("{e}"))
 }
 
 /// Store password/passphrase in system keychain

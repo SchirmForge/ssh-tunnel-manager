@@ -42,8 +42,15 @@ webpki-roots = "0.26"
 sha2 = "0.10"
 x509-parser = "0.16"
 
+# SSH key inspection (see src/ssh_key.rs). Only this crate needs russh for it,
+# so the CLI and GUI do not each pull in an SSH stack of their own.
+russh = { workspace = true }
+
 # Keychain/keyring for secure password storage
 keyring = { version = "3.6", features = ["linux-native", "apple-native", "windows-native"] }
 
 [dev-dependencies]
 tempfile = { workspace = true }
+# Test-only: generates throwaway SSH keys so none are committed. Matched to the
+# version russh uses, so no second copy of rand is compiled.
+rand = "0.10"

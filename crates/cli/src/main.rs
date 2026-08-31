@@ -17,10 +17,11 @@ use std::fs;
 use std::path::PathBuf;
 
 use ssh_tunnel_common::{
-    delete_profile_by_name, load_all_profiles, load_profile_by_name, profile_exists_by_name,
-    save_profile, start_tunnel_with_events, stop_tunnel as stop_tunnel_shared, AuthRequest,
-    AuthType, ConnectionConfig, ForwardingConfig, ForwardingType, PasswordStorage, Profile,
-    TunnelEvent, TunnelEventHandler, TunnelOptions, TunnelStatus, TunnelStatusResponse, Uuid,
+    delete_profile_by_name, is_key_encrypted, load_all_profiles, load_profile_by_name,
+    profile_exists_by_name, save_profile, start_tunnel_with_events,
+    stop_tunnel as stop_tunnel_shared, validate_key_passphrase, AuthRequest, AuthType,
+    ConnectionConfig, ForwardingConfig, ForwardingType, PasswordStorage, Profile, TunnelEvent,
+    TunnelEventHandler, TunnelOptions, TunnelStatus, TunnelStatusResponse, Uuid,
 };
 
 #[derive(Parser)]
@@ -1334,32 +1335,6 @@ fn validate_ssh_key(key_path: &PathBuf) -> Result<()> {
             }
         }
     }
-
-    Ok(())
-}
-
-fn is_key_encrypted(key_path: &PathBuf) -> Result<bool> {
-    use russh_keys::decode_secret_key;
-
-    // Read the key file
-    let key_data = fs::read_to_string(key_path).context("Failed to read SSH key file")?;
-
-    // Try to decode without a passphrase
-    match decode_secret_key(&key_data, None) {
-        Ok(_) => Ok(false), // Key loaded successfully without passphrase - not encrypted
-        Err(_) => Ok(true), // Failed to load - likely encrypted (or corrupted, but we'll find out)
-    }
-}
-
-fn validate_key_passphrase(key_path: &PathBuf, passphrase: &str) -> Result<()> {
-    use russh_keys::decode_secret_key;
-
-    // Read the key file
-    let key_data = fs::read_to_string(key_path).context("Failed to read SSH key file")?;
-
-    // Attempt to decode with the passphrase
-    decode_secret_key(&key_data, Some(passphrase))
-        .map_err(|e| anyhow::anyhow!("Invalid passphrase: {}", e))?;
 
     Ok(())
 }

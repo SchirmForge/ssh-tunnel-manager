@@ -45,9 +45,6 @@ dirs = { workspace = true }
 # Path expansion for ~ in file paths
 shellexpand = "3.1"
 
-# SSH key validation
-russh-keys = { workspace = true }
-
 # for event handling
 futures = { version = "0.3" }
 

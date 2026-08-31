@@ -8,6 +8,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Security
+- **`russh-keys` removed from the workspace entirely.** The discontinued standalone crate
+  (last release 0.49.2, January 2025; the code now lives in `russh::keys`) was the only
+  reason `russh-cryptovec` 0.7.3 (`RUSTSEC-2026-0153`) and `rsa` 0.9.9 were still in the
+  tree. Known vulnerabilities: 17 → 15. The build also stopped compiling two independent
+  SSH stacks.
+
+### Changed
+- **SSH key inspection moved into `ssh-tunnel-common`** (`ssh_key` module). The CLI and the
+  GTK GUI each carried a near-identical `validate_key_passphrase`, differing only in error
+  type; the GUI already delegated its keychain work to `common`, and this now follows the
+  same pattern. Only `common` depends on `russh`, so neither front-end pulls in an SSH stack
+  of its own.
+
+  The move also documents an ambiguity the duplicated versions left unstated:
+  `is_key_encrypted` cannot distinguish an encrypted key from a corrupt one and reports both
+  as encrypted. That is harmless — the caller then asks for a passphrase and
+  `validate_key_passphrase` produces the real error — and there is now a test pinning it.
+
+### Security
 - **russh moved from an unpinned git branch to crates.io 0.63.1** (was a git snapshot of
   0.55.0, nine months and eight minor releases stale). Clears 9 advisories: all five in
   `aws-lc-sys` (0.34 → 0.44, including two PKCS7_verify bypasses and an X.509 name-constraint

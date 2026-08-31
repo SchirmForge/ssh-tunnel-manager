@@ -45,9 +45,6 @@ hyper-util = { version = "0.1", features = ["tokio", "server-auto"] }
 # `des` and `dsa` are off by default and listing features explicitly keeps them
 # off regardless of what upstream adds to its defaults.
 russh = { version = "0.63", default-features = false, features = ["aws-lc-rs", "rsa"] }
-# Still on the discontinued standalone crate; the CLI and GTK GUI use it for
-# `decode_secret_key`. Migrated to `russh::keys` in phase 2.
-russh-keys = "0.45"
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }

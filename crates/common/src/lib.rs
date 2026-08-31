@@ -11,6 +11,7 @@ pub mod keychain;
 pub mod network;
 pub mod profile_manager;
 pub mod sse;
+pub mod ssh_key;
 pub mod tls;
 pub mod types;
 
@@ -32,6 +33,7 @@ pub use profile_manager::{
     profile_exists_by_id, profile_exists_by_name, profiles_dir, save_profile,
 };
 pub use sse::{EventListener, TunnelEvent};
+pub use ssh_key::{is_key_encrypted, validate_key_passphrase};
 pub use tls::{create_insecure_tls_config, create_pinned_tls_config};
 pub use types::{
     AuthRequest, AuthRequestType, AuthResponse, AuthType, DaemonInfo, ForwardingType,
