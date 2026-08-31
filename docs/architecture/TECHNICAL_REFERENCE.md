@@ -217,7 +217,7 @@ Suggested name: `TECHNICAL_REFERENCE.md`. Purpose: internal architecture map of 
   - Clear separation of concerns
 
 ## Build Requirements
-- **All modules**: Rust 1.75+, standard build tools
+- **All modules**: Rust 1.85+ (pinned by `rust-toolchain.toml`), plus cmake and a C compiler for `aws-lc-sys`
 - **CLI/Daemon**: No additional system dependencies
 - **GUI GTK**:
   - GTK4 ≥4.12

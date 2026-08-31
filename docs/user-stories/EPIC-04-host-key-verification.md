@@ -53,7 +53,15 @@ changes.
 - The reason is reported clearly enough to distinguish a genuine server rebuild from an attack
 
 **Implementation**: `crates/daemon/src/known_hosts.rs`
-**Tests**: `live_ssh::a_changed_host_key_is_refused`
+**Tests**: `known_hosts::a_different_key_for_a_known_host_is_reported_as_mismatch`,
+`known_hosts::the_same_key_for_a_known_host_is_trusted`,
+`live_ssh::a_changed_host_key_is_refused`
+
+> **The live test was asserting nothing until v0.2.0.** It wrote its poisoned `known_hosts`
+> entry as `[host]:22`, but a bare hostname is the correct form on the default port —
+> matching OpenSSH — so the entry never matched and the daemon reported the host as
+> *unknown* rather than *changed*. The daemon was right throughout; the test was not. The
+> `Mismatch` branch now also has unit coverage, so this no longer depends on a live server.
 
 ---
 
@@ -69,3 +77,30 @@ changes.
 - The path is reported in `GET /api/daemon/info`
 
 **Implementation**: `crates/daemon/src/config.rs` (`known_hosts_path`), `crates/daemon/src/api.rs` (`DaemonInfo`)
+
+---
+
+## US-4.5 — Not have a host certificate substituted for a host key ✅
+
+**As a** user
+**I want** a server presenting a CA-signed certificate to be refused rather than accepted
+**So that** trust cannot be established by a certificate authority I never approved.
+
+**Acceptance criteria**
+- A server presenting a host certificate instead of a plain host key aborts the connection
+- The error says why, and names host certificates specifically
+- The certificate's embedded public key is **not** compared against `known_hosts`
+
+**Implementation**: `crates/daemon/src/tunnel.rs` (`plain_host_key`)
+**Tests**: `tunnel::a_host_certificate_is_refused_rather_than_unwrapped`,
+`tunnel::a_plain_host_key_is_passed_through_unchanged`
+
+> russh 0.63 can hand `check_server_key` a certificate rather than a key. The obvious
+> migration calls `PublicKeyOrCertificate::public_key()`, which returns the key embedded
+> *inside* the certificate — and comparing that against `known_hosts` is a different check
+> entirely: it would accept a host that was never pinned, on the strength of a CA the client
+> does not evaluate. Refusing is the honest answer until `@cert-authority` trust is
+> implemented deliberately, which is a feature rather than a migration detail.
+>
+> No live test would have caught the wrong choice: test servers present plain host keys.
+> The guard is a unit test built on a real `ssh-keygen`-generated certificate.

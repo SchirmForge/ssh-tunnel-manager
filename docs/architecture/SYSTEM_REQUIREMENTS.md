@@ -75,11 +75,17 @@ Only needed if building from source.
 ### Compiler and Build Tools
 
 **Required:**
-- Rust ≥ 1.75 (stable toolchain)
+- Rust ≥ 1.85 (pinned by `rust-toolchain.toml`; rustup installs it automatically)
 - cargo (Rust package manager)
 - C/C++ compiler (gcc or clang)
+- **cmake** — `aws-lc-sys`, pulled in by both `rustls` and `russh`, compiles C and will not
+  build without it. This is easy to miss: `cargo metadata`, `cargo fmt` and
+  `cargo update --dry-run` all succeed without cmake because they never compile.
 - pkg-config
 - make (GNU Make)
+
+`containers/Containerfile.dev` defines an environment with all of the above, usable with
+distrobox or Fedora toolbox. See [../DEVELOPMENT.md](../DEVELOPMENT.md).
 
 ### Development Libraries
 
@@ -233,7 +239,11 @@ Newer versions should work without issues.
 
 ### Rust Toolchain
 
-**Minimum supported Rust version (MSRV):** 1.75
+**Minimum supported Rust version (MSRV):** 1.85
+
+Raised from 1.75 in v0.2.0: russh 0.63 requires it. The version is pinned in
+`rust-toolchain.toml`, so CI and every developer compile with the same rustc rather than
+whatever `stable` happens to be.
 
 To update Rust:
 ```bash

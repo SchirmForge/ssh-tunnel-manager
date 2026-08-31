@@ -1,7 +1,7 @@
 # Development Guide
 
-**Version**: v0.1.11
-**Last Updated**: 2026-08-30
+**Version**: v0.2.0
+**Last Updated**: 2026-08-31
 
 ## Where documentation lives
 

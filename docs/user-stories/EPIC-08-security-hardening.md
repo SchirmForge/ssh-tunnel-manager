@@ -104,3 +104,57 @@ full rationale.
   [Epic 7](EPIC-07-remote-daemon.md)
 
 **Implementation**: `crates/daemon/src/tunnel.rs` (`authenticate_with_key`), `crates/common/src/profile_manager.rs`
+
+---
+
+## US-8.7 — Trust that the dependencies are not carrying known holes ✅
+
+**As a** user running a tool that handles my SSH credentials
+**I want** its dependency tree audited automatically
+**So that** a published vulnerability does not sit unnoticed in a shipped release.
+
+**Acceptance criteria**
+- `cargo deny check` runs on every pull request and **fails the build** on a new advisory, a
+  disallowed licence, or a dependency from an unapproved source
+- **Git dependencies are banned.** One has no semver contract, and advisory scanners match
+  crates.io name and version — so a git dependency is invisible to them. A clean report is
+  only meaningful if every dependency is one the scanner can read
+- An advisory with no available fix is recorded in `deny.toml` with a written reason and the
+  condition under which to revisit it, never as a bare suppression
+- Dependencies are refreshed weekly by Dependabot, lockfile-only, so patches arrive without
+  semver churn
+- The CI pipeline itself is pinned: Actions by commit SHA, the toolchain by
+  `rust-toolchain.toml`
+- No credential can reach the repository — `gitleaks` scans every pull request
+
+**Implementation**: `deny.toml`, `.github/workflows/ci.yml`, `.github/dependabot.yml`,
+`rust-toolchain.toml`, `make audit`
+**Documentation**: [../architecture/SECURITY.md](../architecture/SECURITY.md)
+
+> Delivered in v0.2.0, which took the tree from 25 known vulnerabilities to 1. The one that
+> remains has no fixed version in any release and is documented as an accepted risk.
+>
+> The gate was deliberately advisory-only while that cleanup was in flight. A gate that is
+> permanently red is one people learn to scroll past.
+
+---
+
+## US-8.8 — Not negotiate obsolete SSH cryptography ✅
+
+**As a** user
+**I want** the client to stop offering algorithms that are no longer considered sound
+
+**Acceptance criteria**
+- SHA-1 MACs are not offered
+- Compression is not offered, which removes the compression "zip bomb" class structurally
+  rather than by patch
+- The insecure `des` and `dsa` backends stay disabled regardless of what upstream adds to its
+  default feature set, because features are listed explicitly
+
+**Implementation**: root `Cargo.toml` (`russh` with `default-features = false`),
+`crates/daemon/src/tunnel.rs` (config built from `..Default::default()`)
+
+> A server that *requires* compression or SHA-1 MACs will now fail to negotiate. Both are
+> long deprecated: OpenSSH defaults to `Compression no` and dropped SHA-1 MACs from its own
+> defaults years ago. This is the one behavioural change in v0.2.0 that could affect an
+> existing connection, and it is called out in the release notes.

@@ -8,7 +8,7 @@ How SSH Tunnel Manager is built. For *what it does and for whom*, see
 | [FUNCTIONAL_ARCHITECTURE.html](FUNCTIONAL_ARCHITECTURE.html) | Anyone wanting to understand the system | Components and their responsibilities, data flow, configuration storage, API behaviour |
 | [TECHNICAL_ARCHITECTURE.html](TECHNICAL_ARCHITECTURE.html) | Contributors | Design decisions and rationale, crate layout, concurrency model, dependency strategy, testing strategy |
 | [TECHNICAL_REFERENCE.md](TECHNICAL_REFERENCE.md) | Contributors | Module, struct and API-level reference; error handling; build requirements |
-| [SECURITY.md](SECURITY.md) | Operators, auditors | Threat model, credential handling, permissions, remote daemon guidance, vulnerability reporting |
+| [SECURITY.md](SECURITY.md) | Operators, auditors | Threat model, credential handling, permissions, remote daemon guidance, supply-chain policy and accepted risks, vulnerability reporting |
 | [SYSTEM_REQUIREMENTS.md](SYSTEM_REQUIREMENTS.md) | Operators | Supported platforms, runtime and build dependencies, hardware, network, desktop compatibility |
 | [SYSTEMD.md](SYSTEMD.md) | Operators | User and system service setup, group access, keyring limitations for system services |
 

@@ -136,3 +136,72 @@ a failure, at two levels because the two live tiers can support different amount
 - Actions are pinned to commit SHAs and the toolchain is pinned by `rust-toolchain.toml`; neither floats
 
 **Implementation**: `.github/workflows/ci.yml`, `deny.toml`, `rust-toolchain.toml`, `.github/dependabot.yml`
+
+---
+
+## US-10.8 — Run the live SSH tests with no server and no credentials ✅
+
+**As a** contributor
+**I want** the authentication tests to run on a fresh clone
+**So that** the most fragile part of the codebase is checked on every change, not on demand.
+
+**Acceptance criteria**
+- `make test-live-fixture` starts an unprivileged `sshd` on localhost, runs the live tier
+  against it, and tears it down
+- No root, no container, no credentials, nothing to install beyond the `sshd` binary
+- Covers the six key-based tests, **including both host key verification tests**
+- Every key and secret is generated per run and thrown away
+- It runs in CI on every pull request, so real SSH connections are exercised on untrusted
+  pull requests safely
+- The four PAM-dependent tests (password, 2FA) skip here and are covered by US-10.10
+
+**Implementation**: `scripts/ssh-fixture.sh`, `make test-live-fixture`,
+`.github/workflows/ci.yml`
+
+> `sshd` runs perfectly well as an ordinary user on a high port with its own config and host
+> key. That single fact is what moves the SSH client path from "tested when someone
+> remembers" to "tested on every change". Password and keyboard-interactive authentication
+> go through PAM, which must read the shadow database, so those genuinely need privilege.
+
+---
+
+## US-10.9 — Know the dependencies are safe without checking by hand ✅
+
+**As a** maintainer
+**I want** the supply chain audited automatically
+
+**Acceptance criteria**
+- `make audit` runs the same checks CI does
+- A new advisory, a disallowed licence or a dependency from an unapproved source **fails the
+  build**
+- Git dependencies are rejected, because advisory scanners cannot see them
+- Accepted risks live in `deny.toml` with a reason and a revisit condition
+- One tool and one policy file: `cargo audit` was dropped from the gate because it does not
+  read `deny.toml`, and two ignore lists would drift apart
+
+**Implementation**: `deny.toml`, `make audit`, `.github/workflows/ci.yml`
+**See also**: US-8.7, and [../architecture/SECURITY.md](../architecture/SECURITY.md)
+
+---
+
+## US-10.10 — Set up a real test target in one command ✅
+
+**As a** contributor with a spare machine or VM
+**I want** the full live tier, including password and 2FA, without hand-configuring sshd
+
+**Acceptance criteria**
+- `scripts/provision-test-target.sh --host <host>` creates the three test accounts, generates
+  every key and secret, configures `sshd` and PAM, and writes
+  `.local/testing/ssh-target.env`
+- It is idempotent, takes the host as an argument and hardcodes nothing
+- Every `sshd_config` change is scoped with `Match User` to the test accounts, so the
+  administrative account's authentication is never altered
+- The TOTP module is applied to the 2FA account only, via `pam_succeed_if`
+- The configuration is validated with `sshd -t` **before** anything is reloaded, and the
+  original PAM stack is restored if validation fails
+- Administrative access is re-verified afterwards
+
+**Implementation**: `scripts/provision-test-target.sh`
+
+> The script edits `sshd` on a machine reachable only over SSH, so every one of those
+> safeguards exists to make locking yourself out impossible rather than unlikely.

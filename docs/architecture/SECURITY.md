@@ -1,7 +1,7 @@
 # SSH Tunnel Manager - Security Documentation
 
-**Version**: v0.1.11
-**Last Updated**: 2025-12-31
+**Version**: v0.2.0
+**Last Updated**: 2026-08-31
 
 ## Overview
 
@@ -361,18 +361,62 @@ ssh-tunnel status --all
 ssh-tunnel info
 ```
 
+## Supply Chain
+
+The dependency tree is audited on every pull request. `cargo deny check` gates advisories,
+licences, dependency sources and duplicate versions, and **fails the build** on a new
+finding. Policy lives in [`deny.toml`](../../deny.toml); run the same checks locally with
+`make audit`.
+
+**Git dependencies are banned outright.** This is not stylistic. A git dependency has no
+semver contract, so `cargo update` jumps to whatever the branch head happens to be rather
+than delivering a patch. Worse, advisory scanners match crates.io name and version, so a git
+dependency is invisible to them — the daemon spent nine months pinned to a `russh` snapshot
+carrying twelve advisories that `cargo audit` reported as clean, because it could not see it.
+A clean advisory report only means something if every dependency is one the scanner can read.
+
+Supporting measures:
+
+- `Cargo.lock` is committed, so builds are reproducible and what shipped can be audited.
+- Dependabot opens weekly lockfile-only pull requests, and keeps the pinned Actions current.
+- GitHub Actions are pinned to commit SHAs rather than moving tags, and the Rust toolchain is
+  pinned by `rust-toolchain.toml`. These workflows handle repository secrets.
+- `gitleaks` scans every pull request, so no credential reaches the repository.
+
+### Known accepted risks
+
+Not everything a scanner reports has a fix. Where the project knowingly carries a risk it is
+recorded in `deny.toml` with a written reason and the condition under which to revisit it —
+never as a bare suppression. An ignore without a justification hides the next real finding.
+
+| Advisory | Why it is accepted |
+|---|---|
+| `RUSTSEC-2023-0071` (`rsa`, Marvin timing attack) | No fixed version exists in **any** `rsa` release, including the 0.10 line. The only escape is dropping RSA key support, which would break users who hold RSA keys. Exposure is narrower than the title suggests: the attack targets RSA *decryption*, while SSH public-key authentication uses *signing*. |
+| `RUSTSEC-2025-0134` (`rustls-pemfile`, unmaintained) | Unmaintained but functional, with no known vulnerability. Its functionality moved into `rustls-pki-types`; migrating is a scheduled cleanup, not a fix. |
+
 ## Vulnerability Reporting
 
-If you discover a security vulnerability in SSH Tunnel Manager, please report it privately:
+**Please do not open a public issue for a security problem.**
 
-1. **Do NOT** open a public GitHub issue
-2. Contact the maintainer directly (see repository for contact info)
-3. Include:
-   - Description of the vulnerability
-   - Steps to reproduce
-   - Potential impact
-   - Suggested fix (if any)
-4. Allow reasonable time for fix before public disclosure
+Use GitHub's [private vulnerability reporting](https://github.com/SchirmForge/ssh-tunnel/security/advisories/new)
+on this repository. That creates a private advisory only the maintainers can see.
+
+Useful things to include, as far as you can:
+
+- what an attacker can do, and what they need in order to do it
+- the version or commit you tested
+- steps to reproduce, or a proof of concept
+- whether you have told anyone else
+
+You will get an acknowledgement within a few days. If a fix is warranted, the advisory will
+say what changed and credit you unless you would rather stay anonymous.
+
+### What is in scope
+
+The daemon, the CLI, the GTK front-end and the shared crates underneath them. In particular
+the SSH client path (host key verification, authentication, port forwarding), the daemon's
+HTTP/HTTPS API with its token handling and TLS certificate pinning, credential storage in the
+system keychain, and file and socket permissions.
 
 ## Security Updates
 

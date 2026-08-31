@@ -1,6 +1,6 @@
 # Known Issues & Limitations
 
-This document tracks known bugs, limitations, and missing features in SSH Tunnel Manager v0.1.11.
+This document tracks known bugs, limitations, and missing features in SSH Tunnel Manager v0.2.0.
 
 For missing features described as user stories with their status, see the
 [user stories](user-stories/). For what is planned about them, see [ROADMAP.md](ROADMAP.md).

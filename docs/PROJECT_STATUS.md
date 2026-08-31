@@ -2,9 +2,9 @@
 
 ## Current State
 
-**Version**: v0.1.11
+**Version**: v0.2.0
 **Status**: ✅ Production-ready CLI, daemon and GTK GUI with a full REST + SSE architecture
-**Release date**: 2026-08-30
+**Release date**: 2026-08-31
 
 A snapshot of what exists today. For what is planned see [ROADMAP.md](ROADMAP.md); for what
 shipped when see [CHANGELOG.md](CHANGELOG.md); for behaviour described from the user's point
@@ -15,7 +15,8 @@ of view see the [user stories](user-stories/).
 | Daemon | ✅ Local port forwarding, interactive authentication over SSE, host key verification, three listener modes |
 | CLI | ✅ Profile CRUD, tunnel control, status, watch |
 | GTK GUI | ✅ Full profile CRUD, live status, first-launch wizard, remote daemon support |
-| Testing | ✅ Two tiers (hermetic + live SSH), sandboxed, plus CI |
+| Testing | ✅ Four tiers (static, hermetic, live SSH on a local fixture, live SSH on a real host), sandboxed, all but the last gating CI |
+| Supply chain | ✅ `cargo deny check` gates every pull request; git dependencies banned; 1 known advisory, documented as accepted |
 | Auto-reconnect | ❌ Config options exist but nothing acts on them |
 | Notifications | ❌ Not implemented |
 
@@ -31,7 +32,8 @@ of view see the [user stories](user-stories/).
 - **SSE-first tunnel control flow** (`start_tunnel_with_events`, `stop_tunnel`) with event handler trait for shared CLI/GUI logic.
 
 ### ✅ Daemon (`crates/daemon`)
-- SSH tunnel lifecycle using russh; interactive auth via SSE-driven prompts (password, key passphrase, keyboard-interactive/2FA).
+- SSH tunnel lifecycle using russh 0.63 (crates.io, compression and SHA-1 MACs not offered); interactive auth via SSE-driven prompts (password, key passphrase, keyboard-interactive/2FA), each re-prompting rather than failing on a wrong answer.
+- Host key verification against `known_hosts`; a server presenting a CA-signed host *certificate* is refused rather than silently trusted.
 - Local forwarding fully working; privileged-port error messaging.
 - Host key verification with OpenSSH-format `known_hosts`, SHA256 fingerprints, and 0600 perms.
 - API server (Axum): health, tunnel start/stop/status, pending-auth get/post, SSE events.
@@ -107,7 +109,7 @@ of view see the [user stories](user-stories/).
 ✅ GNOME Settings-style UI with proper switch styling
 ✅ DEB packaging
 
-✅ Sandboxed test suite (hermetic tier plus a live SSH tier), CI, clippy clean
+✅ Sandboxed test suite across four tiers, blocking supply-chain audit, CI, clippy clean
 
 ❌ Remote forwarding — [not planned](ROADMAP.md#not-planned)
 ❌ Dynamic/SOCKS forwarding — [future, unscheduled](ROADMAP.md#later)
@@ -150,8 +152,14 @@ ssh-tunnel start <profile>
 # Tests - hermetic; no network, no credentials
 make test
 
-# Live SSH tests (needs .local/testing/ssh-target.env; skips without it)
+# Live SSH tests against a local unprivileged sshd - no setup, no credentials
+make test-live-fixture
+
+# Live SSH tests against a real host (see scripts/provision-test-target.sh)
 make test-live
+
+# Supply-chain audit: advisories, licences, sources, unused dependencies
+make audit
 
 # Disposable sandbox with a daemon and seeded profiles
 make sandbox ARGS="--profiles key,password,2fa"

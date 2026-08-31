@@ -275,4 +275,4 @@ Run `ssh-tunnel --help` for complete CLI documentation.
 
 ---
 
-**SSH Tunnel Manager** v0.1.11 | Apache-2.0 License
+**SSH Tunnel Manager** v0.2.0 | Apache-2.0 License

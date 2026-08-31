@@ -50,9 +50,17 @@ stored. This is the most intricate part of the product and the part most protect
 - Input is hidden in both the terminal and the GUI dialog
 - A stored password is used automatically when `password_storage = "keychain"`
 - A wrong password re-prompts while the server still permits attempts
+- A password loaded from the keychain is tried **once**: if it is stale, the user is
+  prompted rather than the stored value being replayed until the server cuts the connection
 
 **Implementation**: `crates/daemon/src/tunnel.rs` (`authenticate_with_password`)
 **Tests**: `live_ssh::password_authentication_connects`, `live_ssh::a_wrong_password_is_re_prompted_not_fatal`
+
+> **True only from v0.2.0.** This story listed the re-prompt as an acceptance criterion and
+> named the test that covers it, but `authenticate_with_password` prompted once and gave up,
+> and the test had never actually been run against a server. The v0.1.10 "re-prompt, don't
+> fail" work had been applied to keyboard-interactive alone. A documented criterion, a named
+> test and working behaviour are three different things.
 
 ---
 
@@ -88,6 +96,7 @@ stored. This is the most intricate part of the product and the part most protect
 **Tests**: `live_ssh::a_wrong_2fa_code_is_re_prompted_not_fatal`
 
 > Fixed in v0.1.10; nothing guarded it until the live test suite arrived in v0.1.11.
+> Password authentication gained the same behaviour in v0.2.0 — see US-3.3.
 
 ---
 

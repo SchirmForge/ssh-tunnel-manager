@@ -1,6 +1,6 @@
 # SSH Tunnel Manager
 
-**Version**: 0.1.11
+**Version**: 0.2.0
 
 ## Description
 
@@ -10,10 +10,17 @@ Supports both local daemon connections via Unix socket and remote daemon connect
 
 ## Features
 
-### New in v0.1.11
+### New in v0.2.0
 
-A stability release. No new user-facing features; the work went into automated
-regression testing, continuous integration and bug fixing.
+A security and supply-chain release. No new user-facing features; the work went into the
+dependency tree and the tests that verify it.
+
+- **Fixed**: a mistyped SSH password now re-prompts instead of failing the tunnel outright
+- **Security**: SSH compression and SHA-1 MACs are no longer offered, and a server
+  presenting a host *certificate* is refused rather than silently trusted
+- **Security**: known vulnerabilities in the dependency tree reduced from 25 to 1
+
+### In v0.1.11
 
 - **Fixed**: cancelling a tunnel during authentication now stops it cleanly instead of
   force-aborting after a timeout

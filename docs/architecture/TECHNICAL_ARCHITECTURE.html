@@ -132,7 +132,7 @@
 <p class="subtitle">SSH Tunnel Manager — the decisions behind the implementation, and how the code is organised.</p>
 
 <div class="meta">
-  <span><strong>Version</strong> v0.1.11</span>
+  <span><strong>Version</strong> v0.2.0</span>
   <span><strong>Audience</strong> Contributors</span>
   <span><strong>Companion</strong> <a href="FUNCTIONAL_ARCHITECTURE.html">Functional Architecture</a></span>
 </div>
@@ -359,13 +359,13 @@ if let Some(client) = client {
   <tbody>
     <tr><td>Runtime</td><td><code>tokio</code>, <code>futures-util</code></td><td>Async runtime and stream combinators</td></tr>
     <tr><td>API server</td><td><code>axum</code>, <code>hyper</code>, <code>hyper-util</code>, <code>tower-http</code>, <code>axum-server</code></td><td>REST plus SSE over Unix socket and TCP, with TLS</td></tr>
-    <tr><td>SSH</td><td><code>russh</code>, <code>russh-keys</code></td><td>Pure-Rust SSH, so no OpenSSH process management or C bindings</td></tr>
+    <tr><td>SSH</td><td><code>russh</code></td><td>Pure-Rust SSH, so no OpenSSH process management or C bindings. Built with <code>default-features = false</code>: see below</td></tr>
     <tr><td>Client</td><td><code>reqwest</code> (rustls)</td><td>One HTTP client covering Unix socket, HTTP and HTTPS</td></tr>
     <tr><td>TLS</td><td><code>rustls</code>, <code>webpki-roots</code>, <code>x509-parser</code>, <code>sha2</code></td><td>Certificate generation and fingerprint pinning without OpenSSL</td></tr>
     <tr><td>Serialisation</td><td><code>serde</code>, <code>serde_json</code>, <code>toml</code></td><td>Profiles and config on disk, JSON on the wire</td></tr>
-    <tr><td>Secrets</td><td><code>keyring</code>, <code>secret-service</code>, <code>zeroize</code></td><td>OS keyring, and zeroing sensitive buffers on drop</td></tr>
-    <tr><td>CLI</td><td><code>clap</code>, <code>dialoguer</code>, <code>indicatif</code>, <code>colored</code></td><td>Argument parsing, prompts, progress, colour</td></tr>
-    <tr><td>GUI</td><td><code>gtk4</code>, <code>libadwaita</code>, <code>pulldown-cmark</code>, <code>notify-rust</code></td><td>Widgets, GNOME styling, Markdown for Help/About. <code>notify-rust</code> is declared for the planned notification work</td></tr>
+    <tr><td>Secrets</td><td><code>keyring</code></td><td>OS keyring access, behind <code>ssh-tunnel-common</code></td></tr>
+    <tr><td>CLI</td><td><code>clap</code>, <code>dialoguer</code>, <code>comfy-table</code>, <code>colored</code></td><td>Argument parsing, prompts, tables, colour</td></tr>
+    <tr><td>GUI</td><td><code>gtk4</code>, <code>libadwaita</code>, <code>pulldown-cmark</code></td><td>Widgets, GNOME styling, Markdown for Help/About</td></tr>
     <tr><td>Test support</td><td><code>tempfile</code></td><td>Sandbox directories</td></tr>
   </tbody>
 </table>
@@ -375,11 +375,63 @@ if let Some(client) = client {
   <code>panic = "abort"</code>.
 </p>
 
+<h3>Only what is used, and only from crates.io</h3>
+
+<p>
+  Two rules, both enforced by <code>cargo deny check</code> on every pull request rather than
+  by convention.
+</p>
+
+<p>
+  <strong>No git dependencies.</strong> A git dependency has no semver contract, so
+  <code>cargo update</code> moves it to whatever the branch head happens to be rather than
+  delivering a patch. It is also invisible to advisory scanners, which match crates.io name
+  and version. The daemon spent nine months on a <code>russh</code> git snapshot carrying
+  twelve advisories that <code>cargo audit</code> reported as clean, because it could not see
+  it at all. A clean advisory report only means something if every dependency is one the
+  scanner can read.
+</p>
+
+<p>
+  <strong>Features are listed explicitly.</strong> <code>russh</code> is built with
+  <code>default-features = false</code> and only <code>aws-lc-rs</code> and <code>rsa</code>
+  enabled. Dropping <code>flate2</code> is what removes zlib from the negotiated compression
+  list, eliminating the compression "zip bomb" class structurally rather than by patch; and
+  the insecure <code>des</code> and <code>dsa</code> backends stay off regardless of what
+  upstream later adds to its defaults.
+</p>
+
+<p>
+  Accepted risks — advisories with no available fix — are recorded in
+  <code>deny.toml</code> with a written reason and a revisit condition, and listed in
+  <a href="SECURITY.md">SECURITY.md</a>. An ignore without a justification hides the next
+  real finding.
+</p>
+
 <h2 id="testing">5. Testing strategy</h2>
 
 <p>
-  Tests run in two tiers, split by whether a real SSH server is needed. See
+  Tests run in four tiers, split by what each needs in order to run at all. See
   <a href="../DEVELOPMENT.md#testing">DEVELOPMENT.md</a> for how to run them.
+</p>
+
+<table>
+  <thead><tr><th>Tier</th><th>What</th><th>Needs</th><th>Runs</th></tr></thead>
+  <tbody>
+    <tr><td>0</td><td>Format, lint, supply-chain audit, secret scan</td><td>nothing</td><td>every pull request</td></tr>
+    <tr><td>1</td><td>Hermetic unit and integration tests</td><td>nothing</td><td>every pull request</td></tr>
+    <tr><td>2</td><td>Live SSH against an unprivileged localhost <code>sshd</code></td><td><code>sshd</code> binary only</td><td>every pull request</td></tr>
+    <tr><td>3</td><td>Live SSH against a provisioned remote host</td><td>real accounts</td><td>manual</td></tr>
+  </tbody>
+</table>
+
+<p>
+  The split at tier 2 is what makes the SSH client path testable on every change.
+  <code>sshd</code> runs perfectly well as an ordinary user on a high port with its own
+  config and host key, so six of the ten live tests — including <em>both</em> host key
+  verification tests — need no root, no container and no credentials. Password and 2FA go
+  through PAM, which must read the shadow database and therefore needs privilege; those four
+  are tier 3.
 </p>
 
 <h3>5.1 Test isolation</h3>
@@ -414,10 +466,13 @@ if let Some(client) = client {
   <li><strong>Integration</strong> (<code>crates/daemon/tests/daemon_api.rs</code>) — a real daemon process per test, driven through the REST/SSE API using the real client from <code>common</code>: health and info per listener mode, token missing/wrong/correct, the loopback-only rule for plain HTTP, socket <code>0600</code> and runtime dir <code>0700</code>, token file <code>0600</code>, the single-instance PID guard, and SSE connect, heartbeat and authentication</li>
 </ul>
 
-<h3>5.3 Tier 2 — live SSH (<code>cargo test -- --ignored</code>)</h3>
+<h3>5.3 Tiers 2 and 3 — live SSH (<code>cargo test -- --ignored</code>)</h3>
 <p>
   Real connections to a real server, covering what nothing else can reach. Every test is
   <code>#[ignore]</code>d and skips when unconfigured, so it never runs by accident.
+  <code>make test-live-fixture</code> stands up the tier-2 localhost <code>sshd</code>,
+  runs the tier and tears it down; <code>make test-live</code> uses a provisioned host from
+  <code>scripts/provision-test-target.sh</code>.
 </p>
 <ul>
   <li>Host key verification on first connect, and refusal of a changed key</li>
@@ -436,8 +491,11 @@ if let Some(client) = client {
 <div class="note">
   <p>
     An unconfigured live test <strong>skips but still reports <code>ok</code></strong>, and
-    the reason only goes to stderr. Run the live tier with <code>--nocapture</code>, as
-    <code>make test-live</code> does, or a completely skipped run looks like a passing one.
+    the reason only goes to stderr — so a completely skipped run looks like a passing one.
+    Locally, run the tier with <code>--nocapture</code> and read the SKIP lines. In CI that
+    trap is closed rather than documented: <code>SSH_TUNNEL_TEST_STRICT=1</code> makes a
+    missing target file a failure, and <code>=all</code> additionally requires every account
+    a test asks for.
   </p>
 </div>
 
@@ -449,11 +507,22 @@ if let Some(client) = client {
 
 <h3>5.5 CI</h3>
 <p>
-  <code>.github/workflows/ci.yml</code> runs <code>cargo fmt --check</code>, clippy with
-  <code>-D warnings</code>, the hermetic tests and a release build on every push, plus the
-  network-mode script. The live tier is a separate <code>workflow_dispatch</code> job so
-  credentials never reach an untrusted pull request; it writes the target config from a
-  secret and deletes it afterwards.
+  <code>.github/workflows/ci.yml</code> gates every push and pull request on
+  <code>cargo fmt --check</code>, clippy with <code>-D warnings</code>, the hermetic tests, a
+  release build, the network-mode script, <strong>the tier-2 live SSH fixture</strong>,
+  <code>cargo deny check</code> and a <code>gitleaks</code> secret scan.
+</p>
+<p>
+  Because tier 2 needs no credentials, real SSH connections are exercised on untrusted pull
+  requests safely. Tier 3 remains a separate <code>workflow_dispatch</code> job: it writes
+  the target config from a secret and deletes it afterwards, and now <em>fails</em> when the
+  secret is absent rather than reporting green having tested nothing.
+</p>
+<p>
+  Actions are pinned to commit SHAs rather than moving tags, and the toolchain is pinned by
+  <code>rust-toolchain.toml</code> rather than floating on <code>@stable</code>. These
+  workflows handle repository secrets, so an action that changes underneath them is a
+  supply-chain hole.
 </p>
 
 <h2 id="build">6. Build and packaging</h2>

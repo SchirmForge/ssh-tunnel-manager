@@ -4,7 +4,7 @@ A secure, performant SSH tunnel management application for Linux with CLI interf
 
 ## Status
 
-**Version**: v0.1.11
+**Version**: v0.2.0
 **Status**: Production-ready CLI/Daemon/GUI(GTK) with full REST API architecture
 
 ### Highlights

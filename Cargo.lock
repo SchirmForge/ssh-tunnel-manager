@@ -3846,7 +3846,7 @@ dependencies = [
 
 [[package]]
 name = "ssh-tunnel-cli"
-version = "0.1.11"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -3867,7 +3867,7 @@ dependencies = [
 
 [[package]]
 name = "ssh-tunnel-common"
-version = "0.1.11"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3893,7 +3893,7 @@ dependencies = [
 
 [[package]]
 name = "ssh-tunnel-daemon"
-version = "0.1.11"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -3932,7 +3932,7 @@ dependencies = [
 
 [[package]]
 name = "ssh-tunnel-gui-core"
-version = "0.1.11"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3950,7 +3950,7 @@ dependencies = [
 
 [[package]]
 name = "ssh-tunnel-gui-gtk"
-version = "0.1.11"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "chrono",

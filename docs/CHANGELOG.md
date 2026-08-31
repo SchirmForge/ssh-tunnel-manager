@@ -7,112 +7,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Security
-- **`eventsource-client` removed from `gui-core`.** It had no source references anywhere —
-  a leftover from the SSE client consolidation in v0.1.10 — but pinned `hyper` 0.14 and
-  `rustls` 0.21 beneath it. Removing it takes the whole legacy TLS stack out of the tree
-  (`hyper` 0.14, `rustls` 0.21, `rustls-webpki` 0.101, `h2` 0.3) and clears four advisories.
+---
 
-  **Known vulnerabilities: 25 → 1** across the whole upgrade. The one that remains,
-  `RUSTSEC-2023-0071` in `rsa`, has no fixed version in any release and is documented as an
-  accepted risk in `deny.toml` and `SECURITY.md`.
+## [0.2.0] - 2026-08-31
 
-- **The supply-chain audit now fails the build.** `cargo deny check` was advisory-only while
-  the upgrade was in flight, because a permanently red gate is one people learn to ignore.
-  The tree is clean against the policy, so `continue-on-error` is gone: a new advisory, a
-  disallowed licence, or a dependency from an unapproved source now breaks CI.
+A security and supply-chain release. No new user-facing features: the work went into the
+dependency tree, the test tiers that verify it, and three defects those tests uncovered.
 
-- **Added [`SECURITY.md`](SECURITY.md)** — private disclosure route, what is in scope, the
-  accepted risks with reasons, and how dependencies are kept current. The project had no
-  documented way to report a vulnerability.
+**Known vulnerabilities in the dependency tree: 25 → 1.** The one that remains,
+`RUSTSEC-2023-0071` in `rsa`, has no fixed version in any release and is documented as an
+accepted risk in [`deny.toml`](../deny.toml) and
+[architecture/SECURITY.md](architecture/SECURITY.md).
 
-### Changed
-- `make audit` runs `cargo deny check` rather than both it and `cargo audit`. They share the
-  RustSec database, but only `cargo deny` honours the ignore list in `deny.toml`; keeping
-  both in the gate would mean two ignore lists drifting apart. `cargo machete` is reported
-  but not blocking, since `gui-core` and `gui-gtk` still declare unused dependencies.
+**Upgrade notes**: no configuration, profile-format or API change; existing profiles and
+`cli.toml` files work unmodified. Two things to be aware of:
+
+- **Building now needs Rust 1.85** (was 1.75), because russh 0.63 requires it.
+- **SSH compression and SHA-1 MACs are no longer offered.** A server that *requires* either
+  will now fail to negotiate. Both are long-deprecated; OpenSSH defaults to `Compression no`
+  and dropped SHA-1 MACs from its own defaults years ago.
 
 ### Security
-- **`users` 0.11 replaced with `uzers` 0.12**, the maintained fork with the same API. `users`
-  had been unmaintained since 2020 and carried `RUSTSEC-2023-0040`, `RUSTSEC-2023-0059` and
-  `RUSTSEC-2025-0040` with no fix coming. Known vulnerabilities 6 → 5, and this clears the
-  last one on the daemon side.
 
-### Changed
-- **Dependency versions brought current.** `axum` 0.7 → 0.8, `axum-server` 0.7 → 0.8,
-  `tower-http` 0.5 → 0.7, `reqwest` 0.12 → 0.13, `keyring` 3 → 4, `thiserror` 1 → 2,
-  `toml` 0.8 → 1.1, `dirs` 5 → 6, `colored` 2 → 3, `comfy-table` 7 → 8, `dialoguer` 0.11 →
-  0.12, `base64` 0.22 → 0.23, `x509-parser` 0.16 → 0.18, `rcgen` 0.13 → 0.14, `sha2` 0.10 →
-  0.11, `webpki-roots` 0.26 → 1.0, `uuid` 1.10 → 1.26, `tempfile` 3.12 → 3.27.
+- **russh moved from an unpinned git branch to crates.io 0.63.1.** The daemon had pinned
+  `branch = "main"`, which resolved to a snapshot of 0.55.0 — nine months and eight minor
+  releases stale. Clears 9 advisories: all five in `aws-lc-sys` (0.34 → 0.44, including two
+  PKCS7_verify bypasses and an X.509 name-constraint bypass) and all four in the `libcrux`
+  crates, which russh ≥ 0.59 replaced with RustCrypto `ml-kem`.
 
-  Two needed code changes. `axum` 0.8 no longer treats `:id` as a path parameter and panics
-  at router construction, so the five tunnel routes became `{id}` — this compiled cleanly and
-  was caught only by the integration tests. `axum-server` 0.8 made `from_tcp_rustls`
-  fallible, since it now does socket setup eagerly rather than lazily.
+  The staleness was the smaller half. A git dependency has no semver contract, so
+  `cargo update` would not have delivered a patch — it would have jumped to whatever `main`
+  happened to be, across breaking changes. And `cargo audit` matches crates.io name and
+  version, so it never reported the twelve advisories against that snapshot: it listed
+  `russh` as clean because it could not see it. Git dependencies are now banned outright by
+  `cargo deny check sources`.
 
-  Three were feature renames that surface only as resolver errors: `keyring` 4
-  (`linux-native` → `linux-keyutils-keyring-store`, and so on) and `reqwest` 0.13
-  (`rustls-tls` → `rustls`).
-
-- **Three duplicate crates collapsed.** `gui-core` pinned its own `toml` 0.8 and `reqwest`
-  0.12 while the workspace moved on; the `reqwest` split was actively broken, producing
-  "expected `RequestBuilder`, found a different `RequestBuilder`". Both now use the workspace
-  version, and `sha2` 0.11 aligns with the version russh uses.
-
-### Removed
-- Five workspace dependency entries nothing consumed any more: `secret-service`, `indicatif`,
-  `async-trait`, `tokio-util` and `notify-rust`.
-
-### Security
-- **Dependency lockfile refreshed** (`cargo update`, no manifest changes). Known
-  vulnerabilities 15 → 6. Clears `bytes` 1.11.0 (`RUSTSEC-2026-0007`, integer overflow in
-  `BytesMut::reserve`), `h2` 0.4.12 (`RUSTSEC-2026-0258`), `rustls-webpki` 0.103.8 (four
-  advisories including a reachable panic in CRL parsing and two name-constraint bypasses),
-  `time` 0.3.44 (`RUSTSEC-2026-0009`, DoS via stack exhaustion) and `quinn-proto` 0.11.13.
-  Also picks up `rustls` 0.23.43 and `tokio` 1.53.1.
-
-  Four of the six remaining come from `eventsource-client` 0.13 in `gui-core`, which pins
-  `hyper` 0.14 and `rustls` 0.21; `cargo machete` reports that dependency as unused. One is
-  `users` 0.11.0 in the daemon, unmaintained since 2020. The last is `rsa`, which has no
-  fixed version in any release and is recorded as an accepted risk in `deny.toml`.
-
-### Security
 - **`russh-keys` removed from the workspace entirely.** The discontinued standalone crate
   (last release 0.49.2, January 2025; the code now lives in `russh::keys`) was the only
-  reason `russh-cryptovec` 0.7.3 (`RUSTSEC-2026-0153`) and `rsa` 0.9.9 were still in the
-  tree. Known vulnerabilities: 17 → 15. The build also stopped compiling two independent
-  SSH stacks.
+  reason `russh-cryptovec` 0.7.3 (`RUSTSEC-2026-0153`) and `rsa` 0.9.9 were still present.
+  The build also stopped compiling two independent SSH stacks.
 
-### Changed
-- **SSH key inspection moved into `ssh-tunnel-common`** (`ssh_key` module). The CLI and the
-  GTK GUI each carried a near-identical `validate_key_passphrase`, differing only in error
-  type; the GUI already delegated its keychain work to `common`, and this now follows the
-  same pattern. Only `common` depends on `russh`, so neither front-end pulls in an SSH stack
-  of its own.
+- **Dependency lockfile refreshed.** Clears `bytes` 1.11.0 (`RUSTSEC-2026-0007`, integer
+  overflow in `BytesMut::reserve`), `h2` 0.4.12 (`RUSTSEC-2026-0258`), `rustls-webpki`
+  0.103.8 (four advisories including a reachable panic in CRL parsing and two
+  name-constraint bypasses), `time` 0.3.44 (`RUSTSEC-2026-0009`, DoS via stack exhaustion)
+  and `quinn-proto` 0.11.13.
 
-  The move also documents an ambiguity the duplicated versions left unstated:
-  `is_key_encrypted` cannot distinguish an encrypted key from a corrupt one and reports both
-  as encrypted. That is harmless — the caller then asks for a passphrase and
-  `validate_key_passphrase` produces the real error — and there is now a test pinning it.
+- **`users` 0.11 replaced with `uzers` 0.12**, the maintained fork with the same API.
+  `users` had been unmaintained since 2020 and carried `RUSTSEC-2023-0040`,
+  `RUSTSEC-2023-0059` and `RUSTSEC-2025-0040` with no fix coming.
 
-### Security
-- **russh moved from an unpinned git branch to crates.io 0.63.1** (was a git snapshot of
-  0.55.0, nine months and eight minor releases stale). Clears 9 advisories: all five in
-  `aws-lc-sys` (0.34 → 0.44, including two PKCS7_verify bypasses and an X.509 name-constraint
-  bypass) and all four in the `libcrux` crates, which russh ≥ 0.59 replaced with RustCrypto
-  `ml-kem`. Total known vulnerabilities: 25 → 17.
-
-  The point is not only the missed fixes. A git dependency has no semver contract, so
-  `cargo update` would have jumped to whatever `main` happened to be, across breaking
-  changes. And `cargo audit` matches crates.io name and version, so it never reported the
-  twelve advisories against that snapshot at all — it listed `russh` as clean because it
-  could not see it. `cargo deny check sources` now bans git dependencies outright.
+- **`eventsource-client` removed from `gui-core`.** It had no source references anywhere — a
+  leftover from the SSE client consolidation in v0.1.10 — but pinned `hyper` 0.14 and
+  `rustls` 0.21 beneath it. Removing it took the whole legacy TLS stack out of the tree
+  (`hyper` 0.14, `rustls` 0.21, `rustls-webpki` 0.101, `h2` 0.3) and cleared four advisories.
 
 - **SSH compression is no longer offered.** russh is built with `default-features = false`,
   dropping `flate2`, which is the only thing that puts zlib into the negotiated compression
   list. This removes the compression "zip bomb" class (`GHSA-wwx6-x28x-8259`,
-  `CVE-2026-46673`) structurally rather than by patch. OpenSSH itself defaults to
-  `Compression no`, and a port forward gains essentially nothing from it.
+  `CVE-2026-46673`) structurally rather than by patch.
 
 - **SHA-1 MACs are no longer offered.** Inherited from russh 0.60.2, which removed them from
   `Preferred::DEFAULT`; the daemon builds its config with `..Default::default()`, so this
@@ -120,77 +73,118 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Host certificates are refused rather than silently unwrapped.** russh 0.63 can hand
   `check_server_key` a CA-signed certificate. `PublicKeyOrCertificate::public_key()` returns
-  the key embedded *inside* it, and comparing that against `known_hosts` is a different check
-  — it would accept a host we never pinned on the strength of a CA we do not evaluate. The
-  daemon refuses with a clear error instead. Supporting certificates means implementing
-  OpenSSH's `@cert-authority` model, which is a deliberate feature, not a migration detail.
+  the key embedded *inside* it, and comparing that against `known_hosts` is a different
+  check — it would accept a host that was never pinned, on the strength of a CA the client
+  does not evaluate. The daemon refuses with a clear error instead. Supporting certificates
+  properly means implementing OpenSSH's `@cert-authority` model, which is a deliberate
+  feature rather than a migration detail.
+
+- **The supply-chain audit fails the build.** `cargo deny check` gates every pull request on
+  advisories, licences, dependency sources and duplicates. It was advisory-only while this
+  upgrade was in flight, because a permanently red gate is one people learn to ignore.
+
+- **Secret scanning.** `gitleaks` runs on every pull request, enforcing the
+  no-credentials-in-the-repository rule that US-10.4 previously only stated.
 
 ### Added
-- **Supply-chain audit** (`make audit`) — `cargo audit`, `cargo deny` and `cargo machete`,
-  with policy in `deny.toml`. The `sources` check **bans git dependencies**: one has no
-  semver contract, and `cargo audit` matches crates.io name and version, so it cannot see a
-  git dependency at all. Every ignored advisory carries a written reason and a revisit
-  condition.
+
+- **Supply-chain audit** (`make audit`) with policy in [`deny.toml`](../deny.toml). Every
+  ignored advisory carries a written reason and the condition under which to revisit it — an
+  ignore without one hides the next real finding.
 - **Tier-2 live SSH fixture** (`scripts/ssh-fixture.sh`, `make test-live-fixture`) — an
-  unprivileged sshd on localhost. No root, no container, no credentials, nothing to install.
-  Covers the six key-based live tests, both host key verification tests among them, so the
-  SSH client path is now exercised on **every pull request** rather than on demand.
+  unprivileged sshd on localhost. No root, no container, no credentials, nothing to install
+  beyond `sshd` itself. Covers the six key-based live tests, both host key verification tests
+  among them, so the SSH client path is exercised on **every pull request**.
+- **Live SSH target provisioning** (`scripts/provision-test-target.sh`) — creates the three
+  test accounts (key, password, 2FA/TOTP) on a remote host, generates every key and secret,
+  and writes `.local/testing/ssh-target.env`. Idempotent, takes the host as an argument and
+  hardcodes nothing. Every `sshd_config` change is scoped with `Match User` to the test
+  accounts and validated with `sshd -t` before reload, so it cannot lock you out.
 - **`SSH_TUNNEL_TEST_STRICT`** — turns a skipped live test into a failure. `=1` requires the
   target file (tier 2); `=all` additionally requires every account a test asks for (tier 4).
   Closes the trap documented in US-10.5, where a fully skipped run still reported `ok`.
-- **Dev container** (`containers/Containerfile.dev`) — a bare workstation cannot build this
-  project, because `aws-lc-sys` needs cmake and a C toolchain. Previously undocumented.
-- **CI**: gating live-SSH job, supply-chain audit job, and `gitleaks` secret scanning, which
-  enforces the no-credentials-in-repo rule US-10.4 previously only stated.
-- `rust-toolchain.toml` and `.github/dependabot.yml` (cargo lockfile updates and actions).
+- **Dev container** ([`containers/Containerfile.dev`](../containers/Containerfile.dev)) — a
+  bare workstation cannot build this project, because `aws-lc-sys` needs `cmake` and a C
+  toolchain. Previously undocumented.
+- **`known_hosts` mismatch unit tests** — `VerifyResult::Mismatch`, the branch that detects a
+  changed host key, previously had no coverage at all. Now covered without needing a server.
+- **Host certificate unit tests** and the first unit tests `tunnel.rs` has ever had.
+- **CI jobs**: gating live-SSH fixture, supply-chain audit, and secret scanning.
+- `rust-toolchain.toml` and `.github/dependabot.yml` (weekly lockfile-only cargo updates and
+  GitHub Actions pin refreshes).
 
 ### Changed
+
+- **Minimum supported Rust version is now 1.85** (was 1.75), required by russh 0.63.
+- **Dependency versions brought current**: `axum` 0.7 → 0.8, `axum-server` 0.7 → 0.8,
+  `tower-http` 0.5 → 0.7, `reqwest` 0.12 → 0.13, `keyring` 3 → 4, `thiserror` 1 → 2,
+  `toml` 0.8 → 1.1, `dirs` 5 → 6, `colored` 2 → 3, `comfy-table` 7 → 8, `dialoguer`
+  0.11 → 0.12, `base64` 0.22 → 0.23, `x509-parser` 0.16 → 0.18, `rcgen` 0.13 → 0.14,
+  `sha2` 0.10 → 0.11, `webpki-roots` 0.26 → 1.0, `uuid` 1.10 → 1.26, `tempfile` 3.12 → 3.27,
+  `rustls` 0.23.43, `tokio` 1.53.1.
+
+  Two needed code changes. `axum` 0.8 no longer treats `:id` as a path parameter and panics
+  at router construction, so the five tunnel routes became `{id}` — this compiled cleanly and
+  was caught only by the integration tests. `axum-server` 0.8 made `from_tcp_rustls`
+  fallible, since it now does socket setup eagerly.
+
+- **SSH key inspection moved into `ssh-tunnel-common`** (`ssh_key` module). The CLI and the
+  GTK GUI each carried a near-identical `validate_key_passphrase`, differing only in error
+  type; the GUI already delegated its keychain work to `common`, and key validation now
+  follows the same pattern. Only `common` depends on `russh`, so neither front-end pulls in
+  an SSH stack of its own.
+
+- **Three duplicate crates collapsed.** `gui-core` pinned its own `toml` 0.8 and `reqwest`
+  0.12 while the workspace moved on; the `reqwest` split was actively broken, producing
+  "expected `RequestBuilder`, found a different `RequestBuilder`". Both now use the workspace
+  version, and `sha2` 0.11 aligns with the version russh already pulls in.
+
 - **CI actions are pinned to commit SHAs** rather than moving tags, and the toolchain is
-  pinned rather than floating on `@stable`. These workflows handle repository secrets.
-- The manual live-SSH job now **fails** when its secret is absent instead of exiting 0. It
+  pinned by `rust-toolchain.toml` rather than floating on `@stable`. These workflows handle
+  repository secrets.
+
+- **The manual live-SSH job fails when its secret is absent** instead of exiting 0. It
   previously reported green whether the tests passed, all skipped, or were never configured.
+
 - Four live tests were coupled to the password account for no reason — they need a working
   connection, not a particular authentication method. They now use key authentication and so
   can run against the unprivileged fixture.
 
-### Removed
-- **11 unused dependencies** from the CLI, daemon and common crates, found by
-  `cargo machete` and each verified by hand: `async-trait`, `russh-util`, `secret-service`,
-  `thiserror`, `tokio-rustls`, `tokio-util`, `chrono`, `indicatif`, `tracing`, `zeroize`.
-  465 lines out of `Cargo.lock`; `secret-service` alone pulled an entire dbus stack, while
-  the daemon's keychain access actually goes through `keyring` in `ssh-tunnel-common`.
-- Workspace crates are marked `publish = false`; they are application binaries and their
-  private support crates, never published to crates.io. `gui-core` also carried a
-  placeholder repository URL.
+- Workspace crates are marked `publish = false`: they are application binaries and their
+  private support crates, never published to crates.io.
+
+- Vulnerability reporting, accepted risks and dependency hygiene are documented in
+  [architecture/SECURITY.md](architecture/SECURITY.md), which is the single security document.
 
 ### Fixed
+
 - **A wrong SSH password no longer kills the tunnel.** `authenticate_with_password` prompted
   once and gave up on failure, even while the server still offered `password`. The v0.1.10
   "re-prompt, don't fail" fix had only been applied to keyboard-interactive. It now retries
   on the same terms, bounded by the server dropping the method from `remaining_methods`.
   A password loaded from the keychain is tried only once: re-using a stale stored password
   every round would exhaust the server's `MaxAuthTries` without ever prompting the user.
-  File: `crates/daemon/src/tunnel.rs`.
 
-### Added
-- **Live SSH target provisioning** (`scripts/provision-test-target.sh`) — creates the three
-  test accounts (key, password, 2FA/TOTP) on a remote host, generates the keys and secrets,
-  and writes `.local/testing/ssh-target.env`. Idempotent, takes the host as an argument and
-  hardcodes nothing. Every `sshd_config` change is scoped with `Match User` to the test
-  accounts and validated with `sshd -t` before reload, so administrative access cannot break.
-- **`known_hosts` mismatch unit tests** — the `VerifyResult::Mismatch` branch, the one that
-  detects a changed host key, previously had no coverage at all. Now covered without needing
-  a server, along with a regression guard for the `[host]:22` pattern trap below.
-
-### Changed
-- The live SSH tier passes end to end for the first time: 10/10 against a real server.
+- **The changed-host-key test was asserting nothing on the default port.** It wrote its
+  poisoned `known_hosts` entry as `[host]:22`, but a bare hostname is the correct form on
+  port 22 — matching OpenSSH — so the entry never matched and the daemon reported the host as
+  *unknown* rather than *changed*. The daemon was correct throughout; the test was not.
 
 ### Removed
+
 - **Qt GUI (`crates/gui-qt`) retired.** The cxx-qt bridge never compiled and the crate
-  carried no working functionality. The GTK front-end is the only GUI. All references in
-  the build files, docs and architecture diagrams were removed with it, and
-  `default-members` is gone from the root `Cargo.toml` — every workspace member now builds,
-  so `cargo build`, `cargo test` and `--workspace` are equivalent in coverage.
+  carried no working functionality. The GTK front-end is the only GUI. `default-members` is
+  gone from the root manifest — every workspace member now builds, so `cargo build`,
+  `cargo test` and `--workspace` are equivalent in coverage.
+
+- **11 unused dependencies** from the CLI, daemon and common crates, found by
+  `cargo machete` and each verified by hand: `async-trait`, `russh-util`, `secret-service`,
+  `thiserror`, `tokio-rustls`, `tokio-util`, `chrono`, `indicatif`, `tracing`, `zeroize`.
+  465 lines out of `Cargo.lock`; `secret-service` alone pulled an entire D-Bus stack, while
+  the daemon's keychain access actually goes through `keyring` in `ssh-tunnel-common`.
+
+- Five workspace dependency entries nothing consumed any more: `secret-service`, `indicatif`,
+  `async-trait`, `tokio-util` and `notify-rust`.
 
 ---
 
