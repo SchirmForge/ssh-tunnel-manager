@@ -218,8 +218,8 @@
 <h2 id="crates">2. Crate layout</h2>
 
 <figure>
-<svg viewBox="0 0 900 330" role="img" aria-labelledby="crates-title">
-  <title id="crates-title">Crate dependency graph: common underpins daemon, cli and gui-core; gui-core underpins gui-gtk and gui-qt</title>
+<svg viewBox="0 0 690 330" role="img" aria-labelledby="crates-title">
+  <title id="crates-title">Crate dependency graph: common underpins daemon, cli and gui-core; gui-core underpins gui-gtk</title>
   <defs>
     <marker id="arrow3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M 0 0 L 10 5 L 0 10 z" class="d-arrowhead"/>
@@ -241,31 +241,27 @@
   <text x="466" y="68" class="d-label">ssh-tunnel-gtk</text>
   <text x="466" y="85" class="d-sub">crates/gui-gtk</text>
 
-  <rect x="660" y="46" width="210" height="52" rx="6" class="d-box d-ext d-dim"/>
-  <text x="676" y="68" class="d-label">ssh-tunnel-qt</text>
-  <text x="676" y="85" class="d-sub">crates/gui-qt — does not build</text>
 
   <!-- gui-core -->
   <text x="30" y="150" class="d-title">SHARED</text>
-  <rect x="450" y="162" width="420" height="48" rx="6" class="d-box d-client"/>
+  <rect x="450" y="162" width="210" height="48" rx="6" class="d-box d-client"/>
   <text x="466" y="182" class="d-label">gui-core</text>
-  <text x="466" y="199" class="d-sub">framework-agnostic GUI logic: view models, AppCore state, profile ops</text>
+  <text x="466" y="199" class="d-sub">view models · AppCore state · profile ops</text>
 
   <path d="M 540 162 L 540 100" class="d-edge" marker-end="url(#arrow3)"/>
-  <path d="M 765 162 L 765 100" class="d-edge d-dim" marker-end="url(#arrow3)"/>
 
   <!-- common -->
-  <rect x="30" y="246" width="840" height="52" rx="6" class="d-box d-daemon"/>
+  <rect x="30" y="246" width="630" height="52" rx="6" class="d-box d-daemon"/>
   <text x="46" y="268" class="d-label">common</text>
   <text x="46" y="285" class="d-sub">types · profile I/O · daemon client · SSE EventListener · keychain · TLS · validation</text>
 
   <path d="M 120 246 L 120 100" class="d-edge" marker-end="url(#arrow3)"/>
   <path d="M 330 246 L 330 100" class="d-edge" marker-end="url(#arrow3)"/>
-  <path d="M 660 246 L 660 210" class="d-edge" marker-end="url(#arrow3)"/>
+  <path d="M 550 246 L 550 210" class="d-edge" marker-end="url(#arrow3)"/>
 
   <text x="140" y="230" class="d-sub">depends on</text>
 </svg>
-<figcaption><code>gui-qt</code> is a workspace member but is excluded from <code>default-members</code>; everything else builds by default.</figcaption>
+<figcaption>Every crate in the workspace builds by default; <code>common</code> underpins all of them.</figcaption>
 </figure>
 
 <table>
@@ -276,7 +272,6 @@
     <tr><td><code>cli</code></td><td>bin</td><td>clap command surface, interactive prompts, table and JSON rendering</td></tr>
     <tr><td><code>gui-core</code></td><td>lib</td><td>View models, <code>AppCore</code> state, profile operations, daemon config helpers — no toolkit dependency</td></tr>
     <tr><td><code>gui-gtk</code></td><td>bin</td><td>GTK4 / libadwaita widgets, dialogs, the configuration wizard</td></tr>
-    <tr><td><code>gui-qt</code></td><td>bin</td><td>cxx-qt / QML skeleton. <span class="status no">Does not currently compile</span></td></tr>
   </tbody>
 </table>
 
@@ -467,16 +462,14 @@ if let Some(client) = client {
   <thead><tr><th>Target</th><th>Command</th><th>Needs</th></tr></thead>
   <tbody>
     <tr><td>Daemon and CLI</td><td><code>cargo build -p ssh-tunnel-daemon -p ssh-tunnel-cli</code></td><td>Nothing beyond Rust</td></tr>
-    <tr><td>Default set</td><td><code>cargo build --release</code></td><td>GTK4 ≥ 4.12, libadwaita ≥ 1.5</td></tr>
-    <tr><td>Qt GUI</td><td><code>cargo build -p ssh-tunnel-gui-qt</code></td><td>Qt6 base and declarative. <span class="status no">Currently fails</span></td></tr>
+    <tr><td>Whole workspace</td><td><code>cargo build --release</code></td><td>GTK4 ≥ 4.12, libadwaita ≥ 1.5</td></tr>
   </tbody>
 </table>
 
 <p>
-  <code>default-members</code> excludes <code>gui-qt</code> so a bare <code>cargo build</code>
-  cannot fail because of it. Note that <code>cargo test --workspace</code> and
-  <code>--all</code> override <code>default-members</code> and will pull it back in; the
-  <code>Makefile</code> deliberately uses plain <code>cargo test</code>.
+  Every workspace member builds, so <code>cargo build</code>, <code>cargo test</code> and
+  <code>--workspace</code> are equivalent in coverage; no <code>default-members</code>
+  carve-out is needed.
 </p>
 
 <h4>Packaging status</h4>

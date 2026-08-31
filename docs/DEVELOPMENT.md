@@ -56,14 +56,6 @@ sudo dnf install gtk4-devel libadwaita-devel gcc pkg-config
 sudo pacman -S gtk4 libadwaita base-devel
 ```
 
-**For Qt GUI (Optional, under development):**
-- Qt6 base and declarative modules (required for building gui-qt)
-- **Ubuntu/Debian:**
-  ```bash
-  sudo apt install qt6-base-dev qt6-declarative-dev qml6-module-qtquick qml6-module-qtquick-controls qml6-module-qtquick-layouts
-  ```
-- See [crates/gui-qt/README.md](../crates/gui-qt/README.md) for other distributions
-
 ### Build
 
 ```bash
@@ -74,20 +66,12 @@ cd ssh-tunnel-manager
 # Build CLI and daemon only (no system dependencies)
 cargo build --release --package ssh-tunnel-cli --package ssh-tunnel-daemon
 
-# Build GTK GUI (no Qt6 needed)
+# Build the GTK GUI
 cargo build --release --package ssh-tunnel-gui-gtk
 
-# Build everything in the default set: daemon, CLI, common, gui-core, gui-gtk
+# Build the whole workspace: daemon, CLI, common, gui-core, gui-gtk
 cargo build --release
-
-# Build the Qt GUI (requires Qt6 - see above)
-cargo build --release --package ssh-tunnel-gui-qt
 ```
-
-**Note on gui-qt**: it is a workspace member but is excluded from `default-members` in the
-root `Cargo.toml`, so a bare `cargo build` skips it. It requires Qt6 and does not currently
-compile (see [crates/gui-qt/README.md](../crates/gui-qt/README.md)). Build it explicitly
-with `-p ssh-tunnel-gui-qt` when working on it.
 
 ### Basic Usage
 
@@ -118,9 +102,6 @@ RUST_LOG=info ./target/release/ssh-tunnel-daemon
 
 # Launch the GTK GUI (in another terminal)
 ./target/release/ssh-tunnel-gtk
-
-# Or launch the Qt GUI (requires Qt6 installation)
-./target/release/ssh-tunnel-qt
 ```
 
 ### Run with Debug Logging

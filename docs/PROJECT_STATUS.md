@@ -15,7 +15,6 @@ of view see the [user stories](user-stories/).
 | Daemon | ✅ Local port forwarding, interactive authentication over SSE, host key verification, three listener modes |
 | CLI | ✅ Profile CRUD, tunnel control, status, watch |
 | GTK GUI | ✅ Full profile CRUD, live status, first-launch wizard, remote daemon support |
-| Qt GUI | ❌ Does not compile — excluded from the default build |
 | Testing | ✅ Two tiers (hermetic + live SSH), sandboxed, plus CI |
 | Auto-reconnect | ❌ Config options exist but nothing acts on them |
 | Notifications | ❌ Not implemented |
@@ -49,10 +48,13 @@ of view see the [user stories](user-stories/).
 - Start/stop/status using **shared SSE-first flow** from common module; interactive auth handling.
 
 ### ✅ GUI Core (`crates/gui-core`)
-- Framework-agnostic business logic shared across GTK and future Qt implementations (~60-70% code reuse)
+- Framework-agnostic business logic for GTK and future presentation adapters
 - Profile management: `load_profiles`, `save_profile`, `delete_profile`, `validate_profile`, `profile_name_exists`
 - View models: `ProfileViewModel` with formatted display data, status colors, and action states
-- Application state: `AppCore` with profiles, tunnel statuses, daemon connection state, auth tracking
+- Shared `AppController`, typed commands/effects, immutable snapshots, and code-derived action availability
+- FIFO authentication queue and typed answers driven only by structured daemon request/status codes
+- Versioned GUI preferences for profile order, pins, filters, and sorting in `ui.toml`
+- Compatibility state: `AppCore` remains available to the current GTK implementation
 - Event handling trait: `TunnelEventHandler` for framework-agnostic event notifications
 - Daemon helpers: `load_daemon_config`, configuration path utilities
 
@@ -84,15 +86,6 @@ of view see the [user stories](user-stories/).
 - **Navigation UI**: Split view with sidebar navigation between Profiles and Daemon pages, burger menu with Help/About.
 - **Help and About dialogs**: Markdown-rendered documentation accessible from burger menu using `pulldown-cmark`.
 
-### ❌ GUI Qt (`crates/gui-qt`)
-- **Does not currently compile** - the cxx-qt 0.8.0 bridge macro fails to parse (see
-  [crates/gui-qt/README.md](../crates/gui-qt/README.md)). It is excluded from
-  `default-members` in the root `Cargo.toml`, so `cargo build` skips it while
-  `cargo build -p ssh-tunnel-gui-qt` still works for anyone with Qt6 installed.
-  **Use the GTK GUI.**
-- Intended design: QML for the UI, Rust for logic, `gui-core` for ~60-70% code reuse
-- What exists in the tree: a QML skeleton and placeholder profile data; no daemon or event
-  wiring
 
 ## Current Capabilities
 
@@ -145,7 +138,7 @@ of view see the [user stories](user-stories/).
 # Build CLI + daemon
 cargo build --package ssh-tunnel-cli --package ssh-tunnel-daemon
 
-# Release build (default-members: excludes gui-qt)
+# Release build (whole workspace)
 cargo build --release
 
 # Run with logs

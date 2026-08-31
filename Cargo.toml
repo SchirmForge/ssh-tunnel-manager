@@ -8,14 +8,6 @@ members = [
     "crates/common",
 ]
 
-default-members = [
-    "crates/daemon",
-    "crates/cli",
-    "crates/common",
-    "crates/gui-core",
-    "crates/gui-gtk",
-]
-
 [workspace.package]
 version = "0.1.11"
 edition = "2021"

@@ -30,8 +30,6 @@ Remaining:
 - Fix whatever the live tier turns up once the test accounts exist on the target host
 - Decide whether `AUTH_RESPONSE_TIMEOUT` (60s) is the right value when nothing answers a
   credential prompt
-- Get `crates/gui-qt` compiling, or retire it — it is currently excluded from
-  `default-members` so it cannot break the build
 
 ### Packaging
 **Status**: In progress
@@ -191,7 +189,6 @@ and the systemd unit files.
 | Token handoff logs secrets | ❌ Open — clarify so the CLI can consume the token without it appearing in output |
 | Token stored in plaintext in `cli-config.snippet` | ❌ Open — 0600, but present at rest. Encrypted storage under consideration |
 | `crates/daemon/src/monitor.rs` is an empty stub | ❌ Open — see auto-reconnect above |
-| `crates/gui-qt` does not compile | 🚧 Open — cxx-qt bridge macro; excluded from `default-members` so it cannot break the build or CI |
 | Dynamic/SOCKS forwarding returns an error | 🚧 By design until implemented |
 
 ---

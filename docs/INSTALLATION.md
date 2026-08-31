@@ -89,7 +89,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 # Clone and build
 git clone https://github.com/yourusername/ssh-tunnel-manager
 cd ssh-tunnel-manager
-cargo build --release --workspace --exclude ssh-tunnel-gui-qt
+cargo build --release --workspace
 
 # Install binaries (adjust prefix as needed)
 sudo install -Dm755 target/release/ssh-tunnel-daemon /usr/local/bin/

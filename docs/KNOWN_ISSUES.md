@@ -37,16 +37,6 @@ For missing features described as user stories with their status, see the
   test could delete a running daemon's PID file) and coverage. Both are fixed, and
   `cargo test` and `cargo clippy -- -D warnings` are now clean.
 
-### 🔧 Minor Issues
-
-- **`crates/gui-qt` does not compile**
-  - The cxx-qt 0.8.0 bridge macro fails to parse
-  - **Impact**: Development only. The crate is excluded from `default-members`, so
-    `cargo build`, `cargo test` and CI are unaffected; `cargo build -p ssh-tunnel-gui-qt`
-    is the only thing that fails
-  - **Workaround**: Use the GTK GUI (`ssh-tunnel-gtk`)
-  - **Status**: Open — see `crates/gui-qt/README.md`
-
 ## Limitations & Missing Features
 
 ### ❌ Tunnel Types

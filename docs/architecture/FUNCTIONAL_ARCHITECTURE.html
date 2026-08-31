@@ -351,14 +351,6 @@
   <li>Help and About rendered from Markdown bundled in <code>gui-core/assets/</code></li>
 </ul>
 
-<h3>3.5 Qt GUI — <code>crates/gui-qt</code></h3>
-<p><span class="status no">❌ Does not currently compile</span> — the cxx-qt 0.8.0 bridge macro fails to parse.</p>
-<p>
-  It remains a workspace member so it can be built explicitly with
-  <code>cargo build -p ssh-tunnel-gui-qt</code>, but it is excluded from
-  <code>default-members</code> so it cannot break the default build or CI. Use the GTK GUI.
-</p>
-
 <h2 id="flows">4. Data flow</h2>
 
 <h3>4.1 Who is involved in each credential</h3>

@@ -36,8 +36,6 @@ jobs:
       - name: Check formatting
         run: cargo fmt --all -- --check
 
-      # Operates on default-members: gui-qt needs Qt6 and does not currently
-      # compile (see crates/gui-qt/README.md).
       - name: Clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
 

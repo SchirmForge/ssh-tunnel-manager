@@ -2,7 +2,7 @@
 # For full installation with systemd support, use: ./scripts/install.sh
 
 .PHONY: all build build-debug clean test test-live test-network-modes sandbox \
-        clippy fmt fmt-check run-daemon run-cli run-gui run-gui-qt check install help
+        clippy fmt fmt-check run-daemon run-cli run-gui check install help
 
 
 # Default target
@@ -20,7 +20,6 @@ build-debug:
 clean:
 	cargo clean
 
-# Run tests (default-members only; --all/--workspace would pull in gui-qt).
 # Live SSH tests are #[ignore]d and excluded here - see test-live.
 test:
 	cargo test
@@ -64,10 +63,6 @@ run-cli:
 run-gui:
 	cargo run -p ssh-tunnel-gui-gtk
 
-# Run Qt GUI (requires Qt6 - excluded from the default build, see Cargo.toml)
-run-gui-qt:
-	cargo run -p ssh-tunnel-gui-qt
-
 # Full check (format, clippy, test)
 check: fmt-check clippy test
 
@@ -109,7 +104,6 @@ help:
 	@echo "  run-daemon     - Run daemon in debug mode"
 	@echo "  run-cli        - Run CLI (use ARGS='your args' to pass arguments)"
 	@echo "  run-gui        - Run the GTK GUI (ssh-tunnel-gtk)"
-	@echo "  run-gui-qt     - Run the Qt GUI (needs Qt6; excluded from the default build)"
 	@echo "  install        - Install binaries to ~/.local/bin (use scripts/install.sh for systemd)"
 	@echo "  help           - Show this help message"
 	@echo ""

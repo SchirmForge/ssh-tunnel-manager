@@ -118,6 +118,6 @@ See [../DEVELOPMENT.md](../DEVELOPMENT.md#testing) for how to run any of this.
 - Every push and pull request runs `cargo fmt --check`, `cargo clippy -- -D warnings`, the hermetic tests and a release build
 - The network-mode script runs too, covering the CLI against all three listener modes
 - The live tier is `workflow_dispatch` only, so credentials never reach an untrusted pull request
-- `gui-qt` is excluded from the default build, so its known compile failure cannot break CI
+- Every workspace member builds, so `--workspace` needs no carve-out
 
-**Implementation**: `.github/workflows/ci.yml`, `default-members` in the root `Cargo.toml`
+**Implementation**: `.github/workflows/ci.yml`

@@ -20,7 +20,6 @@ A secure, performant SSH tunnel management application for Linux with CLI interf
 
 - 🚧 Notification on connection lost or reconnect not implemented yet
 - 🚧 Auto-reconnect wiring pending
-- 🚧 Qt GUI does not compile; use the GTK GUI
 
 ## Features
 
@@ -263,8 +262,6 @@ For comprehensive security documentation including threat model, remote daemon b
 3. **Platform**: Primary development on Linux; macOS/Windows untested
 4. **SSH Agent**: File-based keys only (no ssh-agent integration yet)
 5. **Privileged Ports**: Requires `sudo` or `CAP_NET_BIND_SERVICE` for ports ≤1024
-6. **Qt GUI**: `crates/gui-qt` does not currently compile and is excluded from the default
-   build; use the GTK GUI
 
 Each of these is documented with its status in the
 **[user stories](docs/user-stories/)**.
