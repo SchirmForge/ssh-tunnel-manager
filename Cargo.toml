@@ -8,9 +8,6 @@ members = [
     "crates/common",
 ]
 
-# gui-qt is a member (so `cargo build -p ssh-tunnel-gui-qt` works) but is excluded
-# from the default build: it requires Qt6 development packages and does not currently
-# compile. See crates/gui-qt/README.md. Everything else builds with GTK4 alone.
 default-members = [
     "crates/daemon",
     "crates/cli",
