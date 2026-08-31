@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **A wrong SSH password no longer kills the tunnel.** `authenticate_with_password` prompted
+  once and gave up on failure, even while the server still offered `password`. The v0.1.10
+  "re-prompt, don't fail" fix had only been applied to keyboard-interactive. It now retries
+  on the same terms, bounded by the server dropping the method from `remaining_methods`.
+  A password loaded from the keychain is tried only once: re-using a stale stored password
+  every round would exhaust the server's `MaxAuthTries` without ever prompting the user.
+  File: `crates/daemon/src/tunnel.rs`.
+
+### Added
+- **Live SSH target provisioning** (`scripts/provision-test-target.sh`) — creates the three
+  test accounts (key, password, 2FA/TOTP) on a remote host, generates the keys and secrets,
+  and writes `.local/testing/ssh-target.env`. Idempotent, takes the host as an argument and
+  hardcodes nothing. Every `sshd_config` change is scoped with `Match User` to the test
+  accounts and validated with `sshd -t` before reload, so administrative access cannot break.
+- **`known_hosts` mismatch unit tests** — the `VerifyResult::Mismatch` branch, the one that
+  detects a changed host key, previously had no coverage at all. Now covered without needing
+  a server, along with a regression guard for the `[host]:22` pattern trap below.
+
+### Changed
+- The live SSH tier passes end to end for the first time: 10/10 against a real server.
+
+### Removed
+- **Qt GUI (`crates/gui-qt`) retired.** The cxx-qt bridge never compiled and the crate
+  carried no working functionality. The GTK front-end is the only GUI. All references in
+  the build files, docs and architecture diagrams were removed with it, and
+  `default-members` is gone from the root `Cargo.toml` — every workspace member now builds,
+  so `cargo build`, `cargo test` and `--workspace` are equivalent in coverage.
+
 ---
 
 ## [0.1.11] - 2026-08-30

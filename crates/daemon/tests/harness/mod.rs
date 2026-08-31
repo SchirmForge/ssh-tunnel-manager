@@ -302,3 +302,19 @@ fn free_port() -> u16 {
         .expect("Should read local addr")
         .port()
 }
+
+/// Format a `known_hosts` host pattern the way OpenSSH — and
+/// `daemon::known_hosts::format_host_pattern` — both do: a bare hostname on the
+/// default port, `[host]:port` otherwise.
+///
+/// Getting this wrong is silent and expensive: an entry written as `[host]:22`
+/// matches nothing on port 22, so a test that means to poison `known_hosts` ends
+/// up asserting against an *unknown* host instead of a *changed* one, and passes
+/// for the wrong reason.
+pub fn known_hosts_pattern(host: &str, port: u16) -> String {
+    if port == 22 {
+        host.to_string()
+    } else {
+        format!("[{host}]:{port}")
+    }
+}

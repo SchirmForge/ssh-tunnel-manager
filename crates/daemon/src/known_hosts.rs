@@ -422,6 +422,65 @@ mod tests {
         assert_eq!(loaded.entries[0].key_type, "ssh-ed25519");
     }
 
+    /// Two distinct, real ed25519 public keys. `verify_key` compares the base64
+    /// text, so these only have to be well-formed and different.
+    const KEY_A: &str = "AAAAC3NzaC1lZDI1NTE5AAAAIO7ymmTEFPoi/Dzb7q0/khUscZYTKeR4OZ3qHX/26Vr1";
+    const KEY_B: &str = "AAAAC3NzaC1lZDI1NTE5AAAAIIH4ixgMBNSLHY0KINOrKrWcxp0N+FSvPqUOeXL736R8";
+
+    fn public_key(b64: &str) -> PublicKey {
+        format!("ssh-ed25519 {b64}")
+            .parse::<PublicKey>()
+            .expect("test key should parse")
+    }
+
+    fn known_hosts_with(entry: &str, path: &std::path::Path) -> KnownHosts {
+        std::fs::write(path, entry).unwrap();
+        KnownHosts::load_from(path, false).unwrap()
+    }
+
+    /// The security-critical branch: a host we already trust presenting a
+    /// different key must report `Mismatch`, never `Unknown` (which would merely
+    /// re-prompt) and never `Trusted`.
+    #[test]
+    fn a_different_key_for_a_known_host_is_reported_as_mismatch() {
+        let temp_dir = TempDir::new().unwrap();
+        let path = temp_dir.path().join("known_hosts");
+        let known_hosts = known_hosts_with(&format!("example.com ssh-ed25519 {KEY_A}\n"), &path);
+
+        assert!(matches!(
+            known_hosts.verify("example.com", 22, &public_key(KEY_B)),
+            VerifyResult::Mismatch { .. }
+        ));
+    }
+
+    #[test]
+    fn the_same_key_for_a_known_host_is_trusted() {
+        let temp_dir = TempDir::new().unwrap();
+        let path = temp_dir.path().join("known_hosts");
+        let known_hosts = known_hosts_with(&format!("example.com ssh-ed25519 {KEY_A}\n"), &path);
+
+        assert!(matches!(
+            known_hosts.verify("example.com", 22, &public_key(KEY_A)),
+            VerifyResult::Trusted
+        ));
+    }
+
+    /// Regression guard for the bug this test file's live counterpart hit: an
+    /// entry written as `[host]:22` matches nothing on the default port, so a
+    /// mismatched key would be misreported as a brand-new host.
+    #[test]
+    fn a_bracketed_default_port_entry_does_not_match_and_reads_as_unknown() {
+        let temp_dir = TempDir::new().unwrap();
+        let path = temp_dir.path().join("known_hosts");
+        let known_hosts =
+            known_hosts_with(&format!("[example.com]:22 ssh-ed25519 {KEY_A}\n"), &path);
+
+        assert!(matches!(
+            known_hosts.verify("example.com", 22, &public_key(KEY_B)),
+            VerifyResult::Unknown
+        ));
+    }
+
     #[test]
     fn test_known_hosts_empty_file() {
         let temp_dir = TempDir::new().unwrap();

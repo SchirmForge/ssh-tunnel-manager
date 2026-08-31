@@ -97,8 +97,21 @@ impl TunnelEventHandler for ScriptedAuth {
         Ok(match request.auth_type {
             AuthRequestType::KeyPassphrase => Self::next(&mut self.passphrases),
             AuthRequestType::Password => Self::next(&mut self.passwords),
+            // The daemon deliberately does not interpret keyboard-interactive
+            // prompt text: it passes the server's wording through so non-English
+            // servers work (the v0.1.10 fix). A PAM stack doing password + TOTP
+            // therefore sends "Password: " and "Verification code: " under the
+            // same `KeyboardInteractive` type, and only the text distinguishes
+            // them. The test can safely read it — unlike the daemon, it controls
+            // the server and knows its locale.
             AuthRequestType::TwoFactorCode | AuthRequestType::KeyboardInteractive => {
-                Self::next(&mut self.codes)
+                let prompt = request.prompt.to_lowercase();
+                let wants_password = prompt.contains("password") && !prompt.contains("code");
+                if wants_password && !self.passwords.is_empty() {
+                    Self::next(&mut self.passwords)
+                } else {
+                    Self::next(&mut self.codes)
+                }
             }
             // Accept the host key on first sight; a dedicated test covers refusal.
             AuthRequestType::HostKeyVerification => "yes".to_string(),
@@ -242,11 +255,12 @@ async fn a_changed_host_key_is_refused() {
     let daemon = DaemonHarness::start_unix().await;
 
     // A syntactically valid entry for this host carrying the wrong key.
+    // The pattern must be built the way the daemon builds it, or on the default
+    // port the entry matches nothing and this test silently checks nothing.
     let bogus_key = "AAAAC3NzaC1lZDI1NTE5AAAAIP1Ck7Ie5xJm0000000000000000000000000";
     daemon.trust_host_key(&format!(
-        "[{}]:{} ssh-ed25519 {bogus_key}\n",
-        target.host(),
-        target.port()
+        "{} ssh-ed25519 {bogus_key}\n",
+        harness::known_hosts_pattern(target.host(), target.port())
     ));
 
     let port = free_local_port();

@@ -1075,68 +1075,88 @@ async fn authenticate_with_password(
     auth_ctx: &AuthContext,
     profile: &Profile,
 ) -> Result<bool> {
-    // Try stored password first if available
-    let password = if profile.connection.password_storage == PasswordStorage::Keychain {
+    // A stored password is only ever tried once: if it is stale, re-using it every
+    // round would burn through the server's MaxAuthTries without the user ever being
+    // asked. After it fails we fall back to prompting, like any other retry.
+    let mut stored_password = if profile.connection.password_storage == PasswordStorage::Keychain {
         match crate::security::get_stored_password(&profile.metadata.id) {
             Ok(pwd) => {
                 info!("Using stored password from keychain");
-                pwd
+                Some(pwd)
             }
             Err(e) => {
                 warn!(
                     "Failed to retrieve stored password, requesting interactively: {}",
                     e
                 );
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    // Retry while the server still offers `password`, mirroring the keyboard-interactive
+    // path: a mistyped password must re-prompt rather than kill the tunnel. The server's
+    // own MaxAuthTries bounds the loop by dropping `password` from `remaining_methods`.
+    loop {
+        let password = match stored_password.take() {
+            Some(pwd) => pwd,
+            None => {
                 auth_ctx
                     .request_input(AuthRequestType::Password, "Enter SSH password: ", true)
                     .await?
             }
-        }
-    } else {
-        // Request password interactively
-        auth_ctx
-            .request_input(AuthRequestType::Password, "Enter SSH password: ", true)
-            .await?
-    };
+        };
 
-    // Try to authenticate
-    let auth_result = session
-        .authenticate_password(user, &password)
-        .await
-        .context("Password authentication failed")?;
+        let auth_result = session
+            .authenticate_password(user, &password)
+            .await
+            .context("Password authentication failed")?;
 
-    match auth_result {
-        AuthResult::Success => Ok(true),
-        AuthResult::Failure {
-            remaining_methods,
-            partial_success,
-        } => {
-            // Build a helpful error message
-            let methods: Vec<String> = remaining_methods
-                .iter()
-                .map(|m| {
+        match auth_result {
+            AuthResult::Success => return Ok(true),
+            AuthResult::Failure {
+                remaining_methods,
+                partial_success,
+            } => {
+                // Build a helpful error message
+                let methods: Vec<String> = remaining_methods
+                    .iter()
+                    .map(|m| {
+                        let s: &str = m.into();
+                        s.to_string()
+                    })
+                    .collect();
+
+                let password_available = remaining_methods.iter().any(|m| {
                     let s: &str = m.into();
-                    s.to_string()
-                })
-                .collect();
+                    s == "password"
+                });
 
-            let methods_str = if methods.is_empty() {
-                "No authentication methods available".to_string()
-            } else {
-                format!("Server requires: {}", methods.join(", "))
-            };
+                if password_available && !partial_success {
+                    info!("Password authentication failed, but server allows retry. Attempting again...");
+                    continue;
+                }
 
-            let error_msg = if partial_success {
-                format!(
+                let methods_str = if methods.is_empty() {
+                    "No authentication methods available".to_string()
+                } else {
+                    format!("Server requires: {}", methods.join(", "))
+                };
+
+                let error_msg = if partial_success {
+                    format!(
                     "Password authentication partially successful. {} to complete authentication",
                     methods_str
                 )
-            } else {
-                format!("Password authentication rejected. {}", methods_str)
-            };
+                } else {
+                    format!("Password authentication rejected. {}", methods_str)
+                };
 
-            error!("{}", error_msg);
-            anyhow::bail!(error_msg)
+                error!("{}", error_msg);
+                anyhow::bail!(error_msg)
+            }
         }
     }
 }
