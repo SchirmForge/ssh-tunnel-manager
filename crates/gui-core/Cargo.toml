@@ -16,7 +16,6 @@ serde_json = "1"
 uuid = { version = "1", features = ["v4", "serde"] }
 anyhow = "1"
 toml = { workspace = true }
-eventsource-client = "0.13"
 reqwest = { workspace = true }
 dirs = "6"
 futures-util = "0.3"

@@ -122,31 +122,22 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
       - name: Install audit tooling
-        run: cargo install --locked cargo-audit cargo-deny cargo-machete
+        run: cargo install --locked cargo-deny cargo-machete
 
-      # Licences, dependency hygiene and sources are enforced now.
-      - name: Licences and dependency hygiene
-        run: cargo deny check licenses bans
+      # Blocking. Advisories, licences, dependency hygiene and sources -- with
+      # policy, and every accepted-risk ignore and its reason, in deny.toml.
+      #
+      # This was advisory-only while the dependency upgrade was in flight, since
+      # a permanently red gate is one people learn to ignore. The tree is now
+      # clean against the policy, so a new advisory fails the build.
+      - name: Audit
+        run: cargo deny check
 
-      # Reported but not yet blocking. Both are expected to fail until the
-      # dependency upgrade lands, and a permanently red gate teaches people to
-      # ignore it:
-      #
-      #   * sources     - fails while the daemon pins russh to a git branch.
-      #                   Goes green when that moves to crates.io (Phase 1).
-      #   * advisories  - 25 known vulnerabilities in the current tree. Goes
-      #                   green after `cargo update` (Phase 3), leaving only the
-      #                   documented ignores in deny.toml.
-      #   * machete     - gui-core and gui-gtk still declare unused deps.
-      #
-      # TODO: delete `continue-on-error` once Phase 3 is done; the job is then a
-      # real gate and any new advisory fails the build.
-      - name: Advisories, sources and unused dependencies (not yet blocking)
+      # Reported, not blocking: gui-core and gui-gtk still declare dependencies
+      # they no longer use. That is GUI work, tracked separately.
+      - name: Unused dependencies (report only)
         continue-on-error: true
-        run: |
-          cargo deny check sources
-          cargo audit
-          cargo machete
+        run: cargo machete
 
   # Credentials must never reach the repository. US-10.4 states that rule;
   # until now nothing enforced it but reviewer attention.

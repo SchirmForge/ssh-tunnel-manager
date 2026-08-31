@@ -288,9 +288,17 @@ make check-all     # the above plus the live fixture tier and the audit
 ### Auditing dependencies
 
 ```bash
-make audit-tools   # once per environment: installs cargo-audit, deny, machete, nextest
-make audit         # advisories, licences, sources, unused dependencies
+make audit-tools   # once per environment: installs cargo-deny, machete, nextest
+make audit         # advisories, licences, dependency sources, unused dependencies
 ```
+
+`cargo deny check` is the gate and **fails CI** on a new advisory, a disallowed licence, or
+a dependency from an unapproved source. It reads the same RustSec database as `cargo audit`
+and, unlike it, honours the ignore list in `deny.toml`; running both would mean two ignore
+lists drifting apart, so there is one. Use `cargo audit` directly for an ad hoc look.
+
+`cargo machete` is reported but does not fail the build, because `gui-core` and `gui-gtk`
+still declare dependencies they no longer use.
 
 Policy lives in [`deny.toml`](../deny.toml). Every ignored advisory there carries a written
 reason and the condition under which it should be revisited — an ignore without one hides

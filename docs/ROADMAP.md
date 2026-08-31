@@ -190,6 +190,13 @@ and the systemd unit files.
 | Token stored in plaintext in `cli-config.snippet` | ❌ Open — 0600, but present at rest. Encrypted storage under consideration |
 | `crates/daemon/src/monitor.rs` is an empty stub | ❌ Open — see auto-reconnect above |
 | Dynamic/SOCKS forwarding returns an error | 🚧 By design until implemented |
+| `russh` pinned to a git branch | ✅ Resolved — moved to crates.io 0.63.1 and git dependencies are now banned by `cargo deny`. A git dependency has no semver contract and is invisible to advisory scanners, so the ban is what makes a clean audit report meaningful |
+| Known vulnerabilities in the dependency tree | ✅ Resolved — 25 down to 1, and that one (`RUSTSEC-2023-0071`, `rsa`) has no fix in any release and is documented in `deny.toml` and `SECURITY.md` |
+| `users` crate unmaintained since 2020 | ✅ Resolved — replaced with the `uzers` fork |
+| Live SSH tests only runnable by hand, with credentials | ✅ Resolved — an unprivileged localhost sshd covers the key-based half on every pull request with no secrets; the full matrix runs against a provisioned host |
+| RSA timing side channel (`RUSTSEC-2023-0071`) | ⚠️ Accepted — no fixed version exists in any `rsa` release; dropping RSA support would break users' keys. See [SECURITY.md](../SECURITY.md) |
+| `rustls-pemfile` unmaintained | 🚧 Open — functional, no known vulnerability; migrate to `rustls-pki-types` when convenient |
+| `gui-core` / `gui-gtk` declare unused dependencies | 🚧 Open — reported by `cargo machete`, not yet blocking |
 
 ---
 

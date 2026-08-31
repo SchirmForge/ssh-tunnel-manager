@@ -81,10 +81,18 @@ run-gui:
 
 # Supply-chain and dependency audit. Policy lives in deny.toml; every ignored
 # advisory there carries a written reason.
+# `cargo deny check` covers advisories, licences, dependency sources and
+# duplicates, and reads its policy from deny.toml. It uses the same RustSec
+# database as `cargo audit`; running both would mean two ignore lists to keep in
+# step, so this is the gate. Run `cargo audit` directly for an ad hoc look.
+#
+# `cargo machete` is reported but does not fail the build: gui-core and gui-gtk
+# still declare dependencies they no longer use, and that is GUI work.
 audit:
-	cargo audit
 	cargo deny check
-	cargo machete
+	@echo
+	@echo 'unused dependencies (report only):'
+	@cargo machete 2>/dev/null | sed -n '/found the following/,/^$$/p' || echo '  none'
 
 # Install the audit tooling (slow; only needed once per environment)
 audit-tools:

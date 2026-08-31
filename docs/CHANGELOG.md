@@ -8,6 +8,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Security
+- **`eventsource-client` removed from `gui-core`.** It had no source references anywhere —
+  a leftover from the SSE client consolidation in v0.1.10 — but pinned `hyper` 0.14 and
+  `rustls` 0.21 beneath it. Removing it takes the whole legacy TLS stack out of the tree
+  (`hyper` 0.14, `rustls` 0.21, `rustls-webpki` 0.101, `h2` 0.3) and clears four advisories.
+
+  **Known vulnerabilities: 25 → 1** across the whole upgrade. The one that remains,
+  `RUSTSEC-2023-0071` in `rsa`, has no fixed version in any release and is documented as an
+  accepted risk in `deny.toml` and `SECURITY.md`.
+
+- **The supply-chain audit now fails the build.** `cargo deny check` was advisory-only while
+  the upgrade was in flight, because a permanently red gate is one people learn to ignore.
+  The tree is clean against the policy, so `continue-on-error` is gone: a new advisory, a
+  disallowed licence, or a dependency from an unapproved source now breaks CI.
+
+- **Added [`SECURITY.md`](SECURITY.md)** — private disclosure route, what is in scope, the
+  accepted risks with reasons, and how dependencies are kept current. The project had no
+  documented way to report a vulnerability.
+
+### Changed
+- `make audit` runs `cargo deny check` rather than both it and `cargo audit`. They share the
+  RustSec database, but only `cargo deny` honours the ignore list in `deny.toml`; keeping
+  both in the gate would mean two ignore lists drifting apart. `cargo machete` is reported
+  but not blocking, since `gui-core` and `gui-gtk` still declare unused dependencies.
+
+### Security
 - **`users` 0.11 replaced with `uzers` 0.12**, the maintained fork with the same API. `users`
   had been unmaintained since 2020 and carried `RUSTSEC-2023-0040`, `RUSTSEC-2023-0059` and
   `RUSTSEC-2025-0040` with no fix coming. Known vulnerabilities 6 → 5, and this clears the

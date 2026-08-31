@@ -14,6 +14,10 @@ all-features = true
 
 # --- Known vulnerabilities ---------------------------------------------------
 
+# `cargo deny check advisories` reads the same RustSec database as `cargo audit`,
+# and unlike it, honours the ignore list below. Keeping both in the gate would
+# mean maintaining two ignore lists that silently drift apart, so this is the
+# single source of truth. `cargo audit` remains useful ad hoc.
 [advisories]
 db-urls = ["https://github.com/rustsec/advisory-db"]
 yanked = "deny"
@@ -57,10 +61,8 @@ allow = [
     "BSD-3-Clause",
     "ISC",
     "Unicode-3.0",
-    "Zlib",
     "MPL-2.0",
     "CDLA-Permissive-2.0",
-    "OpenSSL",
 ]
 confidence-threshold = 0.9
 
