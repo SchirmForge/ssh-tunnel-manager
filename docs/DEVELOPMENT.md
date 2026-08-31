@@ -57,6 +57,10 @@ toolbox run -c ssh-tunnel-builder cargo build
 Both share your home directory, so `~/.cargo` and `rust-toolchain.toml` supply the toolchain;
 the image deliberately does not bake one in.
 
+If you already had a container before this file existed, rebuild it — or install what it is
+missing, most likely `openssh-server`, which `make test-live-fixture` needs to start its
+local sshd.
+
 #### System Dependencies
 
 Only needed if you are building on the host rather than in the container.

@@ -34,7 +34,19 @@ hyper = { version = "1.4", features = ["full"] }
 hyper-util = { version = "0.1", features = ["tokio", "server-auto"] }
 
 # SSH
-russh = "0.45"
+# default-features would add `flate2`, which is the only thing putting zlib into
+# the negotiated compression list. Dropping it removes the compression
+# "zip bomb" class (GHSA-wwx6-x28x-8259) structurally rather than by patch, and
+# costs nothing: OpenSSH itself defaults to `Compression no`, and a port forward
+# gains essentially nothing from SSH-level compression.
+#
+# `rsa` stays: users hold RSA keys. It carries RUSTSEC-2023-0071 permanently --
+# no fixed version exists in any rsa release -- which is recorded in deny.toml.
+# `des` and `dsa` are off by default and listing features explicitly keeps them
+# off regardless of what upstream adds to its defaults.
+russh = { version = "0.63", default-features = false, features = ["aws-lc-rs", "rsa"] }
+# Still on the discontinued standalone crate; the CLI and GTK GUI use it for
+# `decode_secret_key`. Migrated to `russh::keys` in phase 2.
 russh-keys = "0.45"
 
 # Serialization
@@ -95,8 +107,4 @@ panic = "abort"
 [profile.dev]
 opt-level = 0
 debug = true
-
-#[patch.crates-io]
-#libcrux-ml-kem = { git = "https://github.com/pq-code-package/rust-libcrux.git" }
-#libcrux-ml-kem = { git = "https://github.com/pq-code-package/mlkem-rust-libcrux.git" }
 

@@ -31,6 +31,21 @@ test:
 test-live:
 	cargo test -- --ignored --nocapture
 
+# Tier-2 live tests: an unprivileged sshd on localhost. No root, no container,
+# no secrets, nothing to install. Covers the key-based half of the live tier;
+# password and 2FA need PAM and so run against a provisioned host (test-live).
+# STRICT=1 makes a missing fixture fail instead of skipping every test.
+test-live-fixture:
+	./scripts/ssh-fixture.sh up
+	SSH_TUNNEL_TEST_STRICT=1 cargo test -p ssh-tunnel-daemon --test live_ssh -- --ignored --nocapture; \
+		status=$$?; ./scripts/ssh-fixture.sh down; exit $$status
+
+ssh-fixture-up:
+	./scripts/ssh-fixture.sh up
+
+ssh-fixture-down:
+	./scripts/ssh-fixture.sh down
+
 # End-to-end CLI test of all three daemon listener modes, in a sandbox
 test-network-modes:
 	./scripts/test-network-modes.sh

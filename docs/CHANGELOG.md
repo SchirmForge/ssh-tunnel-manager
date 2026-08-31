@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- **russh moved from an unpinned git branch to crates.io 0.63.1** (was a git snapshot of
+  0.55.0, nine months and eight minor releases stale). Clears 9 advisories: all five in
+  `aws-lc-sys` (0.34 → 0.44, including two PKCS7_verify bypasses and an X.509 name-constraint
+  bypass) and all four in the `libcrux` crates, which russh ≥ 0.59 replaced with RustCrypto
+  `ml-kem`. Total known vulnerabilities: 25 → 17.
+
+  The point is not only the missed fixes. A git dependency has no semver contract, so
+  `cargo update` would have jumped to whatever `main` happened to be, across breaking
+  changes. And `cargo audit` matches crates.io name and version, so it never reported the
+  twelve advisories against that snapshot at all — it listed `russh` as clean because it
+  could not see it. `cargo deny check sources` now bans git dependencies outright.
+
+- **SSH compression is no longer offered.** russh is built with `default-features = false`,
+  dropping `flate2`, which is the only thing that puts zlib into the negotiated compression
+  list. This removes the compression "zip bomb" class (`GHSA-wwx6-x28x-8259`,
+  `CVE-2026-46673`) structurally rather than by patch. OpenSSH itself defaults to
+  `Compression no`, and a port forward gains essentially nothing from it.
+
+- **SHA-1 MACs are no longer offered.** Inherited from russh 0.60.2, which removed them from
+  `Preferred::DEFAULT`; the daemon builds its config with `..Default::default()`, so this
+  needed no code change.
+
+- **Host certificates are refused rather than silently unwrapped.** russh 0.63 can hand
+  `check_server_key` a CA-signed certificate. `PublicKeyOrCertificate::public_key()` returns
+  the key embedded *inside* it, and comparing that against `known_hosts` is a different check
+  — it would accept a host we never pinned on the strength of a CA we do not evaluate. The
+  daemon refuses with a clear error instead. Supporting certificates means implementing
+  OpenSSH's `@cert-authority` model, which is a deliberate feature, not a migration detail.
+
 ### Added
 - **Supply-chain audit** (`make audit`) — `cargo audit`, `cargo deny` and `cargo machete`,
   with policy in `deny.toml`. The `sources` check **bans git dependencies**: one has no

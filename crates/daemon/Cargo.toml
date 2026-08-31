@@ -27,11 +27,8 @@ hyper = { workspace = true }
 hyper-util = { workspace = true }
 futures = { version = "0.3" }
 
-# SSH (russh)
-# old version on crate: russh = { version = "0.54.6"}
-# not needed anymore: russh-keys = { version = "0.49.2" }
-# old version on crate: russh-util = "0.52.0"
-russh = { git = "https://github.com/Eugeny/russh.git", branch = "main" }
+# SSH
+russh = { workspace = true }
 
 # Serialization
 serde = { workspace = true }

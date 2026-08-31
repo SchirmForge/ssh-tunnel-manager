@@ -416,14 +416,67 @@ struct ClientHandler {
     known_hosts_path: PathBuf,
 }
 
+/// Reduce what the server presented to a plain host key, or refuse.
+///
+/// russh 0.63 added host certificate support, so `check_server_key` can now be
+/// handed a CA-signed certificate instead of a plain host key.
+///
+/// `PublicKeyOrCertificate::public_key()` would quietly return the key embedded
+/// *inside* the certificate, and comparing that against `known_hosts` is not the
+/// same check: it would let a host we never pinned be accepted on the strength of
+/// a CA we do not evaluate. That is a silent weakening of host verification, so
+/// refuse instead.
+///
+/// Supporting certificates properly means implementing OpenSSH's `@cert-authority`
+/// model -- trusted CA keys, principals, validity windows -- which is a deliberate
+/// feature, not a migration detail.
+fn plain_host_key(
+    server_key: &russh::keys::PublicKeyOrCertificate,
+) -> Result<&russh::keys::PublicKey, russh::Error> {
+    match server_key {
+        russh::keys::PublicKeyOrCertificate::PublicKey { key, .. } => Ok(key),
+        russh::keys::PublicKeyOrCertificate::Certificate(_) => {
+            Err(russh::Error::from(std::io::Error::other(
+                "Server presented a host certificate. This client verifies plain host keys \
+                 against known_hosts and does not implement @cert-authority trust, so the \
+                 connection cannot be verified.",
+            )))
+        }
+    }
+}
+
 impl client::Handler for ClientHandler {
     type Error = russh::Error;
 
     async fn check_server_key(
         &mut self,
-        server_public_key: &russh::keys::PublicKey,
+        server_key: &russh::keys::PublicKeyOrCertificate,
     ) -> Result<bool, Self::Error> {
         use crate::known_hosts::{calculate_fingerprint, KnownHosts, VerifyResult};
+
+        // russh 0.63 added host certificate support, so this callback can now be
+        // handed a CA-signed certificate instead of a plain host key.
+        //
+        // `PublicKeyOrCertificate::public_key()` would quietly return the key
+        // embedded *inside* the certificate, and comparing that against
+        // known_hosts is not the same check at all: it would let a host we never
+        // pinned be accepted on the strength of a CA we do not evaluate. That is
+        // a silent weakening of host verification, so refuse instead.
+        //
+        // Supporting certificates properly means implementing OpenSSH's
+        // @cert-authority model -- trusted CA keys, principals, validity windows
+        // -- which is a deliberate feature, not a migration detail.
+        let server_public_key = match plain_host_key(server_key) {
+            Ok(key) => key,
+            Err(e) => {
+                warn!(
+                    "Server {}:{} presented a host certificate; \
+                     certificate-based host verification is not supported",
+                    self.profile.connection.host, self.profile.connection.port
+                );
+                return Err(e);
+            }
+        };
 
         let host = &self.profile.connection.host;
         let port = self.profile.connection.port;
@@ -1456,5 +1509,49 @@ impl Default for TunnelManager {
         let known_hosts_path =
             KnownHosts::default_path().unwrap_or_else(|_| PathBuf::from("known_hosts"));
         Self::new(known_hosts_path)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A real OpenSSH host certificate and the plain host key it certifies,
+    /// generated with `ssh-keygen -s ca -I ... -h -n example.com`.
+    const HOST_CERT: &str = "ssh-ed25519-cert-v01@openssh.com AAAAIHNzaC1lZDI1NTE5LWNlcnQtdjAxQG9wZW5zc2guY29tAAAAIDA4DPi8cbyHQrrzAit/8ijgMni9ouceRSTz0iNG01WPAAAAIG8RyNFdVpwMxVeeo8fBAaO+9Rkrn0rJb85Ew9zCopPZAAAAAAAAAAAAAAACAAAADnRlc3QtaG9zdC1jZXJ0AAAADwAAAAtleGFtcGxlLmNvbQAAAABqlEbkAAAAAGx2y+QAAAAAAAAAAAAAAAAAAAAzAAAAC3NzaC1lZDI1NTE5AAAAINKh8VfwX1Vog6mGP/z+lwdqGmcWRcWlcvgUO7qaEIpAAAAAUwAAAAtzc2gtZWQyNTUxOQAAAEB8pwPdoacWJ1+4eh5DI6UnbFoz+ZzxA+0udDnjyNmuug9JPXpep5DwaCwVkP6K5Me518A+vjOWF33lV1Apd4oC test-host";
+    const HOST_KEY: &str =
+        "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIG8RyNFdVpwMxVeeo8fBAaO+9Rkrn0rJb85Ew9zCopPZ";
+
+    /// The security-critical half of the russh 0.63 migration.
+    ///
+    /// The obvious migration calls `PublicKeyOrCertificate::public_key()`
+    /// unconditionally, which silently accepts a certificate's embedded key as
+    /// if it were the pinned host key. Nothing in the live tier catches that --
+    /// the test servers present plain host keys -- so it is guarded here.
+    #[test]
+    fn a_host_certificate_is_refused_rather_than_unwrapped() {
+        let cert: russh::keys::Certificate = HOST_CERT.parse().expect("test cert should parse");
+        let presented = russh::keys::PublicKeyOrCertificate::Certificate(cert);
+
+        let err = plain_host_key(&presented)
+            .expect_err("a host certificate must not be reduced to its embedded key");
+        assert!(
+            err.to_string().contains("host certificate"),
+            "the error should say why: {err}"
+        );
+    }
+
+    #[test]
+    fn a_plain_host_key_is_passed_through_unchanged() {
+        let key: russh::keys::PublicKey = HOST_KEY.parse().expect("test key should parse");
+        let presented = russh::keys::PublicKeyOrCertificate::PublicKey {
+            key: key.clone(),
+            hash_alg: None,
+        };
+
+        assert_eq!(
+            plain_host_key(&presented).expect("a plain key must be accepted"),
+            &key
+        );
     }
 }
