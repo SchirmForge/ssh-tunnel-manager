@@ -9,7 +9,6 @@
 |---|---|---|
 | [architecture/](architecture/) | Functional and technical specification, security, system requirements, systemd | You change how something is built |
 | [user-stories/](user-stories/) | What the product does, by epic, with status | You change observable behaviour |
-| [plans/](plans/) | Development plans for work not yet started | You plan something, or a plan's premises change |
 | [releases/](releases/) | Per-release notes | You cut a release |
 | [ROADMAP.md](ROADMAP.md) | What is planned and what is not | Priorities change |
 | [PROJECT_STATUS.md](PROJECT_STATUS.md) | Implementation snapshot | A subsystem lands or its status changes |
@@ -18,6 +17,11 @@
 
 A behavioural change usually touches a user story **and** the changelog. A purely internal
 change touches the architecture documents instead.
+
+Development plans are **not** published: `.plan/` at the repository root is a local scratch
+area and is gitignored. Once a plan is acted on, what survives belongs in
+[ROADMAP.md](ROADMAP.md) if it is a decision, or in the architecture documents if it is a
+design — not in a plan file.
 
 ## Development
 

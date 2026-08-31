@@ -97,9 +97,10 @@ testing, a fast setup path for manual testing, and bug fixing.
 specification, operations guides and development plans. It now separates what the system
 is from what we intend to do next.
 
-- **New structure**: `docs/architecture/` (specification and operations),
-  `docs/user-stories/` (behaviour by epic), `docs/plans/` (unstarted work), with
-  `ROADMAP.md`, `PROJECT_STATUS.md`, `CHANGELOG.md` and `KNOWN_ISSUES.md` at the top level.
+- **New structure**: `docs/architecture/` (specification and operations) and
+  `docs/user-stories/` (behaviour by epic), with `ROADMAP.md`, `PROJECT_STATUS.md`,
+  `CHANGELOG.md` and `KNOWN_ISSUES.md` at the top level. Development plans are not
+  published — `.plan/` is a local, gitignored scratch area.
 - **New**: `docs/ROADMAP.md`, extracted from the 206-line roadmap section of
   PROJECT_STATUS.md and reorganised by horizon (Now / Next / Later / Not planned /
   Technical debt) rather than by priority label.

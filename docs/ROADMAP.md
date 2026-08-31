@@ -48,10 +48,12 @@ Remaining:
 ## Next
 
 ### Desktop notifications and auto-reconnect (v0.2.0)
-**Status**: Planned. Detailed plan in
-[plans/notification-and-reconnection_development-plan_v0.2.0.md](plans/notification-and-reconnection_development-plan_v0.2.0.md)
-— read the correction header at the top first; several of its original premises no longer
-hold.
+**Status**: Planned. A detailed implementation plan is kept locally and is not published
+with the repository. Note when picking it up that several of its original premises no
+longer hold — it was written before the v0.1.11 stabilisation pass, which removed the tray
+crate it assumed, and the daemon refactor it proposes has already been done. The
+authoritative statement of the auto-reconnect design is
+[the section below](#auto-reconnect-and-health-monitoring), not that plan.
 
 Desktop notifications for connect, disconnect and error events, plus the auto-reconnect
 design below. `notify-rust` is already a declared dependency.
@@ -172,10 +174,11 @@ TOML and removing it would break those files, but no implementation is intended.
 returns an explicit error for it.
 
 ### FreeBSD / OPNsense port
-**Unscheduled.** The analysis in
-[plans/FreeBSD_development-plan.md](plans/FreeBSD_development-plan.md) is kept for
-reference, but nothing is committed. It would cover the daemon and CLI only; the GTK GUI is
-out of scope there.
+**Unscheduled.** A porting analysis is kept locally for reference, but nothing is
+committed. It would cover the daemon and CLI only; the GTK GUI is out of scope, since it
+depends on D-Bus and FreeDesktop portals. The three blockers identified were the
+Linux-specific `__errno_location` in `pidfile.rs`, the Secret Service keyring dependency,
+and the systemd unit files.
 
 ---
 
