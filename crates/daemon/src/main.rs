@@ -502,7 +502,10 @@ async fn serve_tcp_https(
         shutdown_handle.graceful_shutdown(None);
     });
 
+    // axum-server 0.8 made this fallible: it now performs the non-blocking and
+    // socket setup that used to happen lazily, so binding errors surface here.
     axum_server::from_tcp_rustls(std_listener, tls_config)
+        .context("Failed to create TLS server from listener")?
         .handle(handle)
         .serve(app.into_make_service())
         .await

@@ -103,11 +103,11 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/api/daemon/info", get(get_daemon_info))
         .route("/api/daemon/shutdown", post(shutdown_daemon))
         .route("/api/tunnels", get(list_tunnels))
-        .route("/api/tunnels/:id/start", post(start_tunnel))
-        .route("/api/tunnels/:id/stop", post(stop_tunnel))
-        .route("/api/tunnels/:id/status", get(tunnel_status))
-        .route("/api/tunnels/:id/auth", get(get_pending_auth))
-        .route("/api/tunnels/:id/auth", post(submit_auth))
+        .route("/api/tunnels/{id}/start", post(start_tunnel))
+        .route("/api/tunnels/{id}/stop", post(stop_tunnel))
+        .route("/api/tunnels/{id}/status", get(tunnel_status))
+        .route("/api/tunnels/{id}/auth", get(get_pending_auth))
+        .route("/api/tunnels/{id}/auth", post(submit_auth))
         .route("/api/events", get(event_stream))
         .layer(
             TraceLayer::new_for_http()
@@ -541,7 +541,7 @@ async fn get_daemon_info(State(state): State<Arc<AppState>>) -> impl IntoRespons
         .unwrap_or_else(|| "unknown".to_string());
 
     // Get current username
-    let username = users::get_current_username()
+    let username = uzers::get_current_username()
         .and_then(|s| s.into_string().ok())
         .unwrap_or_else(|| "unknown".to_string());
 

@@ -8,6 +8,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Security
+- **`users` 0.11 replaced with `uzers` 0.12**, the maintained fork with the same API. `users`
+  had been unmaintained since 2020 and carried `RUSTSEC-2023-0040`, `RUSTSEC-2023-0059` and
+  `RUSTSEC-2025-0040` with no fix coming. Known vulnerabilities 6 → 5, and this clears the
+  last one on the daemon side.
+
+### Changed
+- **Dependency versions brought current.** `axum` 0.7 → 0.8, `axum-server` 0.7 → 0.8,
+  `tower-http` 0.5 → 0.7, `reqwest` 0.12 → 0.13, `keyring` 3 → 4, `thiserror` 1 → 2,
+  `toml` 0.8 → 1.1, `dirs` 5 → 6, `colored` 2 → 3, `comfy-table` 7 → 8, `dialoguer` 0.11 →
+  0.12, `base64` 0.22 → 0.23, `x509-parser` 0.16 → 0.18, `rcgen` 0.13 → 0.14, `sha2` 0.10 →
+  0.11, `webpki-roots` 0.26 → 1.0, `uuid` 1.10 → 1.26, `tempfile` 3.12 → 3.27.
+
+  Two needed code changes. `axum` 0.8 no longer treats `:id` as a path parameter and panics
+  at router construction, so the five tunnel routes became `{id}` — this compiled cleanly and
+  was caught only by the integration tests. `axum-server` 0.8 made `from_tcp_rustls`
+  fallible, since it now does socket setup eagerly rather than lazily.
+
+  Three were feature renames that surface only as resolver errors: `keyring` 4
+  (`linux-native` → `linux-keyutils-keyring-store`, and so on) and `reqwest` 0.13
+  (`rustls-tls` → `rustls`).
+
+- **Three duplicate crates collapsed.** `gui-core` pinned its own `toml` 0.8 and `reqwest`
+  0.12 while the workspace moved on; the `reqwest` split was actively broken, producing
+  "expected `RequestBuilder`, found a different `RequestBuilder`". Both now use the workspace
+  version, and `sha2` 0.11 aligns with the version russh uses.
+
+### Removed
+- Five workspace dependency entries nothing consumed any more: `secret-service`, `indicatif`,
+  `async-trait`, `tokio-util` and `notify-rust`.
+
+### Security
+- **Dependency lockfile refreshed** (`cargo update`, no manifest changes). Known
+  vulnerabilities 15 → 6. Clears `bytes` 1.11.0 (`RUSTSEC-2026-0007`, integer overflow in
+  `BytesMut::reserve`), `h2` 0.4.12 (`RUSTSEC-2026-0258`), `rustls-webpki` 0.103.8 (four
+  advisories including a reachable panic in CRL parsing and two name-constraint bypasses),
+  `time` 0.3.44 (`RUSTSEC-2026-0009`, DoS via stack exhaustion) and `quinn-proto` 0.11.13.
+  Also picks up `rustls` 0.23.43 and `tokio` 1.53.1.
+
+  Four of the six remaining come from `eventsource-client` 0.13 in `gui-core`, which pins
+  `hyper` 0.14 and `rustls` 0.21; `cargo machete` reports that dependency as unused. One is
+  `users` 0.11.0 in the daemon, unmaintained since 2020. The last is `rsa`, which has no
+  fixed version in any release and is recorded as an accepted risk in `deny.toml`.
+
+### Security
 - **`russh-keys` removed from the workspace entirely.** The discontinued standalone crate
   (last release 0.49.2, January 2025; the code now lives in `russh::keys`) was the only
   reason `russh-cryptovec` 0.7.3 (`RUSTSEC-2026-0153`) and `rsa` 0.9.9 were still in the

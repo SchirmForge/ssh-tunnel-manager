@@ -23,13 +23,11 @@ repository = "https://github.com/SchirmForge/ssh-tunnel"
 [workspace.dependencies]
 # Async runtime
 tokio = { version = "1.40", features = ["full"] }
-tokio-util = { version = "0.7", features = ["codec"] }
-async-trait = "0.1"
 
 # HTTP/REST API
-axum = { version = "0.7", features = ["ws"] }
+axum = { version = "0.8", features = ["ws"] }
 tower = "0.5"
-tower-http = { version = "0.5", features = ["trace", "cors"] }
+tower-http = { version = "0.7", features = ["trace", "cors"] }
 hyper = { version = "1.4", features = ["full"] }
 hyper-util = { version = "0.1", features = ["tokio", "server-auto"] }
 
@@ -49,50 +47,45 @@ russh = { version = "0.63", default-features = false, features = ["aws-lc-rs", "
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-toml = "0.8"
+toml = "1.1"
 
 # Error handling
 anyhow = "1.0"
-thiserror = "1.0"
+thiserror = "2.0"
 
 # Logging
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
-# Security
-secret-service = { version = "4.0", features = ["rt-tokio-crypto-rust"] }
 zeroize = { version = "1.8", features = ["derive"] }
 
 # Date/Time
 chrono = { version = "0.4", features = ["serde"] }
 
 # UUID
-uuid = { version = "1.10", features = ["v4", "serde"] }
+uuid = { version = "1.26", features = ["v4", "serde"] }
 
 # Config directories
-dirs = "5.0"
+dirs = "6.0"
 
 # CLI (for CLI crate)
 clap = { version = "4.5", features = ["derive", "cargo"] }
-dialoguer = "0.11"
-indicatif = "0.17"
-colored = "2.1"
+dialoguer = "0.12"
+colored = "3.1"
 
 # HTTP client (for CLI and GUI)
-reqwest = { version = "0.12", features = ["json", "stream", "rustls-tls"], default-features = false }
+# reqwest 0.13 renamed the `rustls-tls` feature to `rustls`.
+reqwest = { version = "0.13", features = ["json", "stream", "rustls"], default-features = false }
 
 # GTK (for GUI crate)
 gtk4 = { version = "0.9", features = ["v4_12"] }
 libadwaita = { version = "0.7", features = ["v1_5"] }
 
-# Desktop notifications (for the planned notification work)
-notify-rust = "4.11"
-
 # Async stream utilities
 futures-util = "0.3"
 
 # Test support
-tempfile = "3.12"
+tempfile = "3.27"
 
 [profile.release]
 opt-level = 3

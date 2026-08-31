@@ -38,16 +38,26 @@ reqwest = { workspace = true }
 
 # TLS (for client certificate pinning)
 rustls = { version = "0.23", features = ["aws-lc-rs"] }
-webpki-roots = "0.26"
-sha2 = "0.10"
-x509-parser = "0.16"
+webpki-roots = "1.0"
+sha2 = "0.11"
+x509-parser = "0.18"
 
 # SSH key inspection (see src/ssh_key.rs). Only this crate needs russh for it,
 # so the CLI and GUI do not each pull in an SSH stack of their own.
 russh = { workspace = true }
 
-# Keychain/keyring for secure password storage
-keyring = { version = "3.6", features = ["linux-native", "apple-native", "windows-native"] }
+# Keychain/keyring for secure password storage.
+#
+# keyring 4 renamed its backend features (`linux-native` ->
+# `linux-keyutils-keyring-store`, and so on). The per-platform stores are all
+# enabled because the crate selects between them by target; only the Linux one
+# is exercised today, since that is the only platform this project builds and
+# tests on.
+keyring = { version = "4.2", features = [
+    "linux-keyutils-keyring-store",
+    "apple-native-keyring-store",
+    "windows-native-keyring-store",
+] }
 
 [dev-dependencies]
 tempfile = { workspace = true }

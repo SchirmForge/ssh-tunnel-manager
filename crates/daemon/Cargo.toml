@@ -45,12 +45,12 @@ tracing-subscriber = { workspace = true }
 zeroize = { workspace = true }
 
 # TLS
-axum-server = { version = "0.7", features = ["tls-rustls"] }
-rcgen = "0.13"
+axum-server = { version = "0.8", features = ["tls-rustls"] }
+rcgen = "0.14"
 rustls = { version = "0.23", features = ["aws-lc-rs"] }
 rustls-pemfile = "2.2"
-x509-parser = "0.16"
-sha2 = "0.10"
+x509-parser = "0.18"
+sha2 = "0.11"
 time = { version = "0.3", features = ["macros"] }
 
 # Date/Time
@@ -62,14 +62,16 @@ uuid = { workspace = true }
 # Config directories
 dirs = { workspace = true }
 
-# User information
-users = "0.11"
+# User information. `users` has been unmaintained since 2020 and carries
+# RUSTSEC-2023-0040/0059 and RUSTSEC-2025-0040 with no fix coming; `uzers` is
+# the maintained fork with the same API.
+uzers = "0.12"
 
 # System calls (for PID file management)
 libc = "0.2"
 
 # Base64 encoding (for known_hosts)
-base64 = "0.22"
+base64 = "0.23"
 
 [dev-dependencies]
 tempfile = { workspace = true }
