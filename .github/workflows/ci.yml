@@ -98,6 +98,28 @@ jobs:
             exit 1
           fi
 
+  # Credential storage against a real Secret Service, in a throwaway D-Bus session.
+  #
+  # The unit tests in src/keychain.rs use an in-memory fake and prove the logic. These prove
+  # the backend, and are the only thing that would catch a dependency upgrade silently
+  # changing which store credentials land in -- which is exactly what keyring 3 -> 4 did in
+  # v0.2.0, invisibly, with the whole suite green.
+  keychain:
+    name: Keychain (real credential store)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+
+      - name: Install a Secret Service provider
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gnome-keyring dbus-x11
+
+      - name: Run keychain tests against the real store
+        run: make test-keychain-live
+
   # Exercises the CLI against a real daemon in all three listener modes,
   # including TLS certificate generation and fingerprint pinning.
   network-modes:

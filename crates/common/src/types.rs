@@ -230,6 +230,13 @@ pub struct DaemonInfo {
     pub config_file_path: String,
     pub known_hosts_path: String,
     pub ssh_key_dir: String, // Directory where daemon looks for SSH keys (e.g., /home/user/.ssh)
+    /// Credential store the daemon saves and reads passwords from, e.g. "Secret Service".
+    ///
+    /// Reported so "my saved password vanished" is diagnosable: a change of backing store is
+    /// otherwise indistinguishable from an empty keyring. Optional so an older daemon that
+    /// does not send it still deserialises.
+    #[serde(default)]
+    pub credential_store: Option<String>,
     pub active_tunnels_count: usize,
 
     // Process info

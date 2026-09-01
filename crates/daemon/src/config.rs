@@ -86,6 +86,24 @@ pub struct DaemonConfig {
     /// Default: false (restrictive permissions for single-user security)
     #[serde(default = "default_group_access")]
     pub group_access: bool,
+
+    /// Which credential store to keep saved passwords and passphrases in.
+    ///
+    /// * `auto` (default) — Secret Service if a session bus offers it, otherwise the kernel
+    ///   keyutils keyring. Right for a desktop and for a headless server without either
+    ///   having to be configured.
+    /// * `secret-service` — require Secret Service. Persists across reboots; needs D-Bus.
+    /// * `keyutils` — require the kernel keyring. No D-Bus needed, but **credentials do not
+    ///   survive a reboot**.
+    /// * `none` — never store anything; always prompt.
+    ///
+    /// The store in use is logged at startup and reported by `ssh-tunnel info`.
+    #[serde(default = "default_credential_store")]
+    pub credential_store: String,
+}
+
+fn default_credential_store() -> String {
+    "auto".to_string()
 }
 
 fn default_bind_host() -> String {
@@ -144,6 +162,7 @@ impl Default for DaemonConfig {
             require_auth: default_require_auth(),
             known_hosts_path: default_known_hosts_path(),
             group_access: default_group_access(),
+            credential_store: default_credential_store(),
         }
     }
 }

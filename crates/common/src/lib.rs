@@ -24,7 +24,8 @@ pub use daemon_client::{
 };
 pub use error::{Error, Result};
 pub use keychain::{
-    get_password, has_password, is_keychain_available, remove_password, store_password,
+    describe_store, get_password, has_password, init_store, is_keychain_available, remove_password,
+    store_password, StoreKind,
 };
 pub use network::{is_loopback_address, is_valid_host};
 pub use profile_manager::{

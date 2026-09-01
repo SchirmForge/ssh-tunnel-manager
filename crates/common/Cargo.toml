@@ -46,21 +46,33 @@ x509-parser = "0.18"
 # so the CLI and GUI do not each pull in an SSH stack of their own.
 russh = { workspace = true }
 
-# Keychain/keyring for secure password storage.
+# Credential storage.
 #
-# keyring 4 renamed its backend features (`linux-native` ->
-# `linux-keyutils-keyring-store`, and so on). The per-platform stores are all
-# enabled because the crate selects between them by target; only the Linux one
-# is exercised today, since that is the only platform this project builds and
-# tests on.
-keyring = { version = "4.2", features = [
-    "linux-keyutils-keyring-store",
-    "apple-native-keyring-store",
-    "windows-native-keyring-store",
+# `keyring-core` plus the store implementations directly, rather than the `keyring` facade.
+# The facade's v1 compatibility API hard-codes Secret Service on Linux and ignores the
+# keyutils feature entirely, which is how the v0.2.0 upgrade silently moved every stored
+# credential. Selecting the store at runtime is the whole point -- see
+# `.plan/AUTH-01_credential-storage.md`.
+keyring-core = "1.0"
+# `crypto-rust` only -- pure-Rust crypto, and zbus's own async-io runtime.
+#
+# Do NOT switch this to `rt-tokio-crypto-rust`. That variant calls `block_on` internally, and
+# the daemon's `main` is already `#[tokio::main]`, so opening the store panics with "Cannot
+# start a runtime from within a runtime". This is the feature set `keyring` 4 itself selects,
+# and it is why the store worked when reached through that facade.
+zbus-secret-service-keyring-store = { version = "1.0", default-features = false, features = [
+    "crypto-rust",
 ] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# Kernel keyring: works with no D-Bus session, so it covers headless daemons.
+linux-keyutils-keyring-store = "1.0"
 
 [dev-dependencies]
 tempfile = { workspace = true }
+# Live tests reach into the legacy store directly to seed a pre-v0.2.0 credential.
+keyring-core = "1.0"
+linux-keyutils-keyring-store = "1.0"
 # Test-only: generates throwaway SSH keys so none are committed. Matched to the
 # version russh uses, so no second copy of rand is compiled.
 rand = "0.10"

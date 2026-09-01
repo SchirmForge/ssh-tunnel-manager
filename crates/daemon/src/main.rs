@@ -24,7 +24,7 @@ use axum_server::Handle;
 use hyper_util::rt::TokioIo;
 use tokio::net::UnixListener;
 use tower::Service;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use api::{create_router, AppState};
@@ -253,6 +253,33 @@ async fn main() -> Result<()> {
     let daemon_config = DaemonConfig::load()?;
     info!("Listener mode: {:?}", daemon_config.listener_mode);
     info!("Authentication required: {}", daemon_config.require_auth);
+
+    // Resolve the credential store before anything reads a saved password, and say which one
+    // was chosen. Silent selection is how the v0.2.0 backend change went unnoticed: saved
+    // credentials simply looked absent.
+    match ssh_tunnel_common::StoreKind::parse(&daemon_config.credential_store) {
+        Some(kind) => {
+            let store = ssh_tunnel_common::init_store(kind);
+            info!("Credential store: {store}");
+            if store == "kernel keyutils keyring" {
+                info!(
+                    "Credentials in the kernel keyring do not survive a reboot; \
+                     set credential_store = \"secret-service\" for persistence"
+                );
+            }
+        }
+        None => {
+            warn!(
+                "Unknown credential_store {:?} in daemon.toml; falling back to \"auto\". \
+                 Valid values: auto, secret-service, keyutils, none",
+                daemon_config.credential_store
+            );
+            info!(
+                "Credential store: {}",
+                ssh_tunnel_common::init_store(ssh_tunnel_common::StoreKind::Auto)
+            );
+        }
+    }
 
     // Load or generate authentication token if required
     let (auth_token, token_was_generated) = if daemon_config.require_auth {

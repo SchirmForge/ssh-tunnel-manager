@@ -449,6 +449,9 @@ pub async fn start_tunnel_with_events<H: TunnelEventHandler>(
         StartTunnelRequest,
     };
 
+    // A credential the client holds itself, offered once before any human is asked.
+    let mut stored = ClientHeldCredential::for_profile(profile);
+
     let base_url = config.daemon_base_url()?;
 
     // Subscribe to SSE events BEFORE sending start request
@@ -652,7 +655,8 @@ pub async fn start_tunnel_with_events<H: TunnelEventHandler>(
                         }
                         TunnelStatus::WaitingForAuth => {
                             if let Some(auth_request) = status.pending_auth {
-                                handle_auth_interactive(client, config, tunnel_id, &auth_request, handler).await?;
+                                handle_auth_interactive(client, config, tunnel_id, &auth_request, handler, &mut stored)
+                                    .await?;
                             }
                         }
                         TunnelStatus::Failed(reason) => anyhow::bail!("Tunnel failed: {reason}"),
@@ -676,7 +680,8 @@ pub async fn start_tunnel_with_events<H: TunnelEventHandler>(
                             TunnelEvent::Error { error, .. } => anyhow::bail!("Tunnel failed: {error}"),
                             TunnelEvent::Disconnected { reason, .. } => anyhow::bail!("Tunnel disconnected: {reason}"),
                             TunnelEvent::AuthRequired { request, .. } => {
-                                handle_auth_interactive(client, config, tunnel_id, &request, handler).await?;
+                                handle_auth_interactive(client, config, tunnel_id, &request, handler, &mut stored)
+                                    .await?;
                             }
                             TunnelEvent::Starting { .. } | TunnelEvent::Heartbeat { .. } => {}
                         }
@@ -730,6 +735,74 @@ async fn fetch_tunnel_status(
     Ok(Some(status))
 }
 
+/// Answers auth prompts from the client's own credential store, so the daemon does not have
+/// to reach a keychain it may not share.
+///
+/// The daemon is unchanged by this: it raises its usual prompt over SSE and waits. All that
+/// differs is who answers — this, or a human. That is what makes `PasswordStorage::Client`
+/// work identically for a local and a remote daemon.
+struct ClientHeldCredential {
+    profile_id: Uuid,
+    enabled: bool,
+    /// Whether the stored secret has already been offered for this tunnel start.
+    spent: bool,
+}
+
+impl ClientHeldCredential {
+    fn for_profile(profile: &crate::Profile) -> Self {
+        Self {
+            profile_id: profile.metadata.id,
+            enabled: profile.connection.password_storage == crate::PasswordStorage::Client,
+            spent: false,
+        }
+    }
+
+    /// Whether this prompt is one a stored credential may answer.
+    ///
+    /// Only secrets that are stable for the profile. A TOTP code is valid for one time step
+    /// and a host key decision is a judgement, so neither can come from storage.
+    fn may_answer(&self, request: &AuthRequest) -> bool {
+        self.enabled
+            && !self.spent
+            && matches!(
+                request.auth_type,
+                crate::AuthRequestType::Password | crate::AuthRequestType::KeyPassphrase
+            )
+    }
+
+    /// A stored answer for this prompt, or `None` to let a human answer.
+    fn answer(&mut self, request: &AuthRequest) -> Option<String> {
+        self.answer_with(request, crate::keychain::get_password)
+    }
+
+    /// [`answer`](Self::answer) with the lookup injected, so the decision can be tested
+    /// without a live credential store.
+    fn answer_with<F>(&mut self, request: &AuthRequest, lookup: F) -> Option<String>
+    where
+        F: FnOnce(&Uuid) -> crate::error::Result<String>,
+    {
+        if !self.may_answer(request) {
+            return None;
+        }
+
+        match lookup(&self.profile_id) {
+            Ok(secret) => {
+                // Offered once per tunnel start. The daemon re-prompts on a rejected
+                // credential, and replaying a stale one would burn through the server's
+                // MaxAuthTries without the user ever being asked -- the same trap the
+                // daemon-side stored-password path had to avoid.
+                self.spent = true;
+                Some(secret)
+            }
+            Err(e) => {
+                // Nothing saved, or the store is unreachable. Either way, ask the human.
+                tracing::debug!("No client-held credential for this profile: {e}");
+                None
+            }
+        }
+    }
+}
+
 /// Handle authentication request interactively
 async fn handle_auth_interactive<H: TunnelEventHandler>(
     client: &Client,
@@ -737,8 +810,12 @@ async fn handle_auth_interactive<H: TunnelEventHandler>(
     tunnel_id: Uuid,
     auth_request: &AuthRequest,
     handler: &mut H,
+    stored: &mut ClientHeldCredential,
 ) -> Result<()> {
-    let response = handler.on_auth_required(auth_request)?;
+    let response = match stored.answer(auth_request) {
+        Some(secret) => secret,
+        None => handler.on_auth_required(auth_request)?,
+    };
 
     let base_url = config.daemon_base_url()?;
     let auth_url = format!("{}/api/tunnels/{}/auth", base_url, tunnel_id);
@@ -788,5 +865,119 @@ pub async fn stop_tunnel(
         let status = resp.status();
         let body = resp.text().await.unwrap_or_default();
         anyhow::bail!("Failed to stop tunnel: {} - {}", status, body)
+    }
+}
+
+#[cfg(test)]
+mod client_held_credential_tests {
+    use super::*;
+
+    // --- Client-held credentials -------------------------------------------------
+
+    fn prompt(auth_type: crate::AuthRequestType) -> AuthRequest {
+        AuthRequest {
+            id: Uuid::new_v4(),
+            tunnel_id: Uuid::new_v4(),
+            auth_type,
+            prompt: "test prompt".into(),
+            hidden: true,
+        }
+    }
+
+    fn holder(enabled: bool) -> ClientHeldCredential {
+        ClientHeldCredential {
+            profile_id: Uuid::new_v4(),
+            enabled,
+            spent: false,
+        }
+    }
+
+    fn stored(_: &Uuid) -> crate::error::Result<String> {
+        Ok("stored-secret".to_string())
+    }
+
+    fn nothing_stored(_: &Uuid) -> crate::error::Result<String> {
+        Err(crate::Error::Keychain("no password stored".into()))
+    }
+
+    #[test]
+    fn a_password_prompt_is_answered_from_the_client_store() {
+        let mut h = holder(true);
+        assert_eq!(
+            h.answer_with(&prompt(crate::AuthRequestType::Password), stored),
+            Some("stored-secret".to_string())
+        );
+    }
+
+    #[test]
+    fn a_key_passphrase_prompt_is_answered_from_the_client_store() {
+        let mut h = holder(true);
+        assert_eq!(
+            h.answer_with(&prompt(crate::AuthRequestType::KeyPassphrase), stored),
+            Some("stored-secret".to_string())
+        );
+    }
+
+    /// The important one. The daemon re-prompts when a credential is rejected; replaying a
+    /// stale stored value would exhaust the server's MaxAuthTries without the user ever being
+    /// asked, which is precisely the bug fixed on the daemon side in v0.2.0.
+    #[test]
+    fn a_stored_credential_is_offered_once_and_then_the_human_is_asked() {
+        let mut h = holder(true);
+        assert!(h
+            .answer_with(&prompt(crate::AuthRequestType::Password), stored)
+            .is_some());
+        assert!(
+            h.answer_with(&prompt(crate::AuthRequestType::Password), stored)
+                .is_none(),
+            "a rejected stored credential must not be replayed"
+        );
+    }
+
+    /// One-time codes cannot come from storage: a TOTP code is valid for one time step.
+    #[test]
+    fn two_factor_and_keyboard_interactive_prompts_always_reach_the_human() {
+        for auth_type in [
+            crate::AuthRequestType::TwoFactorCode,
+            crate::AuthRequestType::KeyboardInteractive,
+        ] {
+            let mut h = holder(true);
+            let described = format!("{auth_type:?}");
+            assert!(
+                h.answer_with(&prompt(auth_type), stored).is_none(),
+                "{described} must not be answered from storage"
+            );
+        }
+    }
+
+    /// Trusting a host key is a judgement, not a secret.
+    #[test]
+    fn host_key_verification_always_reaches_the_human() {
+        let mut h = holder(true);
+        assert!(h
+            .answer_with(&prompt(crate::AuthRequestType::HostKeyVerification), stored)
+            .is_none());
+    }
+
+    #[test]
+    fn other_storage_modes_do_not_answer_from_the_client_store() {
+        let mut h = holder(false);
+        assert!(h
+            .answer_with(&prompt(crate::AuthRequestType::Password), stored)
+            .is_none());
+    }
+
+    /// Nothing saved, or an unreachable store: fall through to the human rather than fail.
+    #[test]
+    fn a_lookup_miss_falls_through_to_the_human_without_spending_the_attempt() {
+        let mut h = holder(true);
+        assert!(h
+            .answer_with(&prompt(crate::AuthRequestType::Password), nothing_stored)
+            .is_none());
+        // A miss must not count as the one permitted attempt: if the store becomes readable
+        // later in the same tunnel start, it should still be used.
+        assert!(h
+            .answer_with(&prompt(crate::AuthRequestType::Password), stored)
+            .is_some());
     }
 }

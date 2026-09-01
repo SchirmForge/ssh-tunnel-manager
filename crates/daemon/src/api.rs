@@ -576,6 +576,7 @@ async fn get_daemon_info(State(state): State<Arc<AppState>>) -> impl IntoRespons
         group_access: config.group_access,
         config_file_path,
         known_hosts_path: config.known_hosts_path.display().to_string(),
+        credential_store: Some(ssh_tunnel_common::describe_store().to_string()),
         ssh_key_dir,
         active_tunnels_count: active_count,
         pid: std::process::id(),

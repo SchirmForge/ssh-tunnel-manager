@@ -47,9 +47,19 @@ pub enum PasswordStorage {
     /// Not stored - user will be prompted
     #[default]
     None,
-    /// Stored in system keychain/keyring
+    /// Stored in the **daemon host's** keychain, and read there by the daemon.
+    ///
+    /// Only coherent when the daemon runs on the same machine as the client. Against a remote
+    /// daemon the credential is written to the client's keychain and looked for on the
+    /// daemon's, so nothing is found and the user is prompted anyway. Prefer [`Self::Client`].
     Keychain,
-    /// Stored in encrypted file (future feature)
+    /// Stored on the **client**, and sent to the daemon when it asks.
+    ///
+    /// Works the same whether the daemon is local or remote, because the credential lives
+    /// where the human and the unlocked keyring are. The daemon is unchanged: it raises its
+    /// usual prompt, and the client answers from its store instead of asking a person.
+    Client,
+    /// Stored in a file on the daemon host (unattended operation; not yet implemented)
     File,
 }
 
@@ -61,6 +71,7 @@ impl Serialize for PasswordStorage {
         match self {
             PasswordStorage::None => serializer.serialize_str("none"),
             PasswordStorage::Keychain => serializer.serialize_str("keychain"),
+            PasswordStorage::Client => serializer.serialize_str("client"),
             PasswordStorage::File => serializer.serialize_str("file"),
         }
     }
@@ -99,6 +110,7 @@ impl<'de> Deserialize<'de> for PasswordStorage {
                 match v.to_lowercase().as_str() {
                     "none" | "false" => Ok(PasswordStorage::None),
                     "keychain" | "true" => Ok(PasswordStorage::Keychain),
+                    "client" => Ok(PasswordStorage::Client),
                     "file" => Ok(PasswordStorage::File),
                     _ => Err(E::custom(format!("unknown password storage type: {}", v))),
                 }
