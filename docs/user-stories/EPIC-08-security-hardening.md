@@ -158,3 +158,28 @@ full rationale.
 > long deprecated: OpenSSH defaults to `Compression no` and dropped SHA-1 MACs from its own
 > defaults years ago. This is the one behavioural change in v0.2.0 that could affect an
 > existing connection, and it is called out in the release notes.
+
+---
+
+## US-8.9 — Know where my credentials are actually kept ✅
+
+**As a** user whose SSH passwords are stored by this tool
+**I want** to know which store they are in
+**So that** "my saved password vanished" is diagnosable rather than mysterious.
+
+**Acceptance criteria**
+- The daemon logs the credential store it opened at startup, and reports it in `DaemonInfo`
+- It warns when the store is the kernel keyring, whose contents do not survive a reboot
+- `credential_store` in `daemon.toml` forces the choice rather than leaving it to detection
+- An unreachable store is reported as such, not as "nothing stored" — the two are different
+  and only one means the user never saved anything
+- A credential found in an older store is migrated, and the move is logged
+
+**Implementation**: `crates/common/src/keychain.rs`, `crates/daemon/src/main.rs`,
+`crates/daemon/src/config.rs`
+
+> This exists because of how the v0.2.0 dependency upgrade failed. `keyring` 3 → 4 moved the
+> backing store from the kernel keyring to Secret Service, so every previously saved
+> credential became invisible. Nothing logged it, nothing reported it, and `has_password`
+> reported "nothing stored" — indistinguishable from the truth. Silent store selection is
+> what made a mechanical upgrade look like data loss.

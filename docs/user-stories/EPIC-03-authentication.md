@@ -100,36 +100,67 @@ stored. This is the most intricate part of the product and the part most protect
 
 ---
 
-## US-3.6 — Store credentials in the system keychain ✅
+## US-3.6 — Store credentials so they are remembered ✅
 
-**As a** desktop user
+**As a** user
 **I want** my passphrase or password remembered
-**So that** I am not retyping it constantly.
+**So that** I am not retyping it constantly — **including when the daemon runs elsewhere.**
 
 **Acceptance criteria**
-- Setting `password_storage = "keychain"` stores the secret under service `ssh-tunnel-manager`, keyed by the profile UUID
-- The daemon retrieves both key passphrases **and** passwords automatically
-- If retrieval fails, the user is prompted interactively rather than the connection failing
-- The GUI puts the "Store in Keychain" switch *before* the password field, and only shows the field when storing
+- The secret is stored under service `ssh-tunnel-manager`, keyed by the profile UUID
+- `password_storage` records **where** it is, not merely that it exists:
+  - `client` — kept by the client and sent when the daemon asks. Works the same for a local
+    or a remote daemon
+  - `daemon-host` — kept on the daemon host and read there by the daemon
+- A stored credential is offered **once** per connection attempt. If it is rejected the user
+  is prompted, rather than the stale value being replayed until the server's `MaxAuthTries`
+  is exhausted
+- If retrieval fails for any reason, the user is prompted rather than the connection failing
+- The GUI puts the "Store in Keychain" switch *before* the password field, and only shows the
+  field when storing
 
-**Implementation**: `crates/common/src/keychain.rs`, `crates/daemon/src/security.rs`
-**Note**: A TOTP second factor is inherently single-use and cannot be stored.
+**Implementation**: `crates/common/src/keychain.rs`, `crates/common/src/daemon_client.rs`
+(`ClientHeldCredential`), `crates/daemon/src/security.rs`
+
+**Note**: A TOTP second factor is inherently single-use and is never stored.
+
+> **This did not work with a remote daemon until v0.3.0.** `password_storage = "keychain"`
+> recorded only that the credential was in *a* keychain, never whose. The client saved it
+> locally and the daemon looked on its own host; against a LAN daemon those are different
+> machines, so nothing was found and the user was prompted anyway — silently, every time.
+> The legacy value is still read and resolves by where the daemon is.
+>
+> The GTK GUI still records the legacy value; profiles created with the CLI get the corrected
+> one. That is addressed with the GUI rework rather than by patching the outgoing front-end.
 
 ---
 
-## US-3.7 — Work where there is no keychain ✅
+## US-3.7 — Store credentials without a desktop session ✅
 
 **As an** operator on a headless server
-**I want** everything to work without a Secret Service
-**So that** the absence of a desktop session is not a blocker.
+**I want** credential storage to work without a Secret Service
+**So that** the absence of a desktop session does not mean retyping a password every time.
 
 **Acceptance criteria**
-- Keyring availability is determined by attempting a real operation, not by guessing from environment variables
-- Profile creation succeeds when no keyring is present, with a clear warning that the credential will not be stored
-- `SSH_TUNNEL_SKIP_KEYRING=1` forces the keyring off for containers, CI and configuration management
+- With no D-Bus session the daemon falls back to the Linux kernel keyutils keyring, which
+  needs neither a desktop nor a session bus
+- It says which store it opened, and warns that credentials in the kernel keyring **do not
+  survive a reboot**
+- `credential_store` in `daemon.toml` forces the choice: `auto`, `secret-service`, `keyutils`
+  or `none`
+- Store availability is determined by opening one, not by guessing from environment variables
+- Profile creation succeeds when no store is available, with a clear warning that the
+  credential will not be kept
+- `SSH_TUNNEL_SKIP_KEYRING=1` disables storage, as does `credential_store = "none"`
 - The daemon prompts interactively for anything it cannot retrieve
 
-**Implementation**: `crates/common/src/keychain.rs` (`is_keychain_available`, `should_skip_keyring`)
+**Implementation**: `crates/common/src/keychain.rs` (`StoreKind`, `build_store`,
+`is_keychain_available`), `crates/daemon/src/config.rs`
+
+> Before v0.3.0 this story read "work where there is *no* keychain", and the answer was to do
+> without one. A headless daemon now has a real store; the caveat is that the kernel keyring
+> is cleared on reboot, so a credential saved there is gone after a restart. Genuinely
+> unattended operation needs the work planned in `AUTH-02`.
 
 ---
 

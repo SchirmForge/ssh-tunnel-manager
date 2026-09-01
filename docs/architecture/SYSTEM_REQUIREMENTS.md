@@ -87,6 +87,10 @@ Only needed if building from source.
 `containers/Containerfile.dev` defines an environment with all of the above, usable with
 distrobox or Fedora toolbox. See [../DEVELOPMENT.md](../DEVELOPMENT.md).
 
+**For the test suite only:** `openssh-server` (the tier-2 live SSH fixture) and
+`gnome-keyring` plus `dbus-run-session` (the credential store tests). Neither is needed to
+build or run the application.
+
 ### Development Libraries
 
 **GTK/Libadwaita:**
@@ -149,10 +153,18 @@ sudo pacman -S gtk4 libadwaita
 
 ### Requirements
 
-**One of the following:**
+**Either** a Secret Service provider:
 - gnome-keyring (GNOME)
 - KDE Wallet (KDE)
 - Any Secret Service API provider
+
+**or nothing at all.** Since v0.3.0 the daemon falls back to the Linux kernel keyutils
+keyring, which needs no D-Bus session and no desktop. Credentials there **do not survive a
+reboot**, which is the trade-off; the daemon says which store it opened at startup and warns
+when it is the kernel one.
+
+Set `credential_store` in `daemon.toml` to force the choice: `auto` (default),
+`secret-service`, `keyutils` or `none`.
 
 ### Headless/Server Systems
 

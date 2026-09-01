@@ -1,6 +1,6 @@
 # Known Issues & Limitations
 
-This document tracks known bugs, limitations, and missing features in SSH Tunnel Manager v0.2.0.
+This document tracks known bugs, limitations, and missing features in SSH Tunnel Manager v0.3.0.
 
 For missing features described as user stories with their status, see the
 [user stories](user-stories/). For what is planned about them, see [ROADMAP.md](ROADMAP.md).
@@ -14,7 +14,7 @@ For missing features described as user stories with their status, see the
   - File has 0600 permissions but still visible in filesystem
   - **Impact**: Low - file is protected, same security as SSH keys
   - **Workaround**: Delete snippet after copying: `rm ~/.config/ssh-tunnel-manager/cli-config.snippet`
-  - **Status**: Considering encrypted storage for v0.2.0
+  - **Status**: Considering encrypted storage in a future release
 
 #### Edge Cases
 - **60-second wait when no client answers an authentication prompt**
@@ -29,6 +29,23 @@ For missing features described as user stories with their status, see the
     when *nothing* cancels, which is the timeout working as designed; whether 60s is the
     right value is open. Regression test:
     `stopping_during_authentication_returns_promptly` in `crates/daemon/tests/live_ssh.rs`
+
+#### Credentials
+- ~~**"Store in keychain" silently did nothing with a remote daemon**~~ - **Resolved in
+  v0.3.0.** `password_storage = "keychain"` recorded only that a credential was in *a*
+  keychain, never whose. The client saved it locally and the daemon looked on its own host;
+  with the daemon on another machine those are different stores, so nothing was found and the
+  user was prompted anyway — no error, no warning. The setting now records **where** the
+  credential is, and a client-held one is answered by the client. See US-7.5.
+  - **Still open**: the GTK GUI records the legacy value when saving. It works against a local
+    daemon, as it always did, and is read correctly everywhere. Profiles created with the CLI
+    get the corrected value. To be addressed with the GUI rework.
+
+- ~~**Credentials saved before v0.2.0 appeared to be lost**~~ - **Resolved in v0.3.0.** The
+  `keyring` 3 → 4 upgrade moved the backing store from the kernel keyutils keyring to Secret
+  Service, so earlier credentials became invisible. They are now found, migrated and the
+  original removed. The daemon also reports which store it is using, so the next such change
+  is visible rather than silent.
 
 #### Testing
 - ~~**Outdated tests in `crates/common`**~~ - **Resolved.** The claim was inaccurate: the
@@ -147,7 +164,7 @@ For missing features described as user stories with their status, see the
 **Architecture Diagrams**
 - **Status**: No visual diagrams for SSE event flow
 - **Impact**: Harder for contributors to understand system architecture
-- **Planned**: v0.2.0 documentation update
+- **Planned**: a future documentation pass
 
 ## Platform-Specific Issues
 

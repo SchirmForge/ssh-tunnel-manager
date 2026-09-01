@@ -1,6 +1,6 @@
 # SSH Tunnel Manager
 
-**Version**: 0.2.0
+**Version**: 0.3.0
 
 ## Description
 
@@ -10,7 +10,18 @@ Supports both local daemon connections via Unix socket and remote daemon connect
 
 ## Features
 
-### New in v0.2.0
+### New in v0.3.0
+
+Credential storage. Saving a password or passphrase now works when the daemon runs on
+another machine — previously the credential was stored here and looked for there, so you
+were asked for it every time regardless.
+
+- **Fixed**: "store in keychain" against a remote daemon
+- **Changed**: the daemon reports which credential store it is using
+- **Note**: this application still records the older storage setting; profiles created with
+  the CLI get the corrected one
+
+### In v0.2.0
 
 A security and supply-chain release. No new user-facing features; the work went into the
 dependency tree and the tests that verify it.

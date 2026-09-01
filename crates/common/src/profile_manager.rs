@@ -235,6 +235,22 @@ pub fn prepare_profile_for_remote(profile: &Profile) -> Result<Profile> {
         remote_profile.connection.key_path = Some(PathBuf::from(filename));
     }
 
+    // Carry the storage decision rather than ignoring it.
+    //
+    // Sending a profile that says "read the credential from your keychain" to a daemon on
+    // another machine is the silent no-op this whole area is about: the credential was saved
+    // on the client and looked for on the daemon, so nothing was found and the user was
+    // prompted anyway. Resolving it here makes the profile say what was actually meant.
+    //
+    // `Client` is deliberately *not* sent as-is either: the daemon has no business knowing
+    // the client holds a credential, and telling it would only invite it to look for one.
+    // From the daemon's point of view the credential simply arrives when it asks.
+    remote_profile.connection.password_storage =
+        match remote_profile.connection.password_storage.resolved(false) {
+            crate::PasswordStorage::Client => crate::PasswordStorage::None,
+            other => other,
+        };
+
     Ok(remote_profile)
 }
 
@@ -475,5 +491,52 @@ mod tests {
             Some(PathBuf::from("id_rsa")),
             "Hybrid mode must send the key filename only, never the local path"
         );
+    }
+
+    /// The defect this function used to have: it rewrote the key path and ignored
+    /// `password_storage`, so a profile saying "read it from your keychain" reached a daemon
+    /// on another machine, which looked in its own store, found nothing, and prompted anyway.
+    #[test]
+    fn the_legacy_storage_value_is_resolved_before_being_sent_to_a_remote_daemon() {
+        let mut profile = create_test_profile("remote");
+        profile.connection.password_storage = crate::PasswordStorage::Keychain;
+
+        let remote = prepare_profile_for_remote(&profile).expect("Should prepare profile");
+
+        assert_ne!(
+            remote.connection.password_storage,
+            crate::PasswordStorage::Keychain,
+            "the ambiguous legacy value must not be sent to a remote daemon"
+        );
+        assert_ne!(
+            remote.connection.password_storage,
+            crate::PasswordStorage::DaemonHost,
+            "a remote daemon has no credential of ours in its keychain"
+        );
+    }
+
+    /// The daemon has no business knowing the client holds a credential; telling it would
+    /// only invite it to look for one. It simply arrives when it asks.
+    #[test]
+    fn client_held_storage_is_not_advertised_to_the_daemon() {
+        let mut profile = create_test_profile("remote");
+        profile.connection.password_storage = crate::PasswordStorage::Client;
+
+        let remote = prepare_profile_for_remote(&profile).expect("Should prepare profile");
+
+        assert_eq!(
+            remote.connection.password_storage,
+            crate::PasswordStorage::None
+        );
+    }
+
+    #[test]
+    fn storage_values_meaningful_to_the_daemon_are_passed_through() {
+        for value in [crate::PasswordStorage::None, crate::PasswordStorage::File] {
+            let mut profile = create_test_profile("remote");
+            profile.connection.password_storage = value;
+            let remote = prepare_profile_for_remote(&profile).expect("Should prepare profile");
+            assert_eq!(remote.connection.password_storage, value);
+        }
     }
 }

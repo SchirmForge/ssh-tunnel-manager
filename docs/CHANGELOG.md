@@ -9,6 +9,92 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.3.0] - 2026-09-01
+
+Credential storage. The headline is a defect that has been present since remote daemon
+support arrived: **"save to keychain" never worked against a daemon on another machine.**
+
+The credential was written to the client's keychain and looked for on the daemon's. Nothing
+was found, so the user was prompted anyway — silently, with no error, every time. If you have
+been ticking "store in keychain" and still being asked for your password, that is why.
+
+**Upgrade notes**: no action needed. Credentials saved by an earlier version are found and
+migrated automatically, and profiles are updated in place as they are used.
+
+> **Downgrading to v0.2.0 is not clean.** A profile saved by v0.3.0 records
+> `password_storage = "client"`, which v0.2.0 rejects with "unknown password storage type".
+> Either edit those profiles back to `"keychain"` or delete and recreate them.
+
+### Fixed
+
+- **Saved credentials now work with a remote daemon.** `password_storage` recorded only that a
+  credential lived in "a keychain", never *whose*. The client saved it locally; the daemon
+  looked in its own store; against a LAN daemon those are different machines. The setting now
+  says where the credential actually is, and `prepare_profile_for_remote` carries that
+  decision instead of dropping it.
+
+- **`has_password` distinguishes "nothing stored" from "cannot reach the store."** Collapsing
+  the two is what made the v0.2.0 backing-store change look like an empty keyring rather than
+  an unreachable one.
+
+### Added
+
+- **`credential_store` in `daemon.toml`** — `auto` (default), `secret-service`, `keyutils` or
+  `none`. `auto` prefers Secret Service and falls back to the kernel keyutils keyring, which
+  is right for a desktop and for a headless server without either having to be configured.
+
+- **The daemon reports which store it opened**, at startup and in `DaemonInfo`, and warns that
+  credentials in the kernel keyring do not survive a reboot. Silent store selection is exactly
+  how the v0.2.0 change stayed hidden.
+
+- **`password_storage = "client"`** — the credential is kept on the client and sent when the
+  daemon asks. Behaves the same whether the daemon is local or remote, because the credential
+  lives where the human and the unlocked keyring are. The daemon is unchanged: it raises its
+  usual prompt and the client answers from its store instead of asking a person.
+
+- **`password_storage = "daemon-host"`** — the unambiguous name for what `"keychain"` meant on
+  a local daemon.
+
+- **Automatic migration from the kernel keyutils keyring.** A credential saved before v0.2.0
+  is found, adopted into Secret Service and the old copy removed — moved rather than copied,
+  so two copies cannot drift apart and hand a later reader a stale secret. One-directional by
+  design: never Secret Service to keyutils, which would take a credential that survives a
+  reboot and put it somewhere that does not.
+
+- **Tests for credential storage.** The module previously had none, which is how both the
+  remote-daemon defect and the v0.2.0 store change went unnoticed. Now 13 unit tests over an
+  injectable fake, 8 against a real Secret Service (`make test-keychain-live`), and a CI job.
+
+  One of those matters more than the rest: a write followed by a read passes even when the
+  backend changes underneath, because both go to the new store. What breaks is persistence
+  *across processes* — the GUI writes, the daemon reads later from a different process. So one
+  test re-execs the test binary and asserts the credential comes back.
+
+### Changed
+
+- **The credential store is selected at runtime** via `keyring-core` and the store crates
+  directly, rather than the `keyring` facade whose compatibility API hard-codes Secret Service
+  on Linux and ignores the keyutils feature entirely.
+
+- **The CLI records where it actually put the credential.** It was writing it to the local
+  keychain and then marking the profile `"keychain"`, which told the daemon to look in its
+  own. It now writes `"client"`, which is true for a local *and* a remote daemon.
+
+- **`password_storage = "keychain"` is no longer written**, only read. Profiles are TOML that
+  users copy and back up, so the legacy value — and the boolean form predating v0.1.6 —
+  keeps parsing. It resolves to `daemon-host` for a local daemon and `client` for a remote one.
+
+- `PasswordStorage` is `Copy`; it is a fieldless enum and cloning it at call sites was noise.
+
+### Known limitation
+
+- **The GTK GUI still records the legacy `"keychain"` value** when saving a credential. It
+  works against a local daemon, as it always has, and is read correctly. Profiles created
+  through the CLI get the corrected value. This will be addressed with the GUI rework rather
+  than by patching the outgoing front-end.
+
+---
+
 ## [0.2.0] - 2026-08-31
 
 A security and supply-chain release. No new user-facing features: the work went into the

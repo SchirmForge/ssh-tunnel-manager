@@ -959,7 +959,11 @@ async fn add_profile(
 
             let password_storage = if store_passphrase {
                 if store_password_in_keychain(&profile_id, &passphrase)? {
-                    PasswordStorage::Keychain
+                    // `Client`, not `Keychain`: the passphrase was just written to *this*
+                    // machine's keychain, so this is the value that says where it actually
+                    // is. `Keychain` told the daemon to look in its own store, which only
+                    // coincided with the truth when the daemon ran locally.
+                    PasswordStorage::Client
                 } else {
                     PasswordStorage::None
                 }
@@ -999,7 +1003,7 @@ async fn add_profile(
                 );
                 println!("{}", "    If the password is incorrect, you'll be prompted again when starting the tunnel.".dimmed());
                 if store_password_in_keychain(&profile_id, &password)? {
-                    PasswordStorage::Keychain
+                    PasswordStorage::Client
                 } else {
                     PasswordStorage::None
                 }
@@ -1034,7 +1038,7 @@ async fn add_profile(
                     println!("{}", "The passphrase will not be stored.".yellow());
                     PasswordStorage::None
                 } else if store_password_in_keychain(&profile_id, &passphrase)? {
-                    PasswordStorage::Keychain
+                    PasswordStorage::Client
                 } else {
                     PasswordStorage::None
                 }

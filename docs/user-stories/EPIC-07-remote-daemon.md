@@ -67,3 +67,35 @@ network.
 - Operations that are meaningless for a remote daemon are hidden — the Restart Daemon button only appears in unix-socket mode
 
 **Implementation**: `crates/common/src/profile_manager.rs` (`get_remote_key_setup_message`), `crates/daemon/src/api.rs` (`DaemonInfo`), `crates/gui-gtk/src/ui/daemon_settings.rs`
+
+---
+
+## US-7.5 — Have my saved credentials work with a remote daemon ✅
+
+**As a** user running the GUI on my desktop and the daemon on a machine on my LAN
+**I want** "remember this password" to actually remember it
+**So that** I am not asked for it on every connection despite having saved it.
+
+**Acceptance criteria**
+- A credential saved on the client is used when the daemon asks, whether the daemon is local
+  or on the network
+- The profile records **where** the credential is (`client`), not merely that one exists
+- `prepare_profile_for_remote` carries that decision rather than discarding it
+- The daemon is not told the client holds a credential — it raises its usual prompt, and a
+  stored answer arrives instead of a typed one, over the same authenticated channel
+- Credentials travel only over the existing client↔daemon transport: a Unix socket locally,
+  TLS with certificate pinning remotely
+
+**Implementation**: `crates/common/src/daemon_client.rs` (`ClientHeldCredential`),
+`crates/common/src/profile_manager.rs` (`prepare_profile_for_remote`),
+`crates/common/src/config.rs` (`PasswordStorage::resolved`)
+
+> **This was broken from the introduction of remote daemon support until v0.3.0**, and it
+> failed silently. `password_storage = "keychain"` said only that the credential was in *a*
+> keychain. The client wrote it to its own; the daemon looked in its own; with the daemon on
+> another machine those are different stores. Nothing was found, so the user was prompted —
+> no error, no warning, just the prompt they thought they had avoided.
+>
+> The fix is that the setting now says *where*, and that a credential which lives on the
+> client is answered by the client. Private keys are unaffected: they remain on the daemon
+> host and are never transmitted (see US-7.3).

@@ -42,17 +42,26 @@ pub struct ProfileMetadata {
 }
 
 /// Where password/passphrase is stored
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum PasswordStorage {
     /// Not stored - user will be prompted
     #[default]
     None,
+    /// Legacy value meaning "the daemon reads it from its own keychain".
+    ///
+    /// Ambiguous by construction: it only says *a* keychain, and which machine that is
+    /// depends on where the daemon runs. Against a remote daemon the credential was written
+    /// to the client's keychain and looked for on the daemon's, so nothing was found and the
+    /// user was prompted anyway — a silent no-op.
+    ///
+    /// Still read, because profiles are TOML a user may have copied or backed up, but no
+    /// longer written. [`resolved`](Self::resolved) turns it into [`Self::DaemonHost`] or
+    /// [`Self::Client`] once the daemon's location is known.
+    Keychain,
     /// Stored in the **daemon host's** keychain, and read there by the daemon.
     ///
-    /// Only coherent when the daemon runs on the same machine as the client. Against a remote
-    /// daemon the credential is written to the client's keychain and looked for on the
-    /// daemon's, so nothing is found and the user is prompted anyway. Prefer [`Self::Client`].
-    Keychain,
+    /// Only offered for a local daemon: see `.plan/AUTH-01_credential-storage.md` §9.1.
+    DaemonHost,
     /// Stored on the **client**, and sent to the daemon when it asks.
     ///
     /// Works the same whether the daemon is local or remote, because the credential lives
@@ -63,6 +72,35 @@ pub enum PasswordStorage {
     File,
 }
 
+impl PasswordStorage {
+    /// Resolve the legacy [`Self::Keychain`] value now that the daemon's location is known.
+    ///
+    /// `Keychain` meant "read it from the daemon's keychain", which is only coherent when the
+    /// daemon is on this machine. For a remote daemon the user's intent was "remember this
+    /// for me" — which is [`Self::Client`], the one that actually works there.
+    ///
+    /// Everything else passes through, so this is safe to call on any value.
+    pub fn resolved(self, daemon_is_local: bool) -> Self {
+        match self {
+            Self::Keychain if daemon_is_local => Self::DaemonHost,
+            Self::Keychain => Self::Client,
+            other => other,
+        }
+    }
+
+    /// Whether a credential is kept by the client and sent when the daemon asks.
+    pub fn is_client_held(self) -> bool {
+        matches!(self, Self::Client)
+    }
+
+    /// Whether the daemon reads the credential from its own keychain.
+    ///
+    /// Includes the legacy value, since the daemon is by definition local to itself.
+    pub fn is_daemon_held(self) -> bool {
+        matches!(self, Self::DaemonHost | Self::Keychain)
+    }
+}
+
 impl Serialize for PasswordStorage {
     fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
     where
@@ -71,6 +109,7 @@ impl Serialize for PasswordStorage {
         match self {
             PasswordStorage::None => serializer.serialize_str("none"),
             PasswordStorage::Keychain => serializer.serialize_str("keychain"),
+            PasswordStorage::DaemonHost => serializer.serialize_str("daemon-host"),
             PasswordStorage::Client => serializer.serialize_str("client"),
             PasswordStorage::File => serializer.serialize_str("file"),
         }
@@ -110,6 +149,7 @@ impl<'de> Deserialize<'de> for PasswordStorage {
                 match v.to_lowercase().as_str() {
                     "none" | "false" => Ok(PasswordStorage::None),
                     "keychain" | "true" => Ok(PasswordStorage::Keychain),
+                    "daemon-host" | "daemon_host" => Ok(PasswordStorage::DaemonHost),
                     "client" => Ok(PasswordStorage::Client),
                     "file" => Ok(PasswordStorage::File),
                     _ => Err(E::custom(format!("unknown password storage type: {}", v))),
@@ -385,5 +425,106 @@ mod tests {
         );
 
         assert!(profile.validate().is_err());
+    }
+}
+
+#[cfg(test)]
+mod password_storage_tests {
+    use super::PasswordStorage;
+
+    /// The legacy value only ever said "a keychain", never whose. Which machine that meant
+    /// depended on where the daemon ran, so it is resolved once that is known.
+    #[test]
+    fn the_legacy_value_resolves_by_where_the_daemon_is() {
+        assert_eq!(
+            PasswordStorage::Keychain.resolved(true),
+            PasswordStorage::DaemonHost,
+            "a local daemon reads its own keychain, which is also the client's"
+        );
+        assert_eq!(
+            PasswordStorage::Keychain.resolved(false),
+            PasswordStorage::Client,
+            "against a remote daemon the credential is on the client, so say so"
+        );
+    }
+
+    #[test]
+    fn every_other_value_passes_through_resolution_unchanged() {
+        for value in [
+            PasswordStorage::None,
+            PasswordStorage::Client,
+            PasswordStorage::DaemonHost,
+            PasswordStorage::File,
+        ] {
+            assert_eq!(value.resolved(true), value);
+            assert_eq!(value.resolved(false), value);
+        }
+    }
+
+    /// The daemon is by definition local to itself, so it honours the legacy value.
+    #[test]
+    fn the_daemon_treats_the_legacy_value_as_its_own() {
+        assert!(PasswordStorage::Keychain.is_daemon_held());
+        assert!(PasswordStorage::DaemonHost.is_daemon_held());
+        assert!(!PasswordStorage::Client.is_daemon_held());
+        assert!(!PasswordStorage::None.is_daemon_held());
+    }
+
+    #[test]
+    fn only_client_storage_is_client_held() {
+        assert!(PasswordStorage::Client.is_client_held());
+        for other in [
+            PasswordStorage::None,
+            PasswordStorage::Keychain,
+            PasswordStorage::DaemonHost,
+            PasswordStorage::File,
+        ] {
+            assert!(!other.is_client_held());
+        }
+    }
+
+    /// Profiles are TOML a user may have copied or backed up, so the legacy spellings must
+    /// keep parsing — including the boolean form that predates v0.1.6.
+    #[test]
+    fn legacy_spellings_still_parse() {
+        for (text, expected) in [
+            ("true", PasswordStorage::Keychain),
+            ("false", PasswordStorage::None),
+            ("\"keychain\"", PasswordStorage::Keychain),
+            ("\"none\"", PasswordStorage::None),
+            ("\"client\"", PasswordStorage::Client),
+            ("\"daemon-host\"", PasswordStorage::DaemonHost),
+            ("\"file\"", PasswordStorage::File),
+        ] {
+            let parsed: PasswordStorage = toml::from_str(&format!("v = {text}"))
+                .map(|w: Wrapper| w.v)
+                .unwrap();
+            assert_eq!(parsed, expected, "{text} should parse as {expected:?}");
+        }
+    }
+
+    #[derive(serde::Deserialize)]
+    struct Wrapper {
+        v: PasswordStorage,
+    }
+
+    /// Round-trips, so a profile rewritten by a newer version is still readable.
+    #[test]
+    fn the_new_values_round_trip() {
+        for value in [
+            PasswordStorage::None,
+            PasswordStorage::Client,
+            PasswordStorage::DaemonHost,
+            PasswordStorage::File,
+        ] {
+            let text = toml::to_string(&Wrapper2 { v: value }).unwrap();
+            let back: Wrapper2 = toml::from_str(&text).unwrap();
+            assert_eq!(back.v, value);
+        }
+    }
+
+    #[derive(serde::Serialize, serde::Deserialize)]
+    struct Wrapper2 {
+        v: PasswordStorage,
     }
 }

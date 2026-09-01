@@ -1,7 +1,7 @@
 # SSH Tunnel Manager - Security Documentation
 
-**Version**: v0.2.0
-**Last Updated**: 2026-08-31
+**Version**: v0.3.0
+**Last Updated**: 2026-09-01
 
 ## Overview
 
@@ -118,31 +118,77 @@ SSH Tunnel Manager is designed with security as a first-class concern. This docu
 
 ## Credential Management
 
-### Keychain Integration
+### Where a credential lives
 
-**System Keychain Storage**
-- **Linux**: Secret Service API (GNOME Keyring, KDE Wallet, etc.)
-- **macOS**: Keychain (untested, should work)
-- **Windows**: Credential Manager (untested, should work)
-- **Service Name**: `ssh-tunnel-manager`
-- **Username Format**: `{profile-uuid}` (e.g., `550e8400-e29b-41d4-a716-446655440000`)
+**Where** matters as much as **how**, because the client and the daemon are not always the
+same machine. `password_storage` on a profile says which of these applies:
 
-**What Gets Stored**
-- SSH key passphrases (if user chooses)
-- SSH password authentication passwords (if user chooses)
-- Keyboard-interactive authentication responses (NOT stored - prompt each time)
+| Value | The credential is kept | Read by |
+|---|---|---|
+| `none` | nowhere — prompted each time | — |
+| `client` | on the client, in its credential store | the client, which answers when the daemon asks |
+| `daemon-host` | on the daemon host, in its credential store | the daemon, directly |
+| `file` | on the daemon host, `0600` (unattended; not yet implemented) | the daemon, directly |
+| `keychain` | *legacy* — "a keychain", unspecified whose | resolved on use, see below |
 
-**Security Properties**
-- Encrypted at rest by OS keychain
-- Protected by user's login session
-- Never written to disk in plaintext
+`client` works identically whether the daemon is local or on the network, because the
+credential lives where the human and the unlocked keyring are. The daemon is not told the
+client holds one: it raises its usual prompt and a stored answer arrives instead of a typed
+one, over the same authenticated channel.
+
+**The legacy value.** `keychain` recorded only that a credential was in *a* keychain, never
+whose. Against a remote daemon the client saved it locally and the daemon looked on its own
+host, so nothing was found and the user was prompted anyway — silently. It is still read,
+because profiles are TOML that users copy and back up, and resolves to `daemon-host` for a
+local daemon and `client` for a remote one. It is no longer written.
+
+### The credential store
+
+**Selected at runtime**, reported at startup and in `DaemonInfo`, and overridable with
+`credential_store` in `daemon.toml`:
+
+| | Secret Service | keyutils |
+|---|---|---|
+| Needs a D-Bus session | yes | no |
+| Survives a reboot | yes | **no** |
+| Suits | desktops | headless daemons |
+
+`auto` prefers Secret Service and falls back to the kernel keyutils keyring, so a desktop and
+a headless server both work without configuration. `secret-service`, `keyutils` and `none`
+force the choice.
+
+**Reporting the choice is a security property, not a convenience.** A change of backing store
+is otherwise indistinguishable from an empty keyring — which is exactly how the v0.2.0
+dependency upgrade moved every stored credential without anyone noticing.
+
+**Migration.** A credential found in the keyutils keyring is adopted into Secret Service and
+the original removed — moved, not copied, so two copies cannot drift apart and hand a later
+reader a stale secret. Both stores belong to the same user on the same machine, so the move
+does not change exposure. One-directional by design: never Secret Service to keyutils, which
+would take a credential that survives a reboot and put it somewhere that does not.
+
+**Entry format**
+- **Service name**: `ssh-tunnel-manager`
+- **Account**: `{profile-uuid}` (e.g. `550e8400-e29b-41d4-a716-446655440000`)
+
+**What gets stored**
+- SSH key passphrases and passwords, if the user chooses
+- **Never** keyboard-interactive responses or TOTP codes: a one-time code is valid for one
+  time step, so storing it would be pointless as well as unsafe
+
+**Security properties**
+- Encrypted at rest by the OS store
+- Protected by the user's login session
+- Never written to disk in plaintext by this application
 - Never logged or included in error messages
 
-**Graceful Fallback**
-- Daemon detects keyring availability at runtime
-- If unavailable (headless server, container), prompts interactively each time
-- No hard dependency on keyring for functionality
-- User can disable via `SSH_TUNNEL_SKIP_KEYRING=1` environment variable
+**Graceful fallback**
+- A credential that cannot be read means the user is prompted, never a failed connection
+- A stored credential is offered **once** per connection attempt. The server re-prompts on a
+  rejection, and replaying a stale credential would exhaust its `MaxAuthTries` without the
+  user ever being asked
+- `SSH_TUNNEL_SKIP_KEYRING=1` disables storage entirely, as does
+  `credential_store = "none"`
 
 ### SSH Private Keys
 

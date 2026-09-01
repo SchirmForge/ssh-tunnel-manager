@@ -1,7 +1,7 @@
 # Development Guide
 
-**Version**: v0.2.0
-**Last Updated**: 2026-08-31
+**Version**: v0.3.0
+**Last Updated**: 2026-09-01
 
 ## Where documentation lives
 
@@ -284,6 +284,23 @@ still opens an empty sandbox and tells you what is missing.
 make check         # fmt-check, clippy -D warnings, tests
 make check-all     # the above plus the live fixture tier and the audit
 ```
+
+### Testing credential storage
+
+```bash
+make test-keychain-live
+```
+
+Runs the credential-store tests against a **real** Secret Service, inside a throwaway
+`dbus-run-session` with its own `gnome-keyring-daemon`. Nothing touches your own keyring: the
+session, the keyring and every entry are created and discarded.
+
+The unit tests in `crates/common/src/keychain.rs` use an in-memory fake and prove the logic.
+These prove the *backend*, and are the only thing that would catch a dependency upgrade
+quietly changing which store credentials land in — which is what happened in v0.2.0, with the
+whole suite green.
+
+Needs `gnome-keyring` and `dbus-run-session`; both are in `containers/Containerfile.dev`.
 
 ### Auditing dependencies
 

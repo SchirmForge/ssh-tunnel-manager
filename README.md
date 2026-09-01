@@ -4,7 +4,7 @@ A secure, performant SSH tunnel management application for Linux with CLI interf
 
 ## Status
 
-**Version**: v0.2.0
+**Version**: v0.3.0
 **Status**: Production-ready CLI/Daemon/GUI(GTK) with full REST API architecture
 
 ### Highlights
@@ -272,8 +272,8 @@ See **[docs/ROADMAP.md](docs/ROADMAP.md)** for what is planned, what is delibera
 and the design decisions already taken for work that has not started.
 
 **Now**: stability and regression testing; packaging (DEB done, RPM in progress).
-**Next**: desktop notifications and auto-reconnect (v0.2.0), configurable daemon config
-path, enhanced logging.
+**Next**: unattended credentials for headless daemons, desktop notifications and
+auto-reconnect, configurable daemon config path, enhanced logging.
 **Not planned**: remote port forwarding (`ssh -R`) - use OpenSSH directly.
 
 Release history is in [docs/CHANGELOG.md](docs/CHANGELOG.md) and

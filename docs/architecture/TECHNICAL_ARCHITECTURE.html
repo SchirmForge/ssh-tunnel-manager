@@ -132,7 +132,7 @@
 <p class="subtitle">SSH Tunnel Manager — the decisions behind the implementation, and how the code is organised.</p>
 
 <div class="meta">
-  <span><strong>Version</strong> v0.2.0</span>
+  <span><strong>Version</strong> v0.3.0</span>
   <span><strong>Audience</strong> Contributors</span>
   <span><strong>Companion</strong> <a href="FUNCTIONAL_ARCHITECTURE.html">Functional Architecture</a></span>
 </div>
@@ -363,7 +363,7 @@ if let Some(client) = client {
     <tr><td>Client</td><td><code>reqwest</code> (rustls)</td><td>One HTTP client covering Unix socket, HTTP and HTTPS</td></tr>
     <tr><td>TLS</td><td><code>rustls</code>, <code>webpki-roots</code>, <code>x509-parser</code>, <code>sha2</code></td><td>Certificate generation and fingerprint pinning without OpenSSL</td></tr>
     <tr><td>Serialisation</td><td><code>serde</code>, <code>serde_json</code>, <code>toml</code></td><td>Profiles and config on disk, JSON on the wire</td></tr>
-    <tr><td>Secrets</td><td><code>keyring</code></td><td>OS keyring access, behind <code>ssh-tunnel-common</code></td></tr>
+    <tr><td>Secrets</td><td><code>keyring-core</code>, <code>zbus-secret-service-keyring-store</code>, <code>linux-keyutils-keyring-store</code></td><td>Credential storage behind <code>ssh-tunnel-common</code>. The store crates directly rather than the <code>keyring</code> facade: see below</td></tr>
     <tr><td>CLI</td><td><code>clap</code>, <code>dialoguer</code>, <code>comfy-table</code>, <code>colored</code></td><td>Argument parsing, prompts, tables, colour</td></tr>
     <tr><td>GUI</td><td><code>gtk4</code>, <code>libadwaita</code>, <code>pulldown-cmark</code></td><td>Widgets, GNOME styling, Markdown for Help/About</td></tr>
     <tr><td>Test support</td><td><code>tempfile</code></td><td>Sandbox directories</td></tr>
@@ -408,6 +408,28 @@ if let Some(client) = client {
   real finding.
 </p>
 
+<h3>Choosing a credential store at runtime</h3>
+
+<p>
+  The <code>keyring</code> facade's compatibility API hard-codes Secret Service on Linux and
+  ignores the keyutils feature entirely, so a v0.2.0 dependency upgrade moved every stored
+  credential from the kernel keyring to Secret Service without anyone noticing. Using
+  <code>keyring-core</code> and the store implementations directly makes the choice ours: it
+  is selected at runtime, overridable with <code>credential_store</code>, and reported at
+  startup rather than left implicit.
+</p>
+
+<div class="note warn">
+  <p>
+    <strong>The secret-service feature must stay <code>crypto-rust</code>, not
+    <code>rt-tokio-crypto-rust</code>.</strong> The tokio variant calls
+    <code>block_on</code> internally, and the daemon's <code>main</code> is already
+    <code>#[tokio::main]</code>, so opening the store panics with <em>"Cannot start a runtime
+    from within a runtime"</em> — a daemon that will not start. This is the feature set the
+    <code>keyring</code> facade itself selects, which is why the store worked through it.
+  </p>
+</div>
+
 <h2 id="testing">5. Testing strategy</h2>
 
 <p>
@@ -419,6 +441,7 @@ if let Some(client) = client {
   <thead><tr><th>Tier</th><th>What</th><th>Needs</th><th>Runs</th></tr></thead>
   <tbody>
     <tr><td>0</td><td>Format, lint, supply-chain audit, secret scan</td><td>nothing</td><td>every pull request</td></tr>
+    <tr><td>1b</td><td>Credential storage against a real Secret Service</td><td><code>gnome-keyring</code>, <code>dbus-run-session</code></td><td>every pull request</td></tr>
     <tr><td>1</td><td>Hermetic unit and integration tests</td><td>nothing</td><td>every pull request</td></tr>
     <tr><td>2</td><td>Live SSH against an unprivileged localhost <code>sshd</code></td><td><code>sshd</code> binary only</td><td>every pull request</td></tr>
     <tr><td>3</td><td>Live SSH against a provisioned remote host</td><td>real accounts</td><td>manual</td></tr>

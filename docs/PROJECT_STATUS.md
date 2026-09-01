@@ -2,9 +2,9 @@
 
 ## Current State
 
-**Version**: v0.2.0
+**Version**: v0.3.0
 **Status**: ✅ Production-ready CLI, daemon and GTK GUI with a full REST + SSE architecture
-**Release date**: 2026-08-31
+**Release date**: 2026-09-01
 
 A snapshot of what exists today. For what is planned see [ROADMAP.md](ROADMAP.md); for what
 shipped when see [CHANGELOG.md](CHANGELOG.md); for behaviour described from the user's point
@@ -17,6 +17,7 @@ of view see the [user stories](user-stories/).
 | GTK GUI | ✅ Full profile CRUD, live status, first-launch wizard, remote daemon support |
 | Testing | ✅ Four tiers (static, hermetic, live SSH on a local fixture, live SSH on a real host), sandboxed, all but the last gating CI |
 | Supply chain | ✅ `cargo deny check` gates every pull request; git dependencies banned; 1 known advisory, documented as accepted |
+| Credential storage | ✅ Store selected at runtime and reported; works with a local or remote daemon; migrates from the pre-v0.2.0 store |
 | Auto-reconnect | ❌ Config options exist but nothing acts on them |
 | Notifications | ❌ Not implemented |
 
@@ -34,6 +35,7 @@ of view see the [user stories](user-stories/).
 ### ✅ Daemon (`crates/daemon`)
 - SSH tunnel lifecycle using russh 0.63 (crates.io, compression and SHA-1 MACs not offered); interactive auth via SSE-driven prompts (password, key passphrase, keyboard-interactive/2FA), each re-prompting rather than failing on a wrong answer.
 - Host key verification against `known_hosts`; a server presenting a CA-signed host *certificate* is refused rather than silently trusted.
+- Credentials are read from whichever store the daemon opened (Secret Service, or the kernel keyutils keyring on a headless host), or supplied by the client when the profile says they live there.
 - Local forwarding fully working; privileged-port error messaging.
 - Host key verification with OpenSSH-format `known_hosts`, SHA256 fingerprints, and 0600 perms.
 - API server (Axum): health, tunnel start/stop/status, pending-auth get/post, SSE events.
@@ -116,7 +118,7 @@ of view see the [user stories](user-stories/).
 ❌ SSH tunnel auto-reconnect / health monitoring — options exist but nothing acts on them;
    [design decided](ROADMAP.md#auto-reconnect-and-health-monitoring), not implemented
 ❌ System tray — crate removed in v0.1.11; to be rewritten if wanted
-❌ Desktop notifications — [planned for v0.2.0](ROADMAP.md#next)
+❌ Desktop notifications — [planned](ROADMAP.md#next)
 ❌ Packaging: Flatpak, AUR ([RPM in progress](ROADMAP.md#packaging))
 
 ## Security Notes
@@ -160,6 +162,9 @@ make test-live
 
 # Supply-chain audit: advisories, licences, sources, unused dependencies
 make audit
+
+# Credential storage against a real Secret Service, in a throwaway session
+make test-keychain-live
 
 # Disposable sandbox with a daemon and seeded profiles
 make sandbox ARGS="--profiles key,password,2fa"

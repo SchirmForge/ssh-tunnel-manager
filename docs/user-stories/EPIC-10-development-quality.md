@@ -205,3 +205,33 @@ a failure, at two levels because the two live tiers can support different amount
 
 > The script edits `sshd` on a machine reachable only over SSH, so every one of those
 > safeguards exists to make locking yourself out impossible rather than unlikely.
+
+---
+
+## US-10.11 — Catch a credential store changing underneath us ✅
+
+**As a** maintainer
+**I want** credential storage tested against a real store, not only a fake
+**So that** a dependency upgrade cannot silently move where secrets are kept.
+
+**Acceptance criteria**
+- Unit tests cover the logic through an in-memory fake, with no keyring needed
+- `make test-keychain-live` exercises a **real** Secret Service in a throwaway
+  `dbus-run-session` with its own `gnome-keyring-daemon`, and runs in CI
+- Nothing touches the developer's own keyring: the session, the keyring and every entry are
+  created and discarded, with cleanup on panic
+- One test writes a credential, then **re-execs the test binary** and asserts it can be read
+  back from a separate process
+- The migration path is covered: a credential seeded into the kernel keyring is found,
+  adopted, and the original removed
+
+**Implementation**: `crates/common/src/keychain.rs` (unit tests),
+`crates/common/tests/keychain_live.rs`, `make test-keychain-live`, `.github/workflows/ci.yml`
+
+> The cross-process test is the one that matters, and it is not obvious why. A write followed
+> by a read passes even when the backend changes, because both go to the *new* store. What
+> actually breaks is persistence across processes — the GUI writes, and the daemon reads later
+> from a different process. Only a second process can tell the difference.
+>
+> This module had no tests at all before v0.3.0, which is how both the v0.2.0 store change and
+> the remote-daemon defect in US-7.5 reached users.

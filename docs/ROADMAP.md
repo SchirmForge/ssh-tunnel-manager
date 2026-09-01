@@ -1,6 +1,6 @@
 # Roadmap
 
-**Last updated**: 2026-08-31 (v0.2.0)
+**Last updated**: 2026-09-01 (v0.3.0)
 
 What is planned, what is deliberately not, and the design decisions already taken for work
 that has not started yet.
@@ -39,7 +39,18 @@ Delivered in v0.2.0:
 - Three defects the live tier found: password auth never retrying, a host-key test that was
   asserting nothing, and axum 0.8's route syntax change
 
+Delivered in v0.3.0:
+- **Saved credentials work with a remote daemon** — the setting now records where a credential
+  is, not merely that one exists. See [releases/v0.3.0.md](releases/v0.3.0.md)
+- Credential store selected at runtime (Secret Service, or the kernel keyring on a headless
+  host), configurable with `credential_store`, and reported at startup
+- Automatic migration of credentials saved before v0.2.0
+- Credential storage tested against a real Secret Service in CI — the module previously had
+  no tests at all
+
 Remaining:
+- Unattended credentials for a daemon with no client attached — see `.plan/AUTH-02`
+- The GTK GUI still records the legacy storage value; to be handled with the GUI rework
 - Fix whatever the live tier turns up once the test accounts exist on the target host
 - Close the test and audit backlog in `.plan/DEP-02_test-and-audit-backlog.md` — most
   notably unit coverage for `tunnel.rs` and `keychain.rs`, and an sshd version matrix to
@@ -61,7 +72,7 @@ Remaining:
 
 ## Next
 
-### Desktop notifications and auto-reconnect (v0.2.0)
+### Desktop notifications and auto-reconnect
 **Status**: Planned. A detailed implementation plan is kept locally and is not published
 with the repository. Note when picking it up that several of its original premises no
 longer hold — it was written before the v0.1.11 stabilisation pass, which removed the tray
@@ -172,7 +183,7 @@ is monitored at a time, but multiple GUI instances can run.
 | Component | Status |
 |---|---|
 | systemd user and system service templates | ✅ Available |
-| Desktop notifications | 🚧 Planned for v0.2.0 |
+| Desktop notifications | 🚧 Planned |
 | System tray | 🚧 The old `crates/tray` was removed in v0.1.11 — it had been outside the workspace build since v0.1.6. Any tray support will be written fresh against the current architecture |
 | Profile autostart | 🚧 The option exists in config but is not wired |
 

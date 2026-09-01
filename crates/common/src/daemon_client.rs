@@ -450,7 +450,7 @@ pub async fn start_tunnel_with_events<H: TunnelEventHandler>(
     };
 
     // A credential the client holds itself, offered once before any human is asked.
-    let mut stored = ClientHeldCredential::for_profile(profile);
+    let mut stored = ClientHeldCredential::for_profile(profile, config);
 
     let base_url = config.daemon_base_url()?;
 
@@ -749,10 +749,18 @@ struct ClientHeldCredential {
 }
 
 impl ClientHeldCredential {
-    fn for_profile(profile: &crate::Profile) -> Self {
+    fn for_profile(profile: &crate::Profile, config: &DaemonClientConfig) -> Self {
+        // A legacy `Keychain` profile becomes client-held when the daemon is remote, which is
+        // the case where it never worked: the credential was saved here and looked for there.
+        let daemon_is_local = config.connection_mode == ConnectionMode::UnixSocket;
+        let storage = profile
+            .connection
+            .password_storage
+            .resolved(daemon_is_local);
+
         Self {
             profile_id: profile.metadata.id,
-            enabled: profile.connection.password_storage == crate::PasswordStorage::Client,
+            enabled: storage.is_client_held(),
             spent: false,
         }
     }
