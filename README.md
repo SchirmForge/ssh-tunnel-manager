@@ -5,12 +5,11 @@ A secure, performant SSH tunnel management application for Linux with CLI interf
 ## Status
 
 **Version**: v0.5.0
-**Status**: Production-ready CLI, daemon, and packaged GTK GUI; second-generation GUI available as a source preview
+**Status**: Production-ready CLI, daemon, and GTK 4/libadwaita GUI
 
 ### Highlights
 
-- ✅ **Packaged GTK GUI** - Stable GUI with first-launch setup, profile management, and live status
-- 🧪 **Second-generation GUI preview** - First-launch setup, adaptive profile organization, typed shared actions, safe credential editing, and honest WIP states
+- ✅ **Production GTK GUI** - First-launch setup, adaptive profile organization, typed shared actions, safe credential editing, and honest WIP states
 - ✅ **Remote daemon support** - Connect to daemons over HTTPS on other machines
 - ✅ **Full-featured GUI** - Profile management, real-time status, and markdown documentation
 - ✅ **Enhanced CLI** - Status/restart commands and proactive config validation
@@ -25,11 +24,10 @@ A secure, performant SSH tunnel management application for Linux with CLI interf
 ## Features
 
 ### ✅ Implemented
-- **First-Launch Configuration Wizard**: Both desktop GUIs provide interactive client setup with automatic snippet detection and manual configuration fallback
+- **First-Launch Configuration Wizard**: The desktop GUI provides interactive client setup with automatic snippet detection and manual configuration fallback
 - **Remote Daemon Support**: Connect to daemons over HTTPS on remote machines while keeping SSH keys secure
 - **CLI Interface**: Full-featured command-line tool with interactive prompts and JSON/table output
-- **Packaged GTK4/Libadwaita GUI**: Modern GNOME-style application with full profile CRUD, real-time status indicators, and markdown documentation
-- **GUI v2 source preview**: First-launch client setup, search, pinning, manual ordering, connected-only filtering, request-correlated authentication, daemon/offline pages, adaptive layout, and keyboard actions. It is not yet packaged or the default GUI.
+- **GTK4/Libadwaita GUI**: First-launch client setup, full profile CRUD, search, pinning, manual ordering, connected-only filtering, request-correlated authentication, daemon/offline pages, adaptive layout, and keyboard actions
 - **Multiple Authentication Methods**: SSH keys, passwords, keyboard-interactive (2FA)
 - **Credential-store integration**: Secret Service on desktops, keyutils fallback on headless Linux
 - **Local Port Forwarding**: Forward local ports to remote hosts via SSH with host key verification
@@ -56,16 +54,15 @@ Remote port forwarding (`ssh -R`) is **not planned**. Use `ssh -R` directly if y
 ### Getting Started
 1. Install packages or build from source
 2. Start daemon as user service: `systemctl --user enable --now ssh-tunnel-daemon`
-3. Launch GUI: `ssh-tunnel-gtk` (configuration wizard runs automatically)
+3. Launch GUI: `ssh-tunnel-gui` (configuration wizard runs automatically)
 4. Create profiles and start tunnels
 
 For detailed instructions, platform-specific requirements, system service configuration, and advanced setup (HTTPS mode, network access, group permissions), see the **[Installation Guide](docs/INSTALLATION.md)**.
 
-The second-generation GUI is currently a Fedora 44/Bazzite-targeted source preview in
-`crates/gui-v2`. Its build and validation commands are documented in the
-**[Development Guide](docs/DEVELOPMENT.md)**. The packaged/default application remains
-`ssh-tunnel-gtk` until manual accessibility and runtime acceptance plus a separately
-reviewed cutover are complete.
+The production GUI implementation lives in `crates/gui-v2`, builds as `ssh-tunnel-gui`, and
+uses application ID `io.github.schirmforge.SshTunnelManager`. It currently targets the GTK
+4.22/libadwaita 1.9 stack on Bazzite/Fedora 44. The older `gui-gtk` implementation is obsolete,
+receives no updates, and is retained in the repository without a removal schedule.
 
 ### CLI (For automation and scripts)
 
@@ -286,9 +283,9 @@ See **[docs/ROADMAP.md](docs/ROADMAP.md)** for what is planned, what is delibera
 and the design decisions already taken for work that has not started.
 
 **Now**: stability and regression testing; packaging (DEB done, RPM in progress).
-**Next**: GUI v2 runtime validation and cutover review, unattended credentials for headless
-daemons, desktop notifications and auto-reconnect, configurable daemon config path, and
-enhanced logging.
+**Next**: final GUI keyboard/screen comparison, unattended credentials for headless daemons,
+desktop notifications and auto-reconnect, configurable daemon config path, and enhanced
+logging.
 **Not planned**: remote port forwarding (`ssh -R`) - use OpenSSH directly.
 
 Release history is in [docs/CHANGELOG.md](docs/CHANGELOG.md) and

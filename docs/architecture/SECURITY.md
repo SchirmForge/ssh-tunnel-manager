@@ -141,8 +141,8 @@ one, over the same authenticated channel.
 whose. Against a remote daemon the client saved it locally and the daemon looked on its own
 host, so nothing was found and the user was prompted anyway — silently. It is still read,
 because profiles are TOML that users copy and back up, and resolves to `daemon-host` for a
-local daemon and `client` for a remote one. The CLI and GUI v2 no longer write it; the
-packaged legacy GUI still does until cutover.
+local daemon and `client` for a remote one. The CLI and production GUI no longer write it;
+the obsolete `gui-gtk` source is frozen and is not an installed editing path.
 
 ### The credential store
 

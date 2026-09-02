@@ -1,84 +1,70 @@
-# Phase 7 validation record
+# Phase 7 validation and cutover record
 
-Validated on 2026-09-01 against the Fedora 44 development environment. This
-record separates automated/source validation from the manual GUI run that the
-mockup handoff requires the user to authorize separately.
+Validated on 2026-09-01 and 2026-09-02 against the Fedora 44 development
+environment and the Bazzite/Fedora 44 host runtime.
 
-## Automated and source validation
+## Completed validation
 
-The following gates pass:
+- Static review covers all in-scope mockup views. The tray remains deliberately
+  deferred.
+- Profile actions dispatch toolkit-neutral `AppCommand` values through the
+  shared action router, preserving the command surface for a future tray.
+- Styling uses system fonts and GTK/libadwaita semantic colors. WIP controls
+  remain visibly identified and cannot report false success.
+- Daemon text is display-only. Control flow uses structured event variants,
+  request types, request IDs, statuses, capabilities, and booleans. Regression
+  tests cover misleading text and contradictory IDs.
+- First-launch setup validates or creates `cli.toml` before starting the runtime,
+  redacts tokens from diagnostics, and persists the file atomically with mode
+  `0600`.
+- The release GUI launched on Bazzite, stayed connected beyond the former SSE
+  timeout window, reconciled a live daemon with three connected tunnels, and
+  operated alongside the CLI.
+- The user accepted that `gui-v2` does not regress profile, credential-store,
+  daemon, SSE, or authentication behavior.
+
+## Production cutover
+
+- Package and binary: `ssh-tunnel-gui`
+- Application ID: `io.github.schirmforge.SshTunnelManager`
+- Source: `crates/gui-v2`
+- Root workspace: member and default member
+- Integration: CI, Makefile, development sandbox, installer, desktop entry, and
+  current documentation use the production identity
+- Obsolete GUI: `crates/gui-gtk` remains a non-default workspace member on the
+  same GTK 4.22/libadwaita 1.9 binding generation. It is not installed or
+  packaged, receives no updates, and has no planned removal date.
+
+## Controlled-environment compilation
+
+On 2026-09-02 in the `fedora44-rpmbuild` Fedora 44 distrobox:
+
+- `cargo check -p ssh-tunnel-gui --offline` passed without warnings.
+- `cargo check -p ssh-tunnel-gui-gtk --offline` passed. The obsolete GUI emits
+  deprecation warnings for its frozen pre-libadwaita-1.6 dialog APIs; these do
+  not prevent compilation and will not trigger maintenance work in the frozen
+  crate.
+- The shared workspace resolves `gtk4` 0.11.4, `libadwaita` 0.9.2, and
+  `glib`/`gio` 0.22.9 for both GUI crates.
+
+Final locked validation in Fedora 44 also passed:
 
 - `cargo fmt --all -- --check`
-- `cargo fmt --manifest-path crates/gui-v2/Cargo.toml -- --check`
-- `cargo test --workspace --locked` in Fedora 44: 168 passed, 18 live or
-  environment-dependent tests ignored, 0 failed
-- `cargo test --manifest-path crates/gui-v2/Cargo.toml --locked` in Fedora 44:
-  26 passed, 0 failed
-- `cargo clippy --workspace --locked --all-targets --all-features -- -D warnings`
-  in Fedora 44
-- `cargo clippy --manifest-path crates/gui-v2/Cargo.toml --locked --all-targets --
-  -D warnings` in Fedora 44
-- `cargo build --workspace --release --locked` in Fedora 44
-- `cargo build --manifest-path crates/gui-v2/Cargo.toml --release --locked` in
-  Fedora 44
-- `cargo deny check` for both Cargo workspaces; advisories, bans, licenses, and
-  sources pass, with duplicate-version warnings only
-- `git diff --check`
+- Default-workspace tests: 212 passed, 19 live/environment tests ignored, 0 failed
+- Default-workspace Clippy with all targets/features and warnings denied
+- Release builds for both `ssh-tunnel-gui` and `ssh-tunnel-gui-gtk`
+- `cargo deny check bans licenses sources` (existing duplicate-version warnings only)
+- Shell syntax, desktop-entry validation, architecture HTML validation, and
+  `git diff --check` (`shellcheck` was not installed in the validation environment)
 
-Static review confirms:
+## Deferred validation
 
-- Screens 1a/1b, 1c, 1e, 1f, 1g, 1h, and 1i have corresponding GTK views.
-  Screen 1d (tray) remains intentionally deferred.
-- Profile actions dispatch toolkit-neutral `AppCommand` values through the
-  shared action router; a future tray can reuse the same command surface.
-- Search, refresh, navigation, profile actions, profile reordering, dialog
-  submission, and cancellation have keyboard-accessible actions. Keyboard
-  reordering is bounded to the profile's pinned or unpinned section.
-- Icon-only and form controls have accessible labels, errors expose alert
-  semantics, and status/progress content exposes status semantics.
-- Long dialogs and popovers scroll, action groups wrap, and daemon metrics wrap
-  for narrow layouts and larger system font metrics.
-- Styling does not set a font family or fixed colors. It uses system fonts and
-  GTK/libadwaita semantic theme colors.
-- WIP controls remain visibly identified and cannot report false success.
-- Daemon prompt, error, name, instruction, and status strings remain display
-  copy. Control flow is selected from structured event variants, request types,
-  IDs, statuses, capabilities, and booleans. The misleading-text and
-  contradictory-ID regression tests pass.
-- Help and About copy describe the implemented `cli.toml`, `ui.toml`, Secret
-  Service, authentication, daemon, and WIP behavior.
-- First-launch setup is a pre-runtime gate. Local file/configuration variants and typed field
-  codes select snippet/manual/repair behavior; parser diagnostics and authentication tokens
-  are not exposed in setup state or debug output. Unit tests cover discovery, validation,
-  cancellation, single runtime handoff, and atomic `0600` persistence.
+The user owns interaction-by-interaction validation and records functional bugs
+in `.plan/UI_known-issues.md`. The only unfinished Phase 7 review is:
 
-## Manual validation still gated
+- complete keyboard-only traversal/focus/default/cancel checks;
+- compare the implemented screens with the supplied mockups in the relevant
+  system appearance modes.
 
-No GUI was launched or rendered and no screenshot was captured. The following
-checks therefore remain pending a separate user authorization:
-
-- compare every in-scope screen with the supplied mockups in system light and
-  dark modes;
-- exercise complete keyboard traversal, visible focus order, default actions,
-  and Escape/cancel behavior at runtime;
-- inspect names, roles, state announcements, and live updates with Orca;
-- exercise high contrast, enlarged system fonts, narrow-window resizing, and
-  long/localized daemon copy;
-- exercise real online/offline transitions, supported authentication methods,
-  client-held Secret Service credentials, and failure recovery against a live
-  daemon;
-- exercise no-config, snippet, empty-host, invalid-config, manual mode, cancel/retry and
-  post-save first-launch transitions;
-- confirm the release binary runs against the Bazzite 44 host GTK/libadwaita
-  runtime.
-
-## Cutover remains pending acceptance
-
-The repository still defaults to `crates/gui-gtk`. The following belong to the
-separately reviewable cutover after manual acceptance and are not part of this
-validation change:
-
-- choose the production executable name and application ID;
-- integrate `gui-v2` into the root workspace and default build targets;
-- update CI, Makefile, installation, packaging, and user-facing launch docs;
-- retire `crates/gui-gtk` and remove the temporary nested workspace boundary.
+That work is transferred to `.plan/UI_v2-final-validation.md`. It is not a
+production-cutover blocker and does not reopen the accepted functional areas.

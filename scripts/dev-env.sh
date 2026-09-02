@@ -7,7 +7,7 @@
 # Builds debug binaries, opens a sandbox (scripts/sandbox.sh), starts a daemon,
 # wires cli.toml to the generated token, optionally seeds profiles against the
 # test SSH host, and drops you into a shell where `ssh-tunnel` and
-# `ssh-tunnel-gtk` already point at the sandbox. Exiting tears it all down.
+# `ssh-tunnel-gui` already point at the sandbox. Exiting tears it all down.
 #
 # Your real ~/.config/ssh-tunnel-manager and any running daemon are untouched.
 #
@@ -76,7 +76,7 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 echo -e "${BLUE}Building debug binaries...${NC}"
-(cd "$REPO_ROOT" && cargo build --package ssh-tunnel-daemon --package ssh-tunnel-cli)
+(cd "$REPO_ROOT" && cargo build --package ssh-tunnel-daemon --package ssh-tunnel-cli --package ssh-tunnel-gui)
 
 sandbox_init
 sandbox_assert_isolated || exit 1
@@ -234,12 +234,12 @@ $(echo -e "${BLUE}========================================${NC}")
   Daemon mode : $MODE$([ "$START_DAEMON" -eq 1 ] || echo " (not started)")
   Daemon log  : $DAEMON_LOG
 
-  ssh-tunnel and ssh-tunnel-gtk are on PATH and point at this sandbox.
+  ssh-tunnel and ssh-tunnel-gui are on PATH and point at this sandbox.
 
     ssh-tunnel list
     ssh-tunnel start test-key
     ssh-tunnel status --all
-    ssh-tunnel-gtk
+    ssh-tunnel-gui
     tail -f "\$DAEMON_LOG"
 
   Exit this shell to stop the daemon and delete the sandbox.

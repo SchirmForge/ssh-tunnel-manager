@@ -1,12 +1,12 @@
 # Epic 11 — Second-generation desktop GUI
 
-The adaptive GTK 4/libadwaita interface, the toolkit-neutral application core behind it, and
-the gates required before it replaces the packaged GUI.
+The adaptive GTK 4/libadwaita production interface and the toolkit-neutral application core
+behind it.
 
-GUI v2 is a **source preview in v0.4.0**. Its implementation and automated/source validation
-are complete, but no GUI launch, visual comparison, assistive-technology run, live-daemon
-exercise, packaging, or production cutover has been accepted yet. Stories are therefore
-partial unless they describe an explicitly unimplemented rollout step.
+The second-generation GUI became the production desktop application after runtime and
+functional acceptance. Its package and binary are `ssh-tunnel-gui`, with application ID
+`io.github.schirmforge.SshTunnelManager`. Keyboard-only and mockup-comparison follow-up is
+tracked separately; the obsolete `gui-gtk` remains frozen in the workspace.
 
 [← Back to index](README.md)
 
@@ -18,7 +18,7 @@ partial unless they describe an explicitly unimplemented rollout step.
 **I want** to search, filter, pin, sort and reorder them  
 **So that** the connections I use most remain easy to reach.
 
-**Implemented in the preview**
+**Implemented**
 
 - Search matches normalized profile name, description, host, user and forwarding summary
 - Connected-only filtering and name/manual sorting
@@ -28,21 +28,21 @@ partial unless they describe an explicitly unimplemented rollout step.
 - Missing/malformed preferences recover safely; stale IDs disappear and new IDs append
   deterministically
 
-**Remaining**: runtime keyboard/focus, narrow-layout, font-scaling and visual parity checks;
-production packaging/cutover.
+**Remaining**: keyboard-only and visual-parity checks in
+`.plan/UI_v2-final-validation.md`.
 
 **Implementation**: `crates/gui-core/src/preferences.rs`, `controller.rs`,
 `crates/gui-v2/src/profile_list.rs`
 
 ---
 
-## US-11.2 — Edit profiles without exposing or misplacing credentials ⚠️
+## US-11.2 — Edit profiles without exposing or misplacing credentials ✅
 
 **As a** desktop user  
 **I want** profile and credential edits to be explicit and recoverable  
 **So that** saving a connection cannot leak, duplicate, or silently move its secret.
 
-**Implemented in the preview**
+**Implemented**
 
 - Existing credentials never enter editor draft fields or debug output
 - Explicit Keep, Store and Remove operations coordinate profile and credential persistence
@@ -57,21 +57,20 @@ production packaging/cutover.
   local fields; unsupported backend behavior is labelled WIP
 - Remote/dynamic profiles are preserved and labelled unsupported rather than rewritten
 
-**Remaining**: live Secret Service/editor failure and remote-daemon runtime validation;
-production packaging/cutover.
+The user accepted profile and credential-store behavior during production cutover.
 
 **Implementation**: `crates/gui-core/src/editor.rs`, `runtime.rs`,
 `crates/common/src/ssh_key.rs`, `crates/gui-v2/src/profile_editor.rs`
 
 ---
 
-## US-11.3 — Answer the daemon's exact authentication request safely ⚠️
+## US-11.3 — Answer the daemon's exact authentication request safely ✅
 
 **As a** desktop user  
 **I want** authentication dialogs tied to the daemon's actual request  
 **So that** delayed, misleading or localized text cannot submit the wrong answer.
 
-**Implemented in the preview**
+**Implemented**
 
 - Requests are queued FIFO, de-duplicated and correlated by request and tunnel IDs
 - One GTK modal is keyed by the active request ID; double submission is prevented
@@ -85,21 +84,21 @@ production packaging/cutover.
 - Prompt, instruction, name, error and descriptive status strings are display-only and never
   searched or parsed to choose an action
 
-**Remaining**: live runtime coverage for every supported auth flow, retries, cancellation,
-host-key acceptance/refusal and Secret Service autofill; Orca announcement review.
+The user accepted authentication behavior during production cutover. Daemon text remains
+display-only and never selects actions.
 
 **Implementation**: `crates/gui-core/src/auth.rs`, `controller.rs`, `runtime.rs`,
 `crates/gui-v2/src/auth_dialog.rs`
 
 ---
 
-## US-11.4 — Understand daemon, empty, offline and unavailable states ⚠️
+## US-11.4 — Understand daemon, empty, offline and unavailable states ✅
 
 **As a** desktop user  
 **I want** the interface to distinguish real daemon state from unavailable features  
 **So that** I never mistake placeholder content for a successful operation.
 
-**Implemented in the preview**
+**Implemented**
 
 - Structured checking, online and offline states with real health refresh/retry
 - A structured pre-runtime setup-required state for missing, invalid, or incomplete
@@ -111,8 +110,8 @@ host-key acceptance/refusal and Secret Service autofill; Orca announcement revie
   are identified instead of fabricated
 - Existing daemon-wide uptime may be shown; no new traffic or last-connected data is invented
 
-**Remaining**: live daemon online/offline transitions, long/localized copy and WIP action
-review; lifecycle APIs, import and new telemetry are separate deferred features.
+Live daemon/SSE behavior was accepted during production cutover. Lifecycle APIs, import, and
+new telemetry remain separate deferred features.
 
 **Implementation**: `crates/gui-v2/src/daemon_view.rs`, `profile_list.rs`,
 `action_router.rs`, `setup_wizard.rs`, `crates/gui-core/src/controller.rs`,
@@ -131,7 +130,7 @@ persistence_replaces_atomically_and_secures_the_target}` and `setup_wizard::test
 **I want** the GUI to follow my desktop fonts, colors and input method  
 **So that** it remains usable with my accessibility and display settings.
 
-**Implemented in the preview**
+**Implemented**
 
 - System fonts and semantic GTK/libadwaita colors; no bundled family or fixed color literals
 - Labelled icon/form controls and accessible alert/status roles
@@ -154,7 +153,7 @@ comparison in light/dark modes.
 **I want** tray and main-window actions to behave identically  
 **So that** the same connection cannot have two competing implementations.
 
-**Implemented in the preview**
+**Implemented**
 
 - Toolkit-neutral `AppCommand`, `ProfileAction`, `ActionAvailability` and `AppSnapshot`
 - Main-window actions dispatch those shared commands instead of calling daemon/profile APIs
@@ -169,25 +168,20 @@ selection. No tray dependency was added in v0.4.0.
 
 ---
 
-## US-11.7 — Install GUI v2 as the production desktop application ❌
+## US-11.7 — Install GUI v2 as the production desktop application ✅
 
 **As a** desktop user  
 **I want** the validated second-generation GUI installed and launched normally  
 **So that** I do not need a source checkout or preview executable.
 
-**Status**: **Not implemented.** `gui-v2` remains a nested Cargo workspace with preview
-binary/application IDs. The root workspace, CI, Makefile, packages and desktop entry still
-use `gui-gtk`.
+**Status**: **Implemented.** `crates/gui-v2` is a root-workspace default member. CI, the
+Makefile, development sandbox, installer, desktop entry, and current launch documentation use
+`ssh-tunnel-gui` and `io.github.schirmforge.SshTunnelManager`.
 
-**Required before completion**
+The obsolete `gui-gtk` stays in the workspace on the same GTK binding generation, is excluded
+from default/install/package targets, and receives no updates. Removal is not planned.
 
-- Manual visual, keyboard, Orca, theme/font, live-daemon, Secret Service and Bazzite runtime
-  acceptance
-- Production executable and application ID selection
-- Root workspace, CI/default target, Makefile, install, package and desktop integration
-- Separately reviewable retirement of `gui-gtk` and duplicate gtk-rs generation
-
-**Tracking**: `.plan/UI-03_gui-v2-manual-validation-and-cutover.md`
+**Evidence**: `crates/gui-v2/PHASE7_VALIDATION.md`
 
 ---
 

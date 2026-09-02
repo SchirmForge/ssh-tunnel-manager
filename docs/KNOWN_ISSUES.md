@@ -1,6 +1,6 @@
 # Known Issues & Limitations
 
-This document tracks known bugs, limitations, and missing features in SSH Tunnel Manager v0.4.0.
+This document tracks known bugs, limitations, and missing features in SSH Tunnel Manager v0.5.0.
 
 For missing features described as user stories with their status, see the
 [user stories](user-stories/). For what is planned about them, see [ROADMAP.md](ROADMAP.md).
@@ -40,13 +40,10 @@ For missing features described as user stories with their status, see the
   dead window was never re-sent. The stream now uses a read timeout, the backoff resets after a
   connection that lasted, and the daemon re-sends outstanding prompts to every new subscriber.
   See US-6.3 and US-6.6.
-  - **Manual GUI validation outstanding**: the fix is covered by unit tests and by live tests
-    against a real SSH server, but three desktop checks still need a human — reproducing the
-    original report by hand (wait ~40s at a host key prompt, then answer, and confirm the
-    password prompt appears), confirming an idle GUI holds one long-lived `GET /api/events`
-    rather than a new one every 30 seconds, and running the CLI and GUI together without
-    either double-prompting. This is called out rather than assumed because US-6.3 was marked
-    done in v0.4.0 while the stream was in fact broken.
+  - **GUI validation completed**: the production GUI remained attached beyond the former
+    30-second cutoff, reconciled the live daemon inventory, and operated alongside the CLI.
+    The user confirmed there is no regression in profile, credential-store, daemon, SSE, or
+    authentication behavior.
 
 - ~~**A daemon running as root could not be reached by any client**~~ - **Resolved in v0.5.0.**
   The socket was placed in `$XDG_RUNTIME_DIR`, which for root is `/run/user/0` — mode 0700 by
@@ -60,10 +57,9 @@ For missing features described as user stories with their status, see the
   with the daemon on another machine those are different stores, so nothing was found and the
   user was prompted anyway — no error, no warning. The setting now records **where** the
   credential is, and a client-held one is answered by the client. See US-7.5.
-  - **Still open in the packaged GUI**: `gui-gtk` records the legacy value when saving. It
-    works against a local daemon and is read correctly everywhere. GUI v2 uses explicit
-    client/daemon-host storage and the common Secret Service/keyutils facade, but remains a
-    source preview until cutover.
+  - The obsolete `gui-gtk` source still records the legacy value, but it is frozen and is no
+    longer the default, installed, or packaged GUI. The production GUI writes the explicit
+    client/daemon-host model through the common Secret Service/keyutils facade.
 
 - ~~**Credentials saved before v0.2.0 appeared to be lost**~~ - **Resolved in v0.3.0.** The
   `keyring` 3 → 4 upgrade moved the backing store from the kernel keyutils keyring to Secret
@@ -106,15 +102,11 @@ For missing features described as user stories with their status, see the
 
 ### ❌ GUI Features
 
-**GUI v2 preview is not packaged or the default**
-- **Status**: Source implementation and automated validation complete
-- **Current**: The executable is `ssh-tunnel-gui-v2` in an isolated nested Cargo workspace;
-  installed packages and desktop entries still launch `ssh-tunnel-gtk`
-- **Remaining**: Visual comparison, keyboard/focus, Orca, high contrast/font scaling,
-  narrow/localized layouts, live-daemon authentication, Secret Service, Bazzite runtime,
-  production naming, CI/workspace integration, and packaging acceptance
-- **Workaround**: Continue using the packaged GUI, or build the preview from source using the
-  Development Guide
+**Final keyboard and screen-comparison review**
+- **Status**: Follow-up validation; not a production-cutover blocker
+- **Current**: `ssh-tunnel-gui` is the default root-workspace, installer, and desktop target
+- **Remaining**: Complete keyboard-only review and compare the implemented screens with the
+  supplied mockups; tracked in `.plan/UI_v2-final-validation.md`
 
 **System Tray Integration**
 - **Status**: Adapter and library selection deferred; reusable core commands are implemented
@@ -136,7 +128,7 @@ For missing features described as user stories with their status, see the
   ExecStartPost=/usr/bin/ssh-tunnel start myprofile
   ```
 
-**GUI v2 WIP controls**
+**Production GUI WIP controls**
 - Daemon start/restart/shutdown, SSH config import, stored TOTP, unsupported forwarding
   execution, and unavailable telemetry are labelled WIP and cannot report success
 - Existing daemon-wide uptime is shown; no new traffic or last-connected telemetry exists

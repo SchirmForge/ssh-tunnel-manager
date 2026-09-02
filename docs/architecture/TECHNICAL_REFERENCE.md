@@ -1,6 +1,6 @@
 # SSH Tunnel Manager Technical Reference
 
-**Version**: v0.4.0
+**Version**: v0.5.0
 **Scope**: Current modules, public contracts, persistence, daemon API, GUI boundaries, and
 build/validation requirements.
 
@@ -12,11 +12,11 @@ build/validation requirements.
 | `crates/daemon` | `ssh-tunnel-daemon` | REST/SSE service, SSH lifecycle, authentication, local forwarding, host-key verification, listeners and process security |
 | `crates/cli` | `ssh-tunnel` | Profile and tunnel commands, terminal authentication, table/JSON output |
 | `crates/gui-core` | Library | Toolkit-neutral client setup, controller/runtime, actions/effects, snapshots, preferences, editor/auth contracts, view models |
-| `crates/gui-gtk` | `ssh-tunnel-gtk` | Packaged GTK4/libadwaita application and first-launch wizard; uses compatibility `AppCore` paths |
-| `crates/gui-v2` | `ssh-tunnel-gui-v2` | Isolated second-generation GTK adapter; source preview pending manual validation and cutover |
+| `crates/gui-v2` | `ssh-tunnel-gui` | Production GTK4/libadwaita adapter, first-launch setup, adaptive views, actions, and dialogs |
+| `crates/gui-gtk` | `ssh-tunnel-gtk` | Obsolete frozen adapter retained as a non-default workspace member; uses compatibility `AppCore` paths |
 
-`gui-v2` contains a temporary nested Cargo workspace. Root `--workspace` commands do not
-include it; its manifest must be supplied explicitly until cutover.
+Both GUI crates use the workspace GTK 4.22/libadwaita 1.9 binding generation. `gui-v2` is a
+default member; obsolete `gui-gtk` is compiled explicitly for compatibility.
 
 ## Common library
 
@@ -256,28 +256,18 @@ authentication and optional certificate fingerprint pinning.
 ## Build and validation
 
 - Pinned toolchain: Rust 1.98.0.
-- Root workspace GUI: GTK 4.12+/libadwaita 1.5+ development files.
-- GUI v2 preview target: Fedora 44/Bazzite with GTK 4.22, libadwaita 1.9 and GLib 2.88.
+- Production GUI target: Fedora 44/Bazzite with GTK 4.22, libadwaita 1.9 and GLib 2.88.
 - CLI/daemon also require `cmake` and a C toolchain for `aws-lc-sys`.
 
 Root workspace:
 
 ```bash
-cargo test --workspace --locked
-cargo clippy --workspace --locked --all-targets --all-features -- -D warnings
-cargo build --workspace --release --locked
+cargo test --locked
+cargo clippy --locked --all-targets --all-features -- -D warnings
+cargo build --release --locked
 cargo deny check
+cargo check --package ssh-tunnel-gui-gtk --locked
 ```
 
-GUI v2 workspace:
-
-```bash
-cargo test --manifest-path crates/gui-v2/Cargo.toml --locked
-cargo clippy --manifest-path crates/gui-v2/Cargo.toml --locked --all-targets -- -D warnings
-cargo build --manifest-path crates/gui-v2/Cargo.toml --release --locked
-cargo deny --manifest-path crates/gui-v2/Cargo.toml check
-```
-
-Automated/source validation does not substitute for runtime visual, keyboard, Orca,
-high-contrast/font-scaling, live-daemon, Secret Service, or Bazzite host validation. Those
-remain the manual Phase 7 gate before production cutover.
+Functional runtime acceptance and production cutover are complete. Keyboard-only and mockup
+screen-comparison follow-up remains in `.plan/UI_v2-final-validation.md`.

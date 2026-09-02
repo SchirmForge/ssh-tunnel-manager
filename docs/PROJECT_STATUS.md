@@ -3,7 +3,7 @@
 ## Current State
 
 **Version**: v0.5.0
-**Status**: ✅ Production-ready CLI, daemon, and packaged GTK GUI; 🧪 GUI v2 source preview validated automatically
+**Status**: ✅ Production-ready CLI, daemon, and GTK 4/libadwaita GUI
 **Release date**: 2026-09-02
 
 A snapshot of what exists today. For what is planned see [ROADMAP.md](ROADMAP.md); for what
@@ -15,8 +15,8 @@ of view see the [user stories](user-stories/).
 | Daemon | ✅ Local port forwarding, interactive authentication over SSE, host key verification, three listener modes. Refuses to run as root; privileged ports come from `CAP_NET_BIND_SERVICE` |
 | Event delivery | ✅ One `EventListener` shared by the CLI and every GUI. Outstanding authentication prompts are re-sent to any client that connects, so a reconnect no longer loses them |
 | CLI | ✅ Profile CRUD, tunnel control, status, watch |
-| Packaged GTK GUI (`gui-gtk`) | ✅ Full profile CRUD, live status, first-launch wizard, remote daemon support |
-| GUI v2 preview | 🧪 Source implementation includes first-launch setup; manual runtime/accessibility acceptance and production cutover pending |
+| Production GUI (`ssh-tunnel-gui`) | ✅ `crates/gui-v2`, first-launch setup, adaptive profile management, structured authentication, live status, remote daemon support |
+| Obsolete GUI (`gui-gtk`) | ⛔ Frozen in-tree reference; not a default target, installed, packaged, or maintained |
 | Testing | ✅ Four tiers (static, hermetic, live SSH on a local fixture, live SSH on a real host), sandboxed, all but the last gating CI |
 | Supply chain | ✅ `cargo deny check` gates every pull request; git dependencies banned; 1 known advisory, documented as accepted |
 | Credential storage | ✅ Store selected at runtime and reported; works with a local or remote daemon; migrates from the pre-v0.2.0 store |
@@ -72,12 +72,12 @@ of view see the [user stories](user-stories/).
 - Versioned GUI preferences for profile order, pins, filters, and sorting in `ui.toml`, with
   atomic writes and safe recovery from missing, malformed, stale, or unknown IDs.
 - Presentation-ready profile list/detail, daemon, authentication, WIP, empty, and offline
-  state. `AppCore` remains available only for compatibility with the packaged GUI.
+  state. `AppCore` remains available only for the obsolete `gui-gtk` compatibility source.
 
-### 🧪 GUI v2 (`crates/gui-v2`)
+### ✅ Production GUI (`crates/gui-v2`, binary `ssh-tunnel-gui`)
 
-- Parallel GTK 4/libadwaita application in an isolated nested Cargo workspace, targeting the
-  Bazzite/Fedora 44 GTK 4.22 and libadwaita 1.9 runtime.
+- Production GTK 4/libadwaita application in the root workspace, targeting the Bazzite/Fedora
+  44 GTK 4.22 and libadwaita 1.9 runtime.
 - First-launch client setup gates runtime creation, imports daemon-generated snippets,
   completes empty network hosts, repairs invalid configuration, or collects Unix
   socket/HTTP/HTTPS settings manually.
@@ -94,10 +94,18 @@ of view see the [user stories](user-stories/).
   surfaces.
 - System fonts, semantic theme colors, labelled controls, alert/status semantics, keyboard
   shortcuts, wrapping layouts, and long-content scrollers.
-- Automated/source validation passes. The GUI has not yet been launched for visual, Orca,
-  focus, high-contrast/font-scaling, live-daemon, Secret Service, or Bazzite runtime review.
+- Automated validation, Bazzite runtime launch, live daemon/SSE reconciliation, and user
+  regression acceptance pass. Final keyboard-only and screen-comparison checks remain in
+  `.plan/UI_v2-final-validation.md` and do not block the production target.
 
-### ✅ GUI GTK (`crates/gui-gtk`)
+### ⛔ Obsolete GUI GTK (`crates/gui-gtk`)
+
+This source is frozen for reference and compatibility. It remains a workspace member on the
+same GTK 4.22/libadwaita 1.9 binding generation, but is excluded from the default members,
+is not installed or packaged, and receives no further feature updates. Removal is not
+currently planned.
+
+Historical capabilities at the point it was frozen:
 - Libadwaita/GTK4 application with functional start/stop using **shared SSE-first flow** from common
 - GTK event handler utilities implementing centralized event processing with AppCore integration
 - Uses `start_tunnel_with_events` and `stop_tunnel` helpers from common module
@@ -146,10 +154,10 @@ of view see the [user stories](user-stories/).
 ✅ GNOME Settings-style UI with proper switch styling
 ✅ DEB packaging
 
-🧪 GUI v2 profile search, pinning, ordering, filtering, and safe CRUD
-🧪 GUI v2 structured FIFO authentication and client-held credential resolution
-🧪 GUI v2 daemon/empty/offline views and adaptive/accessibility groundwork
-🧪 GUI v2 remains source-only and is not the default executable or packaged desktop entry
+✅ Production GUI profile search, pinning, ordering, filtering, and safe CRUD
+✅ Production GUI structured FIFO authentication and client-held credential resolution
+✅ Production GUI daemon/empty/offline views and adaptive/accessibility groundwork
+✅ `ssh-tunnel-gui` is the default executable and installed desktop entry
 
 ✅ Sandboxed test suite across four tiers, blocking supply-chain audit, CI, clippy clean
 

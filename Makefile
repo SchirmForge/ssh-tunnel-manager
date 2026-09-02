@@ -95,9 +95,9 @@ run-daemon:
 run-cli:
 	cargo run -p ssh-tunnel-cli -- $(ARGS)
 
-# Run GTK GUI
+# Run the production GTK GUI
 run-gui:
-	cargo run -p ssh-tunnel-gui-gtk
+	cargo run -p ssh-tunnel-gui
 
 # Supply-chain and dependency audit. Policy lives in deny.toml; every ignored
 # advisory there carries a written reason.
@@ -141,7 +141,9 @@ install:
 	@cargo build --release
 	@install -Dm755 target/release/ssh-tunnel-daemon ~/.local/bin/ssh-tunnel-daemon
 	@install -Dm755 target/release/ssh-tunnel ~/.local/bin/ssh-tunnel
-	@install -Dm755 target/release/ssh-tunnel-gtk ~/.local/bin/ssh-tunnel-gtk
+	@install -Dm755 target/release/ssh-tunnel-gui ~/.local/bin/ssh-tunnel-gui
+	@install -Dm644 crates/gui-v2/data/io.github.schirmforge.SshTunnelManager.desktop \
+		~/.local/share/applications/io.github.schirmforge.SshTunnelManager.desktop
 	@echo "Installed to ~/.local/bin/"
 	@echo "Make sure ~/.local/bin is in your PATH"
 
@@ -166,7 +168,7 @@ help:
 	@echo "  audit-tools    - Install the audit tooling (once per environment)"
 	@echo "  run-daemon     - Run daemon in debug mode"
 	@echo "  run-cli        - Run CLI (use ARGS='your args' to pass arguments)"
-	@echo "  run-gui        - Run the GTK GUI (ssh-tunnel-gtk)"
+	@echo "  run-gui        - Run the production GTK GUI (ssh-tunnel-gui)"
 	@echo "  install        - Install binaries to ~/.local/bin (use scripts/install.sh for systemd)"
 	@echo "  help           - Show this help message"
 	@echo ""

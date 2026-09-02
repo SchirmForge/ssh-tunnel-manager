@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=SSH Tunnel Manager
+Comment=Manage SSH port-forwarding profiles and tunnels
+Exec=ssh-tunnel-gui
+Icon=network-vpn
+Terminal=false
+Categories=Network;RemoteAccess;
+StartupNotify=true
+StartupWMClass=io.github.schirmforge.SshTunnelManager

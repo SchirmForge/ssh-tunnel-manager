@@ -5,14 +5,17 @@
 
 ## Quick Start
 
-For most users, the easiest installation method is:
+For a current source install or the next published package, the normal flow is:
 
 1. **Install** .deb packages (Ubuntu/Debian) or build from source
 2. **Start** the daemon as a user service (`systemctl --user enable --now ssh-tunnel-daemon`)
-3. **Launch** the GUI (`ssh-tunnel-gtk`) - configuration wizard runs automatically on first launch
+3. **Launch** the GUI (`ssh-tunnel-gui`) - configuration wizard runs automatically on first launch
 4. **Create** profiles and start tunnels
 
 See detailed instructions below for your platform.
+
+The already-published v0.5.0 DEB retains the historical `ssh-tunnel-gtk` launcher; see its
+artifact note below.
 
 ## Debian/Ubuntu (Recommended)
 
@@ -61,9 +64,9 @@ sudo dpkg -i ssh-tunnel-daemon_0.5.0-0_amd64.deb \
 - `/usr/bin/ssh-tunnel-gtk` - GTK GUI
 - Desktop entry for the GUI application
 
-GUI v2 is **not** part of the v0.5.0 packages. The package and desktop entry deliberately
-remain on `gui-gtk` until GUI v2 completes manual runtime/accessibility validation and the
-production cutover is accepted.
+These are the historical v0.5.0 release artifacts and therefore retain the old
+`ssh-tunnel-gtk` launcher. Current source installs and the next published packages use the
+production `ssh-tunnel-gui` application described below.
 
 ## Other Distributions
 
@@ -73,16 +76,10 @@ RPM packages are coming soon.
 
 ### From Source
 
-**Prerequisites for the packaged/root-workspace GUI:**
+**Prerequisites for the production root-workspace GUI:**
 ```bash
-# Ubuntu/Debian
-sudo apt install build-essential pkg-config libgtk-4-dev libadwaita-1-dev
-
-# Fedora
+# Fedora 44 controlled environment
 sudo dnf install gcc pkg-config gtk4-devel libadwaita-devel
-
-# Arch
-sudo pacman -S base-devel gtk4 libadwaita
 ```
 
 **Build and install:**
@@ -93,12 +90,12 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 # Clone and build
 git clone https://github.com/yourusername/ssh-tunnel-manager
 cd ssh-tunnel-manager
-cargo build --release --workspace
+cargo build --release
 
 # Install binaries (adjust prefix as needed)
 sudo install -Dm755 target/release/ssh-tunnel-daemon /usr/local/bin/
 sudo install -Dm755 target/release/ssh-tunnel /usr/local/bin/
-sudo install -Dm755 target/release/ssh-tunnel-gtk /usr/local/bin/
+sudo install -Dm755 target/release/ssh-tunnel-gui /usr/local/bin/
 
 # Install systemd service (optional)
 mkdir -p ~/.config/systemd/user/
@@ -106,23 +103,23 @@ cp scripts/systemd/ssh-tunnel-daemon.service ~/.config/systemd/user/
 systemctl --user daemon-reload
 ```
 
-### GUI v2 source preview (Bazzite/Fedora 44)
+### Production GUI target (Bazzite/Fedora 44)
 
-GUI v2 is a separate nested Cargo workspace and currently targets the system stack validated
-on Bazzite/Fedora 44: GTK 4.22, libadwaita 1.9, GLib 2.88, and Rust 1.98. Compatibility with
-other distributions is not claimed for this preview.
+The production GUI currently targets the system stack validated on Bazzite/Fedora 44: GTK
+4.22, libadwaita 1.9, GLib 2.88, and Rust 1.98. Compatibility with other distributions is
+not claimed at this stage.
 
 Install development libraries in a Fedora 44 distrobox/toolbox rather than changing an
 immutable Bazzite host:
 
 ```bash
 sudo dnf install gcc cmake pkg-config gtk4-devel libadwaita-devel glib2-devel
-cargo build --manifest-path crates/gui-v2/Cargo.toml --release --locked
+cargo build --package ssh-tunnel-gui --release --locked
 ```
 
-The binary is written to
-`crates/gui-v2/target/release/ssh-tunnel-gui-v2`. It is not installed automatically and has
-no production desktop entry. On first launch it validates `cli.toml`, offers to import a
+The binary is written to `target/release/ssh-tunnel-gui`. `scripts/install.sh` installs it and
+the `io.github.schirmforge.SshTunnelManager` desktop entry. On first launch it validates
+`cli.toml`, offers to import a
 daemon-generated snippet, and otherwise opens manual Unix socket/HTTP/HTTPS client setup.
 This configures a connection to an existing daemon; it does not start the daemon process.
 
@@ -232,11 +229,11 @@ ssh-tunnel-daemon &
 
 ```bash
 # Launch the GUI
-ssh-tunnel-gtk
+ssh-tunnel-gui
 ```
 
-Both the packaged `ssh-tunnel-gtk` application and the GUI v2 source preview run client
-setup automatically when no valid `cli.toml` is available:
+The production `ssh-tunnel-gui` application runs client setup automatically when no valid
+`cli.toml` is available:
 - Detects daemon-generated configuration snippet and offers to import it
 - For network access (daemon on `0.0.0.0`), prompts for actual IP address
 - Falls back to manual configuration dialog if snippet not found
@@ -328,7 +325,7 @@ sudo cat /home/username/.config/ssh-tunnel-manager/cli-config.snippet
 
 **Automatic import:**
 
-The CLI and both desktop GUIs automatically detect and offer to import this snippet on first
+The CLI and production desktop GUI automatically detect and offer to import this snippet on first
 use:
 
 ```bash
@@ -337,12 +334,8 @@ ssh-tunnel start <any-profile>
 # Will prompt to import the configuration snippet
 
 # GUI - Launch the application
-ssh-tunnel-gtk
+ssh-tunnel-gui
 # Will show configuration wizard on first launch
-
-# GUI v2 source preview
-./crates/gui-v2/target/debug/ssh-tunnel-gui-v2
-# Will show its client setup window on first launch
 ```
 
 **Understanding empty `daemon_host` (network access scenarios):**
@@ -366,7 +359,7 @@ This is intentional because:
 
 **What happens when you import:**
 
-The CLI and both desktop GUIs detect the empty `daemon_host` and prompt for the actual IP
+The CLI and production desktop GUI detect the empty `daemon_host` and prompt for the actual IP
 address:
 
 1. **CLI**: Interactive prompt asking for the daemon's IP address
@@ -473,7 +466,7 @@ sudo apt remove ssh-tunnel-daemon   # Daemon only (will break CLI/GUI)
 
 **From source:**
 ```bash
-sudo rm /usr/local/bin/ssh-tunnel{,-daemon,-gtk}
+sudo rm /usr/local/bin/ssh-tunnel /usr/local/bin/ssh-tunnel-daemon /usr/local/bin/ssh-tunnel-gui
 systemctl --user disable --now ssh-tunnel-daemon
 rm ~/.config/systemd/user/ssh-tunnel-daemon.service
 ```

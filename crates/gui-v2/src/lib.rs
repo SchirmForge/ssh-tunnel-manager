@@ -23,8 +23,8 @@ pub use shell_state::{CapabilityPresentation, DaemonBadgeState, ShellViewState};
 
 use adw::prelude::*;
 
-const APPLICATION_ID: &str = "io.github.schirmforge.SshTunnelManagerGuiV2";
-const STYLE_RESOURCE: &str = "/io/github/schirmforge/SshTunnelManagerGuiV2/style.css";
+const APPLICATION_ID: &str = "io.github.schirmforge.SshTunnelManager";
+const STYLE_RESOURCE: &str = "/io/github/schirmforge/SshTunnelManager/style.css";
 
 pub fn run() -> gtk::glib::ExitCode {
     if let Err(error) = gtk::gio::resources_register_include!("gui-v2.gresource") {

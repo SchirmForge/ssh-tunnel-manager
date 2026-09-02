@@ -124,9 +124,8 @@ GUI v2 selects its password entry only from `AuthRequestType::Password` and the 
   is prompted, rather than the stale value being replayed until the server's `MaxAuthTries`
   is exhausted
 - If retrieval fails for any reason, the user is prompted rather than the connection failing
-- The packaged GUI puts the "Store in Keychain" switch before the password field. GUI v2
-  exposes explicit client/daemon-host storage, reveals the new-secret field only for a real
-  Store operation, and never loads an existing secret into editor state
+- The production GUI exposes explicit client/daemon-host storage, reveals the new-secret
+  field only for a real Store operation, and never loads an existing secret into editor state
 
 **Implementation**: `crates/common/src/keychain.rs`, `crates/common/src/daemon_client.rs`
 (`ClientHeldCredential`), `crates/daemon/src/security.rs`, `crates/gui-core/src/editor.rs`,
@@ -140,9 +139,9 @@ GUI v2 selects its password entry only from `AuthRequestType::Password` and the 
 > machines, so nothing was found and the user was prompted anyway — silently, every time.
 > The legacy value is still read and resolves by where the daemon is.
 >
-> The packaged `gui-gtk` still records the legacy value. GUI v2 records the explicit location
-> and uses the common Secret Service/keyutils facade, but does not become the packaged GUI
-> until its manual validation and cutover gates pass.
+> The obsolete `gui-gtk` source still records the legacy value but is not an installed editing
+> path. The production GUI records the explicit location and uses the common Secret
+> Service/keyutils facade.
 
 ---
 

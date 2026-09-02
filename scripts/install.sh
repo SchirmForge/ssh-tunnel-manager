@@ -10,7 +10,7 @@ usage() {
   cat <<'EOF'
 Usage: install.sh [--prefix /usr/local] [--user-unit | --system-unit] [--instance NAME] [--enable]
 
-Builds release binaries, installs them to PREFIX/bin, and optionally installs systemd units.
+Builds release binaries, installs them and the desktop entry, and optionally installs systemd units.
 
   --prefix PATH     Install prefix (default: /usr/local)
   --user-unit       Install per-user systemd service to ~/.config/systemd/user
@@ -38,13 +38,16 @@ while [[ $# -gt 0 ]]; do
 done
 
 echo "==> Building release binaries"
-cargo build --release --package ssh-tunnel-cli --package ssh-tunnel-daemon
+cargo build --release --package ssh-tunnel-cli --package ssh-tunnel-daemon --package ssh-tunnel-gui
 
 echo "==> Using installation prefix: ${PREFIX}"
 
 echo "==> Installing binaries to ${PREFIX}/bin"
 install -Dm755 target/release/ssh-tunnel-daemon "${PREFIX}/bin/ssh-tunnel-daemon"
 install -Dm755 target/release/ssh-tunnel "${PREFIX}/bin/ssh-tunnel"
+install -Dm755 target/release/ssh-tunnel-gui "${PREFIX}/bin/ssh-tunnel-gui"
+install -Dm644 crates/gui-v2/data/io.github.schirmforge.SshTunnelManager.desktop \
+  "${PREFIX}/share/applications/io.github.schirmforge.SshTunnelManager.desktop"
 
 if [[ "${MODE}" == "user" ]]; then
   UNIT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"

@@ -6,7 +6,7 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 publish.workspace = true
-description = "GTK4/Libadwaita GUI for SSH Tunnel Manager"
+description = "Obsolete frozen GTK4/libadwaita GUI retained for compatibility"
 
 [[bin]]
 name = "ssh-tunnel-gtk"
@@ -20,8 +20,8 @@ ssh-tunnel-gui-core = { path = "../gui-core" }
 # GTK and libadwaita (Phase 1: Basic UI only)
 gtk4 = { workspace = true }
 libadwaita = { workspace = true }
-glib = "0.20"
-gio = "0.20"
+glib = { workspace = true }
+gio = { workspace = true }
 
 # Phase 2 dependencies:
 # Serialization (for profile loading)

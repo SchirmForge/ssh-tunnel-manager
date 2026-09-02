@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **GUI v2 is now the production desktop application.** The root-workspace package and binary
+  are `ssh-tunnel-gui`, with application ID
+  `io.github.schirmforge.SshTunnelManager`. The Makefile, development sandbox, installer,
+  desktop entry, CI, and current launch documentation use that identity.
+- Both GUI crates now use the Fedora 44/Bazzite GTK 4.22 stack through `gtk4` 0.11.4,
+  `libadwaita` 0.9.2, and `glib`/`gio` 0.22.9, leaving one GTK binding generation in the
+  workspace.
+- `crates/gui-gtk` is obsolete and frozen. It remains a non-default workspace member for
+  compile compatibility, is not installed or packaged, and has no planned removal date.
+
+### Validation
+
+- The user accepted that the production GUI does not regress profile, credential-store,
+  daemon, SSE, or authentication behavior.
+- `ssh-tunnel-gui` and obsolete `ssh-tunnel-gui-gtk` compile in the controlled Fedora 44
+  environment. The frozen GUI retains expected deprecation warnings.
+- Keyboard-only and mockup screen-comparison review moved to
+  `.plan/UI_v2-final-validation.md`; detailed functional defects remain in the user-owned
+  `.plan/UI_known-issues.md`.
+
 ---
 
 ## [0.5.0] - 2026-09-02

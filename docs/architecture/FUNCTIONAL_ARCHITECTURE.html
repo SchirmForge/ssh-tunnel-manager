@@ -135,8 +135,8 @@
 <p class="subtitle">SSH Tunnel Manager — what the system is made of, and how its parts behave.</p>
 
 <div class="meta">
-  <span><strong>Version</strong> v0.4.0</span>
-  <span><strong>Status</strong> Production clients plus an automated/source-validated GUI v2 preview</span>
+  <span><strong>Version</strong> v0.5.0</span>
+  <span><strong>Status</strong> Production CLI, daemon, and second-generation GTK GUI</span>
   <span><strong>Companion</strong> <a href="TECHNICAL_ARCHITECTURE.html">Technical Architecture</a></span>
 </div>
 
@@ -196,7 +196,7 @@
 
   <rect x="50" y="56" width="230" height="42" rx="6" class="d-box d-client"/>
   <text x="66" y="76" class="d-label">GTK4 / libadwaita adapters</text>
-  <text x="66" y="91" class="d-sub">gui-gtk packaged · gui-v2 preview</text>
+  <text x="66" y="91" class="d-sub">gui-v2 production · gui-gtk obsolete</text>
 
   <rect x="50" y="106" width="230" height="42" rx="6" class="d-box d-client"/>
   <text x="66" y="126" class="d-label">Toolkit-neutral app core</text>
@@ -337,8 +337,8 @@
 </p>
 
 <h3>3.4 GUI — <code>gui-core</code>, <code>gui-gtk</code> and <code>gui-v2</code></h3>
-<p><span class="status partial">🧪 Parallel delivery</span>: <code>gui-gtk</code> is packaged;
-  <code>gui-v2</code> is source/automated validated and awaits runtime acceptance and cutover.</p>
+<p><span class="status ok">✅ Production cutover complete</span>: <code>gui-v2</code> is the
+  production application; <code>gui-gtk</code> is an obsolete, frozen, non-default workspace member.</p>
 <p>
   <code>gui-core</code> owns immutable snapshots, typed commands/effects, action availability,
   feature capabilities, FIFO authentication state, profile-editor contracts, GUI preferences,
@@ -348,8 +348,8 @@
   <code>gui-gtk</code>.
 </p>
 <ul>
-  <li><code>gui-gtk</code>: packaged application, including the first-launch configuration wizard</li>
-  <li><code>gui-v2</code>: first-launch snippet/manual client setup, adaptive search/filter/sort/pin/order views, details, safe CRUD, authentication, daemon information, empty and offline states</li>
+  <li><code>gui-v2</code>: production application with first-launch snippet/manual client setup, adaptive search/filter/sort/pin/order views, details, safe CRUD, authentication, daemon information, empty and offline states</li>
+  <li><code>gui-gtk</code>: obsolete compatibility source; not installed, packaged, or updated</li>
   <li>Profile actions use the same toolkit-neutral command surface intended for a future tray adapter</li>
   <li>Unsupported behavior is labelled WIP; useful form reveal/hide and validation still operate without false persistence or success</li>
   <li>Daemon copy is display-only. Event/request/status variants, IDs, capabilities and booleans select every action and state transition</li>

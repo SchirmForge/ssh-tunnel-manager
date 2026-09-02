@@ -1,16 +1,16 @@
 [package]
-name = "ssh-tunnel-gui-v2"
-version = "0.5.0"
-edition = "2021"
+name = "ssh-tunnel-gui"
+version.workspace = true
+edition.workspace = true
 rust-version = "1.92"
-publish = false
-authors = ["SSH Tunnel Manager Contributors"]
-license = "Apache-2.0"
-repository = "https://github.com/SchirmForge/ssh-tunnel"
-description = "Second-generation GTK 4/libadwaita GUI for SSH Tunnel Manager"
+publish.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Production GTK 4/libadwaita GUI for SSH Tunnel Manager"
 
 [[bin]]
-name = "ssh-tunnel-gui-v2"
+name = "ssh-tunnel-gui"
 path = "src/main.rs"
 
 [dependencies]
@@ -22,9 +22,3 @@ uuid = "1"
 
 [build-dependencies]
 glib-build-tools = "0.22.8"
-
-# Keep Phase 2B completely isolated until the root workspace integration is
-# reviewed separately. Remove this table when gui-v2 is added to the parent
-# workspace members.
-[workspace]
-resolver = "2"

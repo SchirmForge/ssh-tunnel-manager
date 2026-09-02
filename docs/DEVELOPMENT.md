@@ -68,27 +68,18 @@ Only needed if you are building on the host rather than in the container.
 **For CLI and Daemon:**
 - `cmake`, a C compiler and `pkg-config` (for `aws-lc-sys`)
 
-**For the packaged GTK GUI:**
-- GTK4 (≥4.12)
-- libadwaita (≥1.5)
+**For the production GTK GUI:**
+- GTK 4.22
+- libadwaita 1.9
 - GLib development files
-
-**Installation on Debian/Ubuntu:**
-```bash
-sudo apt install libgtk-4-dev libadwaita-1-dev build-essential pkg-config
-```
 
 **Installation on Fedora:**
 ```bash
 sudo dnf install gtk4-devel libadwaita-devel gcc pkg-config
 ```
 
-**Installation on Arch:**
-```bash
-sudo pacman -S gtk4 libadwaita base-devel
-```
 
-**For GUI v2:** use the Fedora 44 development container. It intentionally targets GTK 4.22,
+**For the production GUI:** use the Fedora 44 development container. It intentionally targets GTK 4.22,
 libadwaita 1.9, GLib 2.88, and Rust 1.98 as supplied by the current Bazzite/Fedora 44 system;
 other distributions are not a compatibility target yet.
 
@@ -102,14 +93,14 @@ cd ssh-tunnel-manager
 # Build CLI and daemon only (no system dependencies)
 cargo build --release --package ssh-tunnel-cli --package ssh-tunnel-daemon
 
-# Build the GTK GUI
-cargo build --release --package ssh-tunnel-gui-gtk
+# Build the production GTK GUI
+cargo build --release --package ssh-tunnel-gui
 
-# Build the whole workspace: daemon, CLI, common, gui-core, gui-gtk
+# Build the default workspace members, including the production GUI
 cargo build --release
 
-# GUI v2 is an intentionally separate nested workspace
-cargo build --manifest-path crates/gui-v2/Cargo.toml --release --locked
+# Check the obsolete GUI explicitly (not a default member)
+cargo check --package ssh-tunnel-gui-gtk --locked
 ```
 
 ### Basic Usage
@@ -140,23 +131,21 @@ cargo build --manifest-path crates/gui-v2/Cargo.toml --release --locked
 RUST_LOG=info ./target/release/ssh-tunnel-daemon
 
 # Launch the GTK GUI (in another terminal)
-./target/release/ssh-tunnel-gtk
+./target/release/ssh-tunnel-gui
 ```
 
-#### Using the GUI v2 source preview
+#### Using the production GUI
 
-GUI v2 validates `cli.toml` before constructing its runtime. With no valid file it offers
+The GUI validates `cli.toml` before constructing its runtime. With no valid file it offers
 daemon-snippet import or manual Unix socket/HTTP/HTTPS setup, then starts the runtime after a
-validated atomic save. Build it in the Fedora 44 environment, then run its nested-workspace
-binary:
+validated atomic save. Build it in the Fedora 44 environment, then run:
 
 ```bash
-cargo build --manifest-path crates/gui-v2/Cargo.toml --locked
-./crates/gui-v2/target/debug/ssh-tunnel-gui-v2
+cargo build --package ssh-tunnel-gui --locked
+./target/debug/ssh-tunnel-gui
 ```
 
-The production name/application ID, desktop entry, root-workspace integration, and packaging
-remain cutover decisions. Do not treat this command as an installed application path.
+The production application ID is `io.github.schirmforge.SshTunnelManager`.
 
 ### Run with Debug Logging
 
@@ -297,32 +286,32 @@ make sandbox ARGS="--mode unix-socket --profiles key,password,2fa"
 
 That builds debug binaries, starts a daemon, wires `cli.toml` to its generated token, seeds
 a profile per auth type from `.local/testing/ssh-target.env`, and drops you into a shell
-with `ssh-tunnel` and `ssh-tunnel-gtk` on `PATH` pointing at the sandbox:
+with `ssh-tunnel` and `ssh-tunnel-gui` on `PATH` pointing at the sandbox:
 
 ```bash
 ssh-tunnel list
 ssh-tunnel start test-2fa
-ssh-tunnel-gtk
+ssh-tunnel-gui
 ```
 
 Exit the shell to stop the daemon and delete the sandbox. Without the target env file it
 still opens an empty sandbox and tells you what is missing.
 
-GUI v2 is not wired into `scripts/dev-env.sh`, the root Makefile, or CI yet. Its isolated
-automated gates are:
+The production GUI is wired into `scripts/dev-env.sh`, the root Makefile, and Fedora 44 CI.
+Its automated gates are:
 
 ```bash
-cargo fmt --manifest-path crates/gui-v2/Cargo.toml -- --check
-cargo test --manifest-path crates/gui-v2/Cargo.toml --locked
-cargo clippy --manifest-path crates/gui-v2/Cargo.toml --locked --all-targets -- -D warnings
-cargo build --manifest-path crates/gui-v2/Cargo.toml --release --locked
-cargo deny --manifest-path crates/gui-v2/Cargo.toml check
+cargo fmt --all -- --check
+cargo test --package ssh-tunnel-gui --locked
+cargo clippy --package ssh-tunnel-gui --locked --all-targets -- -D warnings
+cargo build --package ssh-tunnel-gui --release --locked
+cargo check --package ssh-tunnel-gui-gtk --locked
+cargo deny check
 ```
 
-The source/automated Phase 7 results are recorded in
-[`crates/gui-v2/PHASE7_VALIDATION.md`](../crates/gui-v2/PHASE7_VALIDATION.md). Manual visual,
-Orca, focus, theme/font scaling, live-daemon, Secret Service, and Bazzite runtime checks are
-still pending; no automated result should be described as completing those runtime checks.
+Phase 7 validation and cutover evidence is recorded in
+[`crates/gui-v2/PHASE7_VALIDATION.md`](../crates/gui-v2/PHASE7_VALIDATION.md). Keyboard-only and
+mockup screen-comparison follow-up is tracked in `.plan/UI_v2-final-validation.md`.
 
 ### Before pushing
 
@@ -361,8 +350,8 @@ and, unlike it, honours the ignore list in `deny.toml`; running both would mean 
 lists drifting apart, so there is one. Use `cargo audit` directly for an ad hoc look.
 
 `cargo machete` is reported but does not fail the build. The v0.4.0 GUI-core dependency
-cleanup resolved its findings; the outgoing `gui-gtk` remains to be reviewed or retired at
-cutover.
+cleanup resolved its findings; obsolete `gui-gtk` is frozen, so any remaining report there is
+documented rather than turned into maintenance work.
 
 Policy lives in [`deny.toml`](../deny.toml). Every ignored advisory there carries a written
 reason and the condition under which it should be revisited — an ignore without one hides

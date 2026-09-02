@@ -112,7 +112,7 @@ a failure, at two levels because the two live tiers can support different amount
 
 **Acceptance criteria**
 - `make sandbox` (or `scripts/dev-env.sh`) builds debug binaries, opens a sandbox, starts a daemon in a chosen listener mode, wires `cli.toml` to its generated token and seeds a profile per auth type
-- `ssh-tunnel` and `ssh-tunnel-gtk` are on `PATH` and point at the sandbox
+- `ssh-tunnel` and `ssh-tunnel-gui` are on `PATH` and point at the sandbox
 - Exiting the shell stops the daemon and deletes everything
 - Without the target env file it still opens an empty sandbox and says what is missing
 
@@ -132,15 +132,14 @@ a failure, at two levels because the two live tiers can support different amount
 - The tier needing real credentials stays `workflow_dispatch` only
 - The supply chain is checked: advisories, licences, dependency sources and unused dependencies
 - Secrets are scanned for on every pull request
-- Every root-workspace member builds, so root `--workspace` needs no carve-out
+- Fedora 44 CI validates the production GUI and compiles the obsolete GUI on the common GTK
+  binding generation; non-GUI checks remain portable to the main CI environment
 - Actions are pinned to commit SHAs and the toolchain is pinned by `rust-toolchain.toml`; neither floats
 
 **Implementation**: `.github/workflows/ci.yml`, `deny.toml`, `rust-toolchain.toml`, `.github/dependabot.yml`
 
-GUI v2 is temporarily a separate nested workspace and is not in CI yet. Its locked tests,
-Clippy, release build and dependency policy pass in the Fedora 44 environment, but CI/root
-workspace integration is part of [US-11.7](EPIC-11-desktop-gui-v2.md) rather than being
-silently claimed here.
+The production GUI is a root-workspace default member. Fedora 44 CI runs its locked tests,
+Clippy, and release build and explicitly compiles obsolete `gui-gtk`.
 
 ---
 
@@ -315,4 +314,3 @@ else.
 > drop then waited out: the tier-2 suite took 300 seconds instead of 20, and whether the test
 > worked at all depended on whether the prompt arrived before the body's next await point. The
 > suite now runs in 5.3 seconds.
-

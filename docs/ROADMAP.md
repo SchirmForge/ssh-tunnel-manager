@@ -66,8 +66,8 @@ Delivered in v0.4.0:
 
 Remaining:
 - Unattended credentials for a daemon with no client attached — see `.plan/AUTH-02`
-- The packaged `gui-gtk` still records the legacy storage value. GUI v2 writes the explicit
-  client/daemon-host model, but does not replace the packaged GUI until cutover.
+- The obsolete `gui-gtk` source still records the legacy storage value. It is frozen,
+  excluded from default builds and packaging, and is not a supported editing path.
 - Fix whatever the live tier turns up once the test accounts exist on the target host
 - Close the test and audit backlog in `.plan/DEP-02_test-and-audit-backlog.md` — most
   notably unit coverage for `tunnel.rs` and `keychain.rs`, and an sshd version matrix to
@@ -80,32 +80,25 @@ Remaining:
 
 | Target | Status |
 |---|---|
-| DEB | ✅ Done — daemon, CLI, GTK GUI |
+| DEB | ✅ Production package/binary name is `ssh-tunnel-gui`; publish artifacts with the next release |
 | RPM | 🚧 In progress |
 | AUR (PKGBUILD) | 🚧 Not started |
 | Flatpak | 🚧 To be confirmed |
 
-### GUI v2 runtime acceptance and cutover
+### Production GUI cutover
 
-**Status**: Source implementation and automated validation complete; manual acceptance and
-integration pending.
+**Status**: Complete.
 
-Remaining cutover work:
+- `crates/gui-v2` is the root-workspace/default GUI package `ssh-tunnel-gui`.
+- The production application ID is `io.github.schirmforge.SshTunnelManager`.
+- CI validates it on Fedora 44; the Makefile, installer, development sandbox, desktop entry,
+  and current documentation use the production binary.
+- The user accepted profile, credential-store, daemon, SSE, and authentication behavior.
+- `crates/gui-gtk` remains an obsolete, frozen workspace member on the same GTK binding
+  generation. It is excluded from default builds and packaging; removal is not planned.
 
-1. Launch the GUI only after explicit approval and compare all in-scope screens in light and
-   dark modes with the supplied mockups.
-2. Exercise keyboard traversal/focus, Orca announcements, high contrast, enlarged system
-   fonts, narrow layouts, long/localized copy, live daemon transitions, supported
-   authentication, and Secret Service behavior.
-3. Exercise first-launch setup with no config, a generated snippet, bind-all network hosts,
-   invalid existing config, cancellation, retry, and the post-save runtime transition.
-4. Confirm the release binary against the Bazzite 44 runtime.
-5. After acceptance, choose the production executable/application ID, add GUI v2 to the root
-   workspace and CI/default build targets, update packaging/desktop integration, and retire
-   `gui-gtk` in a separately reviewable change.
-
-These gates are tracked in `.plan/UI-03_gui-v2-manual-validation-and-cutover.md`. They do not
-silently expand v0.4.0 to include the separately deferred capabilities below.
+Keyboard-only review and screen comparison continue separately in
+`.plan/UI_v2-final-validation.md`; they do not roll back the accepted production target.
 
 ## Deferred or excluded from v0.4.0
 
@@ -121,7 +114,7 @@ backlog item.
 | SSH config import | **Deferred** | The GUI entry point is visibly WIP and performs no fake import. Parser, merge, conflict, and credential semantics need a separate feature plan. |
 | New traffic, uptime, or last-connected telemetry | **Deferred** | GUI v2 renders fields the daemon already supplies, including daemon-wide uptime. No new per-tunnel traffic, last-connected, or additional uptime field/endpoint was added. |
 | Parsing daemon prompt strings into structured security data | **Not planned** | Free-form daemon text is presentation-only and will never be a control plane. Future host/key/fingerprint facts require additive structured protocol fields. |
-| Cross-distribution, Windows, or macOS GUI v2 compatibility | **Out of scope** | The preview targets the current Bazzite/Fedora 44 system. Portability work starts only after the production cutover and a separate compatibility plan. |
+| Cross-distribution, Windows, or macOS GUI compatibility | **Out of scope** | The production GUI currently targets Bazzite/Fedora 44. Portability requires a separate compatibility plan. |
 
 ---
 
@@ -279,11 +272,11 @@ and the systemd unit files.
 | Live SSH tests only runnable by hand, with credentials | ✅ Resolved — an unprivileged localhost sshd covers the key-based half on every pull request with no secrets; the full matrix runs against a provisioned host |
 | RSA timing side channel (`RUSTSEC-2023-0071`) | ⚠️ Accepted — no fixed version exists in any `rsa` release; dropping RSA support would break users' keys. See [architecture/SECURITY.md](architecture/SECURITY.md) |
 | `rustls-pemfile` unmaintained | 🚧 Open — functional, no known vulnerability; migrate to `rustls-pki-types` when convenient |
-| `gui-core` / `gui-gtk` declare unused dependencies | 🚧 `gui-core` resolved in v0.4.0; review of the outgoing `gui-gtk` remains until retirement |
+| `gui-core` / `gui-gtk` declare unused dependencies | ⚠️ `gui-core` resolved in v0.4.0; obsolete `gui-gtk` is frozen and its remaining report is accepted unless it prevents compilation |
 | Two client architectures for the same event stream | ✅ Resolved in v0.5.0 — the CLI hand-rolled its own SSE subscription while the GUI used `EventListener`, so a transport fix on one path missed the other. Both now share `EventListener`, and `gui-core::events` (a trait with no implementors) was removed |
 | Runtime paths derived in three places | ✅ Resolved in v0.5.0 — the socket, the PID file and the client's probe list disagreed under the project's own systemd unit. One module in `common` now owns them |
 | Live suites could report success having run nothing | ✅ Resolved in v0.5.0 — `make test-live` and `make test-live-fixture` run strict, and the local fixture no longer destroys a provisioned target's configuration |
-| Manual GUI validation of event delivery | ⚠️ Open — the v0.5.0 reconnection work is covered by unit and live-CLI tests, but three desktop checks need a human. Tracked in `.plan/ARCH-02_manual-client-validation.md` |
+| Manual GUI validation of event delivery | ✅ Accepted — the production GUI stayed attached beyond the former timeout, reconciled the live daemon, and operated alongside the CLI without regressing SSE/authentication behavior |
 
 ---
 

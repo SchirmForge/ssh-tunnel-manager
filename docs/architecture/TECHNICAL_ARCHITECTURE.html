@@ -132,7 +132,7 @@
 <p class="subtitle">SSH Tunnel Manager — the decisions behind the implementation, and how the code is organised.</p>
 
 <div class="meta">
-  <span><strong>Version</strong> v0.4.0</span>
+  <span><strong>Version</strong> v0.5.0</span>
   <span><strong>Audience</strong> Contributors</span>
   <span><strong>Companion</strong> <a href="FUNCTIONAL_ARCHITECTURE.html">Functional Architecture</a></span>
 </div>
@@ -307,7 +307,7 @@
 
 <figure>
 <svg viewBox="0 0 690 330" role="img" aria-labelledby="crates-title">
-  <title id="crates-title">Crate dependency graph: common underpins daemon, cli and gui-core; gui-core underpins the packaged gui-gtk compatibility path and isolated gui-v2 preview</title>
+  <title id="crates-title">Crate dependency graph: common underpins daemon, cli and gui-core; gui-core underpins the production gui-v2 and obsolete gui-gtk adapters</title>
   <defs>
     <marker id="arrow3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M 0 0 L 10 5 L 0 10 z" class="d-arrowhead"/>
@@ -327,7 +327,7 @@
 
   <rect x="450" y="46" width="180" height="52" rx="6" class="d-box d-client"/>
   <text x="466" y="68" class="d-label">GTK GUI adapters</text>
-  <text x="466" y="85" class="d-sub">gui-gtk · isolated gui-v2</text>
+  <text x="466" y="85" class="d-sub">gui-v2 production · gui-gtk obsolete</text>
 
 
   <!-- gui-core -->
@@ -349,7 +349,7 @@
 
   <text x="140" y="230" class="d-sub">depends on</text>
 </svg>
-<figcaption>The root workspace builds the packaged GUI; GUI v2 is temporarily a nested workspace. Both reuse <code>gui-core</code> and <code>common</code>.</figcaption>
+<figcaption>Both GUI adapters are root-workspace members and reuse <code>gui-core</code> and <code>common</code>; only <code>gui-v2</code> is a default/install/package target.</figcaption>
 </figure>
 
 <table>
@@ -359,8 +359,8 @@
     <tr><td><code>daemon</code></td><td>bin</td><td>Axum API server, tunnel manager and SSH lifecycle, <code>known_hosts</code>, TLS setup, PID guard, permission enforcement</td></tr>
     <tr><td><code>cli</code></td><td>bin</td><td>clap command surface, interactive prompts, table and JSON rendering</td></tr>
     <tr><td><code>gui-core</code></td><td>lib</td><td>Client setup, controller/reducer, snapshots, typed actions/effects, runtime, auth queue, editor contracts, <code>ui.toml</code>, view models — no toolkit dependency</td></tr>
-    <tr><td><code>gui-gtk</code></td><td>bin</td><td>GTK4 / libadwaita widgets, dialogs, the configuration wizard</td></tr>
-    <tr><td><code>gui-v2</code></td><td>bin + temporary nested workspace</td><td>GTK4/libadwaita 0.22-generation adapter, first-launch setup, GLib/Tokio bridge, adaptive views, actions and dialogs; source preview pending cutover</td></tr>
+    <tr><td><code>gui-v2</code></td><td>bin + default workspace member</td><td>Production GTK4/libadwaita adapter, first-launch setup, GLib/Tokio bridge, adaptive views, actions and dialogs</td></tr>
+    <tr><td><code>gui-gtk</code></td><td>bin + non-default workspace member</td><td>Obsolete frozen GTK4/libadwaita compatibility adapter; compiled but not installed or packaged</td></tr>
   </tbody>
 </table>
 
@@ -419,7 +419,7 @@
 
 <h4>The GUI side</h4>
 <p>
-  The packaged GUI is single-threaded, and its async work runs on the GLib main context via
+  The obsolete GUI is single-threaded, and its async work runs on the GLib main context via
   <code>spawn_local</code>. Shared client state sits in <code>RefCell</code>, which means a
   borrow must never be held across an <code>await</code> — if anything borrows the same cell
   while the future is suspended, the process panics with "already borrowed". The daemon
@@ -436,7 +436,7 @@ if let Some(client) = client {
 </p>
 
 <p>
-  GUI v2 uses a different boundary: GTK objects remain on the GLib main context while an
+  The production GUI uses a different boundary: GTK objects remain on the GLib main context while an
   <code>AppRuntime</code> runs on a dedicated Tokio thread. Commands cross to the runtime and
   typed <code>ControllerEvent</code>/<code>PresentationRequest</code> messages return to GLib.
   The controller reduces each event into a new immutable snapshot before widgets render it.
@@ -459,8 +459,8 @@ if let Some(client) = client {
 <p>
   Versions are pinned once in <code>[workspace.dependencies]</code> and inherited with
   <code>{ workspace = true }</code>, so a bump happens in one place. Crate versions likewise
-  inherit <code>version.workspace = true</code>. GUI v2 is the temporary exception: its
-  nested workspace pins the newer mutually compatible gtk-rs generation until cutover.
+  inherit <code>version.workspace = true</code>. Both GUI crates use the same GTK 4.22,
+  libadwaita 1.9, and glib/gio 0.22 binding generation.
 </p>
 
 <table>
@@ -474,8 +474,7 @@ if let Some(client) = client {
     <tr><td>Serialisation</td><td><code>serde</code>, <code>serde_json</code>, <code>toml</code></td><td>Profiles and config on disk, JSON on the wire</td></tr>
     <tr><td>Secrets</td><td><code>keyring-core</code>, <code>zbus-secret-service-keyring-store</code>, <code>linux-keyutils-keyring-store</code></td><td>Credential storage behind <code>ssh-tunnel-common</code>. The store crates directly rather than the <code>keyring</code> facade: see below</td></tr>
     <tr><td>CLI</td><td><code>clap</code>, <code>dialoguer</code>, <code>comfy-table</code>, <code>colored</code></td><td>Argument parsing, prompts, tables, colour</td></tr>
-    <tr><td>Packaged GUI</td><td><code>gtk4</code> 0.9, <code>libadwaita</code> 0.7, <code>pulldown-cmark</code></td><td>Current root-workspace widgets, GNOME styling, Markdown Help/About</td></tr>
-    <tr><td>GUI v2 preview</td><td><code>gtk4</code> 0.11.4, <code>libadwaita</code> 0.9.2, <code>glib-build-tools</code> 0.22.8</td><td>GTK 4.22/libadwaita 1.9 APIs and embedded resources on Bazzite/Fedora 44</td></tr>
+    <tr><td>GUI adapters</td><td><code>gtk4</code> 0.11.4, <code>libadwaita</code> 0.9.2, <code>glib</code>/<code>gio</code> 0.22.9, <code>glib-build-tools</code> 0.22.8</td><td>One GTK 4.22/libadwaita 1.9 binding generation on Bazzite/Fedora 44</td></tr>
     <tr><td>Test support</td><td><code>tempfile</code></td><td>Sandbox directories</td></tr>
   </tbody>
 </table>
@@ -601,10 +600,9 @@ if let Some(client) = client {
 <p>
   GUI-core tests cover reducer transitions, action availability, preference recovery and
   ordering, redacted editor behavior, FIFO authentication and the structured-text invariant.
-  The isolated GUI v2 workspace adds tests for action routing, dialog selection, status
-  mapping, ordering constraints and system-font/semantic-color CSS. Its locked test, Clippy,
-  release-build and dependency-policy commands are run separately until root-workspace/CI
-  integration is accepted.
+  The production GUI adds tests for action routing, dialog selection, status mapping,
+  ordering constraints and system-font/semantic-color CSS. Fedora 44 CI runs its locked test,
+  Clippy, and release-build gates and explicitly compiles the obsolete GUI.
 </p>
 
 <h3>5.3 Tiers 2 and 3 — live SSH (<code>cargo test -- --ignored</code>)</h3>
@@ -644,7 +642,7 @@ if let Some(client) = client {
 <ul>
   <li><code>scripts/dev-env.sh</code> — a sandbox with a daemon, a wired <code>cli.toml</code>, seeded profiles per auth type and the debug binaries on <code>PATH</code>. This is how the GTK GUI is exercised; it is not automated.</li>
   <li><code>scripts/test-network-modes.sh</code> — drives the CLI against all three listener modes, including TLS certificate generation and fingerprint pinning.</li>
-  <li>GUI v2 runtime validation — visual parity, keyboard/focus, Orca, high contrast/font scaling, narrow/localized content, live daemon/auth/Secret Service and Bazzite runtime. Pending explicit launch authorization and not implied by a successful build.</li>
+  <li>Production GUI validation — functional Bazzite/live-daemon acceptance is complete. Keyboard-only and mockup screen comparison remain in <code>.plan/UI_v2-final-validation.md</code>.</li>
 </ul>
 
 <h3>5.5 CI</h3>
@@ -673,22 +671,21 @@ if let Some(client) = client {
   <thead><tr><th>Target</th><th>Command</th><th>Needs</th></tr></thead>
   <tbody>
     <tr><td>Daemon and CLI</td><td><code>cargo build -p ssh-tunnel-daemon -p ssh-tunnel-cli</code></td><td>Nothing beyond Rust</td></tr>
-    <tr><td>Root workspace</td><td><code>cargo build --release</code></td><td>GTK4 ≥ 4.12, libadwaita ≥ 1.5</td></tr>
-    <tr><td>GUI v2 preview</td><td><code>cargo build --manifest-path crates/gui-v2/Cargo.toml --release --locked</code></td><td>Fedora 44: GTK 4.22, libadwaita 1.9, GLib 2.88 development files</td></tr>
+    <tr><td>Default workspace, including production GUI</td><td><code>cargo build --release --locked</code></td><td>Fedora 44: GTK 4.22, libadwaita 1.9, GLib 2.88 development files</td></tr>
+    <tr><td>Obsolete GUI compatibility check</td><td><code>cargo check -p ssh-tunnel-gui-gtk --locked</code></td><td>Same Fedora 44 GUI development files</td></tr>
   </tbody>
 </table>
 
 <p>
-  Every root-workspace member builds by default. GUI v2 remains a nested workspace so the
-  packaged GUI can stay on gtk-rs 0.20 while the preview uses 0.22. Root-workspace/CI/default
-  target integration and removal of the duplicate generation happen only at accepted cutover.
+  Default members build the daemon, CLI, common, gui-core, and production GUI. Obsolete
+  <code>gui-gtk</code> stays a non-default member and is compiled explicitly in Fedora 44 CI.
 </p>
 
 <h4>Packaging status</h4>
 <table>
   <thead><tr><th>Format</th><th>Status</th></tr></thead>
   <tbody>
-    <tr><td>DEB</td><td><span class="status ok">✅ Available</span> for daemon, CLI and packaged <code>gui-gtk</code>; no GUI v2 package yet</td></tr>
+    <tr><td>DEB</td><td><span class="status ok">✅ v0.5.0 artifacts available</span>; current source and the next package use <code>ssh-tunnel-gui</code></td></tr>
     <tr><td>RPM</td><td><span class="status partial">⚠️ In progress</span></td></tr>
     <tr><td>AUR, Flatpak</td><td><span class="status no">❌ Not started</span></td></tr>
   </tbody>

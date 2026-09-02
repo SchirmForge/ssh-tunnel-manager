@@ -41,16 +41,39 @@ jobs:
       - name: Check formatting
         run: cargo fmt --all -- --check
 
-      # Every workspace member builds, so --workspace needs no carve-out.
+      # Both GUI crates are checked separately on Fedora 44 because Ubuntu's
+      # GTK/libadwaita packages do not expose the required 4.22/1.9 APIs.
       - name: Clippy
-        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+        run: cargo clippy --workspace --exclude ssh-tunnel-gui --exclude ssh-tunnel-gui-gtk --all-targets --all-features -- -D warnings
 
       # Tier 1 only. Live SSH tests are #[ignore]d; see live-ssh-fixture.
       - name: Test
-        run: cargo test --workspace
+        run: cargo test --workspace --exclude ssh-tunnel-gui --exclude ssh-tunnel-gui-gtk
 
       - name: Release build
-        run: cargo build --release --workspace
+        run: cargo build --release --workspace --exclude ssh-tunnel-gui --exclude ssh-tunnel-gui-gtk
+
+  gui:
+    name: GTK GUIs (Fedora 44)
+    runs-on: ubuntu-latest
+    container: fedora:44
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Rust and GUI development libraries
+        run: >-
+          dnf install -y cargo rust rustfmt clippy gcc cmake pkgconf-pkg-config
+          gtk4-devel libadwaita-devel
+
+      - name: Check production GUI
+        run: |
+          cargo fmt --all -- --check
+          cargo clippy -p ssh-tunnel-gui --locked --all-targets -- -D warnings
+          cargo test -p ssh-tunnel-gui --locked
+          cargo build -p ssh-tunnel-gui --release --locked
+
+      - name: Compile obsolete GUI
+        run: cargo check -p ssh-tunnel-gui-gtk --locked
 
   # Tier 2: real SSH connections against an unprivileged sshd on localhost.
   #

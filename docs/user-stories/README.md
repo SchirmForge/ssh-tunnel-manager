@@ -36,16 +36,15 @@ reused, so references from commits, issues and tests stay valid.
 | 10 | [Development and quality](EPIC-10-development-quality.md) | 14 | Testing, sandboxing and CI — stories for contributors |
 | 11 | [Second-generation desktop GUI](EPIC-11-desktop-gui-v2.md) | 7 | Adaptive profile UI, safe editing/authentication, accessibility and production rollout |
 
-**89 stories**: 76 ✅ implemented, 7 ⚠️ partial, 6 ❌ not implemented.
+**89 stories**: 80 ✅ implemented, 4 ⚠️ partial, 5 ❌ not implemented.
 
-The six unimplemented stories are worth knowing up front: no `ssh-tunnel edit` command
+The five unimplemented stories are worth knowing up front: no `ssh-tunnel edit` command
 ([US-1.8](EPIC-01-profile-management.md)), no remote or dynamic forwarding
 ([US-2.8](EPIC-02-tunnel-lifecycle.md)), no tunnel auto-reconnect
 ([US-2.9](EPIC-02-tunnel-lifecycle.md)), `ssh-tunnel daemon start|stop|status` are stubs
 ([US-5.9](EPIC-05-daemon-connectivity.md)), and no configurable daemon logging
-([US-9.6](EPIC-09-deployment-operations.md)). GUI v2 is not yet installed as the production
-desktop application ([US-11.7](EPIC-11-desktop-gui-v2.md)); its other six stories are partial
-until runtime validation and cutover are complete.
+([US-9.6](EPIC-09-deployment-operations.md)). The production GUI's profile organization,
+accessibility, and future-tray stories retain documented manual or deferred work in Epic 11.
 
 ## Personas
 

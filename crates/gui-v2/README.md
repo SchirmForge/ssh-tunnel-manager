@@ -1,11 +1,10 @@
-# SSH Tunnel Manager GUI v2
+# SSH Tunnel Manager GUI
 
-This is the isolated GTK 4/libadwaita application at the Phase 7 validation
-checkpoint of the GUI redesign. It is a temporary nested Cargo workspace so
-development and its crate-local `Cargo.lock` do not change the repository
-workspace. Automated and source validation is recorded in
-[`PHASE7_VALIDATION.md`](PHASE7_VALIDATION.md); runtime visual and assistive-
-technology checks remain separately gated.
+This is the production GTK 4/libadwaita application produced by the GUI redesign.
+It is a root-workspace default member whose package and binary are named
+`ssh-tunnel-gui`; its application ID is `io.github.schirmforge.SshTunnelManager`.
+Validation and cutover evidence is recorded in
+[`PHASE7_VALIDATION.md`](PHASE7_VALIDATION.md).
 
 The profile list supports persisted pinning, manual ordering, name sorting,
 connected-only filtering, local search, selection, and the structured shared
@@ -19,7 +18,7 @@ checking, online, offline, and information states; health refresh/retry is real.
 Daemon start, restart, and shutdown plus SSH configuration import are explicit
 WIP actions and report that state instead of reporting success.
 
-Before its runtime starts, the preview validates `cli.toml`. If the file is
+Before its runtime starts, the application validates `cli.toml`. If the file is
 missing or invalid, a non-blocking first-launch flow can import the daemon's
 `cli-config.snippet` or collect Unix socket, HTTP, or HTTPS settings manually.
 The daemon API token is redacted from debug state, and the completed file is
@@ -30,7 +29,7 @@ Build on Fedora 44 with GTK 4.22, libadwaita 1.9, and GLib 2.88 development
 packages installed:
 
 ```console
-cargo check --manifest-path crates/gui-v2/Cargo.toml --locked
+cargo check --package ssh-tunnel-gui --locked
 ```
 
 The UI follows the system color scheme and font configuration. No font or

@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <gresources>
-  <gresource prefix="/io/github/schirmforge/SshTunnelManagerGuiV2">
+  <gresource prefix="/io/github/schirmforge/SshTunnelManager">
     <file compressed="true">style.css</file>
   </gresource>
 </gresources>
-

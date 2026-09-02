@@ -87,7 +87,7 @@ dependency tree and the tests that verify it.
 
 ## Components
 
-- **GUI** (`ssh-tunnel-gui-v2`): This graphical interface
+- **GUI** (`ssh-tunnel-gui`): This graphical interface
 - **Daemon** (`ssh-tunnel-daemon`): Background service managing tunnels
 - **CLI** (`ssh-tunnel`): Command-line interface for scripting and automation
 
