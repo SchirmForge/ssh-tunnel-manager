@@ -102,6 +102,14 @@ its UUID.
 
 **Implementation**: `crates/gui-gtk/src/ui/profile_dialog.rs`, `profiles_list.rs`, `profile_details.rs`; `crates/gui-core/src/profiles.rs`
 
+GUI v2 extends this source implementation with details, create/edit/duplicate/confirmed
+delete, structured field validation, safe credential operations and local/remote key-path
+semantics. It remains a preview pending runtime acceptance; see
+[Epic 11](EPIC-11-desktop-gui-v2.md).
+
+**GUI v2 implementation**: `crates/gui-core/src/editor.rs`, `runtime.rs`,
+`crates/gui-v2/src/profile_editor.rs`, `profile_list.rs`
+
 ---
 
 ## US-1.7 — Profiles survive an upgrade ✅

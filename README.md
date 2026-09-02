@@ -4,12 +4,13 @@ A secure, performant SSH tunnel management application for Linux with CLI interf
 
 ## Status
 
-**Version**: v0.3.0
-**Status**: Production-ready CLI/Daemon/GUI(GTK) with full REST API architecture
+**Version**: v0.5.0
+**Status**: Production-ready CLI, daemon, and packaged GTK GUI; second-generation GUI available as a source preview
 
 ### Highlights
 
-- ✅ **First-launch configuration wizard** - Interactive GUI setup with automatic snippet detection
+- ✅ **Packaged GTK GUI** - Stable GUI with first-launch setup, profile management, and live status
+- 🧪 **Second-generation GUI preview** - First-launch setup, adaptive profile organization, typed shared actions, safe credential editing, and honest WIP states
 - ✅ **Remote daemon support** - Connect to daemons over HTTPS on other machines
 - ✅ **Full-featured GUI** - Profile management, real-time status, and markdown documentation
 - ✅ **Enhanced CLI** - Status/restart commands and proactive config validation
@@ -24,12 +25,13 @@ A secure, performant SSH tunnel management application for Linux with CLI interf
 ## Features
 
 ### ✅ Implemented
-- **First-Launch Configuration Wizard**: Interactive GUI setup with automatic snippet detection and manual configuration fallback
+- **First-Launch Configuration Wizard**: Both desktop GUIs provide interactive client setup with automatic snippet detection and manual configuration fallback
 - **Remote Daemon Support**: Connect to daemons over HTTPS on remote machines while keeping SSH keys secure
 - **CLI Interface**: Full-featured command-line tool with interactive prompts and JSON/table output
-- **GTK4/Libadwaita GUI**: Modern GNOME-style application with full profile CRUD, real-time status indicators, and markdown documentation
+- **Packaged GTK4/Libadwaita GUI**: Modern GNOME-style application with full profile CRUD, real-time status indicators, and markdown documentation
+- **GUI v2 source preview**: First-launch client setup, search, pinning, manual ordering, connected-only filtering, request-correlated authentication, daemon/offline pages, adaptive layout, and keyboard actions. It is not yet packaged or the default GUI.
 - **Multiple Authentication Methods**: SSH keys, passwords, keyboard-interactive (2FA)
-- **Keychain Integration**: Store passwords/passphrases in system keychain
+- **Credential-store integration**: Secret Service on desktops, keyutils fallback on headless Linux
 - **Local Port Forwarding**: Forward local ports to remote hosts via SSH with host key verification
 - **Real-Time Updates**: Server-Sent Events (SSE) for live status updates in both CLI and GUI
 - **Interactive Authentication**: Dynamic prompts for passwords, passphrases, and 2FA codes
@@ -58,6 +60,12 @@ Remote port forwarding (`ssh -R`) is **not planned**. Use `ssh -R` directly if y
 4. Create profiles and start tunnels
 
 For detailed instructions, platform-specific requirements, system service configuration, and advanced setup (HTTPS mode, network access, group permissions), see the **[Installation Guide](docs/INSTALLATION.md)**.
+
+The second-generation GUI is currently a Fedora 44/Bazzite-targeted source preview in
+`crates/gui-v2`. Its build and validation commands are documented in the
+**[Development Guide](docs/DEVELOPMENT.md)**. The packaged/default application remains
+`ssh-tunnel-gtk` until manual accessibility and runtime acceptance plus a separately
+reviewed cutover are complete.
 
 ### CLI (For automation and scripts)
 
@@ -125,30 +133,36 @@ max_packet_size = 65536  # 64 KiB
 window_size = 2097152    # 2 MiB
 ```
 
-### Keychain Integration
+### Credential-store integration
 
-When you choose to store credentials in the keychain:
+When you choose to store credentials:
 
 - **Service**: `ssh-tunnel-manager`
 - **Username**: `{profile-uuid}`
-- **Platform Support**:
-  - Linux: Secret Service API (GNOME Keyring, KWallet, etc.)
+- **Desktop store**: Secret Service API (GNOME Keyring, KWallet, etc.)
+- **Headless fallback**: Linux kernel keyutils keyring
 
 ### Server and Headless Environments
 
-SSH Tunnel Manager works seamlessly on servers and in containers, with automatic keyring fallback.
+SSH Tunnel Manager selects a credential store at runtime. `auto` prefers Secret Service and
+falls back to keyutils when no desktop session is available.
 
 #### Automatic Detection
 
-When running on headless servers or in environments without keyring access:
-- The CLI **automatically detects** keyring unavailability
-- Profile creation **still succeeds** - passwords just aren't stored
-- You'll see: `⚠️  System keychain not available`
-- The daemon will **prompt interactively** when starting tunnels
+When running on a headless server:
+
+- keyutils needs no D-Bus or graphical session
+- keyutils credentials **do not survive reboot**
+- the daemon reports which store it opened
+- if no store or credential is available, profile creation still succeeds and the daemon
+  prompts an attached client when starting the tunnel
+
+Set `credential_store = "secret-service"`, `"keyutils"`, or `"none"` in `daemon.toml` to
+override `auto`.
 
 #### Manual Override
 
-To explicitly disable keyring (useful for automation):
+To disable credential storage explicitly (useful for automation):
 
 ```bash
 export SSH_TUNNEL_SKIP_KEYRING=1
@@ -272,8 +286,9 @@ See **[docs/ROADMAP.md](docs/ROADMAP.md)** for what is planned, what is delibera
 and the design decisions already taken for work that has not started.
 
 **Now**: stability and regression testing; packaging (DEB done, RPM in progress).
-**Next**: unattended credentials for headless daemons, desktop notifications and
-auto-reconnect, configurable daemon config path, enhanced logging.
+**Next**: GUI v2 runtime validation and cutover review, unattended credentials for headless
+daemons, desktop notifications and auto-reconnect, configurable daemon config path, and
+enhanced logging.
 **Not planned**: remote port forwarding (`ssh -R`) - use OpenSSH directly.
 
 Release history is in [docs/CHANGELOG.md](docs/CHANGELOG.md) and

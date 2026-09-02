@@ -68,6 +68,10 @@ network.
 
 **Implementation**: `crates/common/src/profile_manager.rs` (`get_remote_key_setup_message`), `crates/daemon/src/api.rs` (`DaemonInfo`), `crates/gui-gtk/src/ui/daemon_settings.rs`
 
+GUI v2 also treats a remote key path as a path on the daemon host: it does not expand,
+validate or offer to upload that path from the client. Its runtime/manual remote-daemon
+validation remains part of Epic 11.
+
 ---
 
 ## US-7.5 — Have my saved credentials work with a remote daemon ✅
@@ -88,7 +92,8 @@ network.
 
 **Implementation**: `crates/common/src/daemon_client.rs` (`ClientHeldCredential`),
 `crates/common/src/profile_manager.rs` (`prepare_profile_for_remote`),
-`crates/common/src/config.rs` (`PasswordStorage::resolved`)
+`crates/common/src/config.rs` (`PasswordStorage::resolved`),
+`crates/gui-core/src/runtime.rs` (structured client-held credential resolution)
 
 > **This was broken from the introduction of remote daemon support until v0.3.0**, and it
 > failed silently. `password_storage = "keychain"` said only that the credential was in *a*

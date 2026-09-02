@@ -7,11 +7,11 @@ use ssh_tunnel_common::{AuthRequest, Profile, TunnelStatus};
 use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
-/// Core application state (framework-agnostic)
+/// Core application state (framework-agnostic).
 ///
-/// This contains all the business logic state that is shared between
-/// GTK and Qt implementations. Framework-specific state (widgets, etc.)
-/// should be stored in the framework-specific implementation.
+/// Framework-specific state such as widgets belongs in the presentation
+/// adapter. New adapters should use [`crate::AppController`]; this type remains
+/// available for compatibility with the existing GTK implementation.
 #[derive(Debug)]
 pub struct AppCore {
     /// All loaded profiles
@@ -109,7 +109,12 @@ impl AppCore {
         }
     }
 
-    /// Add pending auth request
+    /// Add pending auth request.
+    ///
+    /// Idempotent: delivering the same request twice leaves exactly one pending prompt. The
+    /// daemon re-sends outstanding prompts to a newly connected subscriber, so a repeat is
+    /// normal rather than exceptional — a request id identifies the *question*, not the
+    /// delivery.
     pub fn add_pending_auth(&mut self, request: AuthRequest) {
         let request_id = request.id;
         let tunnel_id = request.tunnel_id;
@@ -117,11 +122,14 @@ impl AppCore {
         // Store by request ID
         self.pending_auth_requests.insert(request_id, request);
 
-        // Update tunnel → request mapping, cleaning up old request if any
+        // Update tunnel → request mapping, cleaning up any *superseded* request.
         if let Some(old_req_id) = self.tunnel_active_request.insert(tunnel_id, request_id) {
-            // Clean up old request
-            self.pending_auth_requests.remove(&old_req_id);
-            self.active_auth_requests.remove(&old_req_id);
+            // Guard against the id we just inserted: without this, a repeat of the same
+            // request removed the entry added a line earlier and the prompt vanished.
+            if old_req_id != request_id {
+                self.pending_auth_requests.remove(&old_req_id);
+                self.active_auth_requests.remove(&old_req_id);
+            }
         }
     }
 
@@ -172,5 +180,81 @@ impl AppCore {
     /// Navigate to a page
     pub fn navigate_to(&mut self, page: Page) {
         self.current_page = page;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ssh_tunnel_common::AuthRequestType;
+
+    fn request(tunnel_id: Uuid) -> AuthRequest {
+        AuthRequest {
+            id: Uuid::new_v4(),
+            tunnel_id,
+            auth_type: AuthRequestType::Password,
+            prompt: "Enter SSH password: ".into(),
+            hidden: true,
+        }
+    }
+
+    /// The daemon re-sends outstanding prompts to a newly connected subscriber, so the same
+    /// request arrives more than once whenever the stream reconnects. Before this was
+    /// idempotent the repeat *removed* the prompt: the tunnel→request map returned the id
+    /// just inserted, and the cleanup deleted it.
+    #[test]
+    fn delivering_the_same_request_twice_leaves_one_pending_prompt() {
+        let mut state = AppCore::default();
+        let req = request(Uuid::new_v4());
+
+        state.add_pending_auth(req.clone());
+        state.add_pending_auth(req.clone());
+
+        assert_eq!(
+            state.pending_auth_requests.len(),
+            1,
+            "a repeated delivery must not duplicate the prompt"
+        );
+        assert!(
+            state.pending_auth_requests.contains_key(&req.id),
+            "a repeated delivery must not erase the prompt"
+        );
+        assert_eq!(
+            state.tunnel_active_request.get(&req.tunnel_id),
+            Some(&req.id)
+        );
+    }
+
+    /// A genuinely new question for the same tunnel — a rejected password, say — still
+    /// supersedes the old one.
+    #[test]
+    fn a_new_request_for_the_same_tunnel_supersedes_the_old_one() {
+        let tunnel_id = Uuid::new_v4();
+        let mut state = AppCore::default();
+        let first = request(tunnel_id);
+        let second = request(tunnel_id);
+
+        state.add_pending_auth(first.clone());
+        state.add_pending_auth(second.clone());
+
+        assert_eq!(state.pending_auth_requests.len(), 1);
+        assert!(!state.pending_auth_requests.contains_key(&first.id));
+        assert!(state.pending_auth_requests.contains_key(&second.id));
+        assert_eq!(
+            state.tunnel_active_request.get(&tunnel_id),
+            Some(&second.id)
+        );
+    }
+
+    #[test]
+    fn requests_for_different_tunnels_coexist() {
+        let mut state = AppCore::default();
+        let a = request(Uuid::new_v4());
+        let b = request(Uuid::new_v4());
+
+        state.add_pending_auth(a.clone());
+        state.add_pending_auth(b.clone());
+
+        assert_eq!(state.pending_auth_requests.len(), 2);
     }
 }

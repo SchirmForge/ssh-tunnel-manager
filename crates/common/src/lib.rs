@@ -10,6 +10,7 @@ pub mod error;
 pub mod keychain;
 pub mod network;
 pub mod profile_manager;
+pub mod runtime_paths;
 pub mod sse;
 pub mod ssh_key;
 pub mod tls;
@@ -17,8 +18,9 @@ pub mod types;
 
 pub use config::{ConnectionConfig, ForwardingConfig, PasswordStorage, Profile, TunnelOptions};
 pub use daemon_client::{
-    add_auth_header, cli_config_snippet_exists, config_needs_ip_address, create_daemon_client,
-    get_cli_config_snippet_path, start_tunnel_with_events, stop_tunnel, validate_client_config,
+    add_auth_header, cli_config_snippet_exists, client_credential_applies, config_needs_ip_address,
+    create_daemon_client, create_streaming_client, get_cli_config_snippet_path,
+    profile_uses_client_credential, start_tunnel_with_events, stop_tunnel, validate_client_config,
     validate_daemon_config, ConfigValidationResult, ConnectionMode, DaemonClientConfig,
     TunnelEventHandler, TunnelStatusResponse,
 };
@@ -33,8 +35,12 @@ pub use profile_manager::{
     load_profile, load_profile_by_id, load_profile_by_name, prepare_profile_for_remote,
     profile_exists_by_id, profile_exists_by_name, profiles_dir, save_profile,
 };
+pub use runtime_paths::{
+    client_socket_candidates, daemon_pid_path, daemon_runtime_dir, daemon_socket_path,
+    runtime_subdir, PID_FILE_NAME, RUNTIME_SUBDIR, SOCKET_FILE_NAME, SYSTEM_RUNTIME_DIR,
+};
 pub use sse::{EventListener, TunnelEvent};
-pub use ssh_key::{is_key_encrypted, validate_key_passphrase};
+pub use ssh_key::{is_key_encrypted, validate_key_passphrase, validate_ssh_key_file};
 pub use tls::{create_insecure_tls_config, create_pinned_tls_config};
 pub use types::{
     AuthRequest, AuthRequestType, AuthResponse, AuthType, DaemonInfo, ForwardingType,

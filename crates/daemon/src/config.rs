@@ -5,7 +5,6 @@
 // Handles daemon configuration (listener mode, TLS, auth, etc.)
 // Profile management now in ssh-tunnel-common::profile_manager
 
-use std::ffi::OsStr;
 use std::fs;
 use std::path::PathBuf;
 
@@ -13,20 +12,9 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use tracing::info;
 
-/// Get the runtime directory for daemon state
-pub fn runtime_dir() -> Result<PathBuf> {
-    dirs::runtime_dir().ok_or_else(|| anyhow::anyhow!("Could not determine runtime directory"))
-}
-
 /// Get the socket path for the daemon
 pub fn socket_path() -> Result<PathBuf> {
-    let runtime_dir = runtime_dir()?;
-    let socket_dir = if runtime_dir.file_name() == Some(OsStr::new("ssh-tunnel-manager")) {
-        runtime_dir
-    } else {
-        runtime_dir.join("ssh-tunnel-manager")
-    };
-    Ok(socket_dir.join("ssh-tunnel-manager.sock"))
+    ssh_tunnel_common::daemon_socket_path()
 }
 
 /// Listener mode for the daemon

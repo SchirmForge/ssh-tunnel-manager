@@ -22,6 +22,10 @@ changes.
 **Implementation**: `crates/daemon/src/known_hosts.rs`, `crates/daemon/src/tunnel.rs` (`ClientHandler::check_server_key`)
 **Tests**: `live_ssh::first_connection_prompts_for_host_key_and_remembers_it`
 
+GUI v2 selects the accept/reject surface only from the structured
+`HostKeyVerification` request code. Until the daemon adds structured host, algorithm and
+fingerprint fields, it displays the daemon prompt without parsing security facts from it.
+
 ---
 
 ## US-4.2 — Not be asked again ✅
@@ -56,6 +60,9 @@ changes.
 **Tests**: `known_hosts::a_different_key_for_a_known_host_is_reported_as_mismatch`,
 `known_hosts::the_same_key_for_a_known_host_is_trusted`,
 `live_ssh::a_changed_host_key_is_refused`
+
+The changed-key path never emits the structured unknown-host request, so GUI v2 cannot turn
+its explanatory error text into an “accept anyway” action.
 
 > **The live test was asserting nothing until v0.2.0.** It wrote its poisoned `known_hosts`
 > entry as `[host]:22`, but a bare hostname is the correct form on the default port —

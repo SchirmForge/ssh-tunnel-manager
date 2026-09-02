@@ -17,8 +17,9 @@
 
 mod harness;
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use harness::live::{self, LiveTarget};
 use harness::DaemonHarness;
@@ -124,6 +125,33 @@ impl TunnelEventHandler for ScriptedAuth {
 
     fn on_event(&mut self, event: &TunnelEvent) {
         eprintln!("event: {event:?}");
+    }
+}
+
+/// A handler that parks on an auth prompt until the test releases it, then refuses to answer.
+///
+/// `on_auth_required` is synchronous, so parking it blocks a runtime worker thread. That makes
+/// it releasable by necessity rather than tidiness: a plain long `thread::sleep` is still
+/// running when the test body finishes, and dropping a runtime waits for its workers, so the
+/// suite sat out the full sleep — 300 seconds for what is otherwise a 20-second test.
+///
+/// Tests using this need `flavor = "multi_thread"`. On the default current-thread runtime the
+/// parked handler starves the test's own body, and whether the test works at all comes down to
+/// whether the prompt happens to arrive before the body's next await point.
+struct ParksUntilReleased(Arc<AtomicBool>);
+
+impl ParksUntilReleased {
+    /// Caps the park regardless, so a test that fails before releasing still terminates.
+    const MAX_PARK: Duration = Duration::from_secs(60);
+}
+
+impl TunnelEventHandler for ParksUntilReleased {
+    fn on_auth_required(&mut self, _: &AuthRequest) -> anyhow::Result<String> {
+        let deadline = Instant::now() + Self::MAX_PARK;
+        while !self.0.load(Ordering::SeqCst) && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        anyhow::bail!("this handler never answers")
     }
 }
 
@@ -536,7 +564,8 @@ async fn stopping_a_connected_tunnel_returns_promptly() {
 
 /// Regression guard for the known 60-second hang: cancelling while the daemon
 /// is waiting for an auth response must not block on that timeout.
-#[tokio::test]
+/// Multi-threaded: see [`ParksUntilReleased`].
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs a live SSH server; run with --ignored"]
 async fn stopping_during_authentication_returns_promptly() {
     let (target, values) =
@@ -555,24 +584,18 @@ async fn stopping_during_authentication_returns_promptly() {
     let client = daemon.http_client();
     let config = daemon.client_config();
 
-    // Start a tunnel whose auth prompt is never answered.
+    // Start a tunnel whose auth prompt is never answered, leaving the daemon waiting on input.
+    let release = Arc::new(AtomicBool::new(false));
     let start_handle = {
         let (client, config, profile) = (client.clone(), config.clone(), profile.clone());
+        let release = release.clone();
         tokio::spawn(async move {
-            struct NeverAnswers;
-            impl TunnelEventHandler for NeverAnswers {
-                fn on_auth_required(&mut self, _: &AuthRequest) -> anyhow::Result<String> {
-                    // Block indefinitely: the daemon is left waiting for input.
-                    std::thread::sleep(Duration::from_secs(300));
-                    Ok(String::new())
-                }
-            }
             let _ = start_tunnel_with_events(
                 &client,
                 &config,
                 profile.metadata.id,
                 &profile,
-                &mut NeverAnswers,
+                &mut ParksUntilReleased(release),
             )
             .await;
         })
@@ -589,12 +612,108 @@ async fn stopping_during_authentication_returns_promptly() {
     .await;
     let elapsed = started.elapsed();
 
+    // `abort()` cannot interrupt a blocking synchronous call, so release the park first;
+    // otherwise the parked worker outlives the test and the runtime's drop waits for it.
+    release.store(true, Ordering::SeqCst);
     start_handle.abort();
 
     assert!(
         elapsed < Duration::from_secs(15),
         "cancelling during the auth phase took {elapsed:?}; the daemon is waiting out \
          its auth timeout instead of honouring the shutdown signal\n{}",
+        daemon.log()
+    );
+}
+
+/// A client that connects *after* a prompt was raised must still be told about it.
+///
+/// Events are broadcast only to whoever is listening at the time. Before the daemon replayed
+/// outstanding prompts to new subscribers, a prompt raised while no client was attached — or
+/// during a reconnect — was lost for good, and the tunnel failed with
+/// "Authentication prompt timed out after 60s" having shown the user nothing.
+/// Multi-threaded: see [`ParksUntilReleased`].
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "needs a live SSH server; run with --ignored"]
+async fn a_late_subscriber_is_told_about_an_outstanding_prompt() {
+    use futures_util::StreamExt;
+
+    let (target, values) =
+        live_target_or_skip!(&["SSH_TUNNEL_TEST_USER_KEY", "SSH_TUNNEL_TEST_KEY_PATH"]);
+    let (user, key_path) = (values[0], values[1]);
+
+    let daemon = DaemonHarness::start_unix().await;
+
+    let port = free_local_port();
+    let mut profile = profile_for(target, "late-subscriber", user, port);
+    profile.connection.auth_type = AuthType::Key;
+    profile.connection.key_path = Some(key_path.into());
+    // No known_hosts is seeded, so the first connection raises a host key prompt.
+    daemon.install_profile(&profile);
+
+    let client = daemon.http_client();
+    let config = daemon.client_config();
+
+    // Start a tunnel and sit on the prompt, leaving it outstanding for the second subscriber.
+    //
+    let release = Arc::new(AtomicBool::new(false));
+    let start_handle = {
+        let (client, config, profile) = (client.clone(), config.clone(), profile.clone());
+        let release = release.clone();
+        tokio::spawn(async move {
+            let _ = start_tunnel_with_events(
+                &client,
+                &config,
+                profile.metadata.id,
+                &profile,
+                &mut ParksUntilReleased(release),
+            )
+            .await;
+        })
+    };
+
+    // Let the daemon reach the prompt.
+    tokio::time::sleep(Duration::from_secs(5)).await;
+
+    // Now connect a *second*, entirely fresh subscriber — as a GUI reconnecting would.
+    let url = format!(
+        "{}/api/events",
+        config.daemon_base_url().expect("daemon base url")
+    );
+    let streaming = ssh_tunnel_common::create_streaming_client(&config).expect("streaming client");
+    let response = ssh_tunnel_common::add_auth_header(streaming.get(&url), &config)
+        .expect("auth header")
+        .send()
+        .await
+        .expect("second subscriber should connect");
+
+    let mut stream = response.bytes_stream();
+    let saw_prompt = tokio::time::timeout(Duration::from_secs(10), async {
+        let mut buffer = String::new();
+        while let Some(Ok(chunk)) = stream.next().await {
+            buffer.push_str(&String::from_utf8_lossy(&chunk));
+            if buffer.contains("auth_required") || buffer.contains("AuthRequired") {
+                return true;
+            }
+        }
+        false
+    })
+    .await
+    .unwrap_or(false);
+
+    // Release the parked handler and let the starting task unwind before asserting, so a
+    // failure does not also leave a blocked worker thread behind for the runtime to wait on.
+    release.store(true, Ordering::SeqCst);
+    let _ = tokio::time::timeout(
+        Duration::from_secs(10),
+        ssh_tunnel_common::stop_tunnel(&client, &config, profile.metadata.id),
+    )
+    .await;
+    let _ = tokio::time::timeout(Duration::from_secs(15), start_handle).await;
+
+    assert!(
+        saw_prompt,
+        "a subscriber connecting while a prompt is outstanding must be told about it, \
+         otherwise the prompt expires unseen\n{}",
         daemon.log()
     );
 }

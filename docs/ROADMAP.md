@@ -1,6 +1,6 @@
 # Roadmap
 
-**Last updated**: 2026-09-01 (v0.3.0)
+**Last updated**: 2026-09-02 (v0.5.0)
 
 What is planned, what is deliberately not, and the design decisions already taken for work
 that has not started yet.
@@ -48,9 +48,26 @@ Delivered in v0.3.0:
 - Credential storage tested against a real Secret Service in CI — the module previously had
   no tests at all
 
+Delivered in v0.4.0:
+
+- Parallel second-generation GTK 4/libadwaita GUI source preview, covering the in-scope
+  profile, authentication, daemon, empty, and offline screens
+- Toolkit-neutral controller/runtime, snapshots, typed actions/effects, capability states,
+  authentication queue, editor contracts, and future-tray-ready profile commands in
+  `gui-core`
+- Profile search, connected-only filtering, name/manual sort, pinning and ordering, persisted
+  separately in versioned `ui.toml`
+- Client-held credential editing and one-off automatic responses through the common
+  Secret Service/keyutils facade
+- Structured-code-only GUI control invariant, accessibility/adaptive source work, and locked
+  Fedora 44 automated validation for both Cargo workspaces
+- First-launch GUI v2 client setup with snippet import, manual/repair flows, and secure atomic
+  `cli.toml` persistence before the daemon runtime starts
+
 Remaining:
 - Unattended credentials for a daemon with no client attached — see `.plan/AUTH-02`
-- The GTK GUI still records the legacy storage value; to be handled with the GUI rework
+- The packaged `gui-gtk` still records the legacy storage value. GUI v2 writes the explicit
+  client/daemon-host model, but does not replace the packaged GUI until cutover.
 - Fix whatever the live tier turns up once the test accounts exist on the target host
 - Close the test and audit backlog in `.plan/DEP-02_test-and-audit-backlog.md` — most
   notably unit coverage for `tunnel.rs` and `keychain.rs`, and an sshd version matrix to
@@ -68,6 +85,44 @@ Remaining:
 | AUR (PKGBUILD) | 🚧 Not started |
 | Flatpak | 🚧 To be confirmed |
 
+### GUI v2 runtime acceptance and cutover
+
+**Status**: Source implementation and automated validation complete; manual acceptance and
+integration pending.
+
+Remaining cutover work:
+
+1. Launch the GUI only after explicit approval and compare all in-scope screens in light and
+   dark modes with the supplied mockups.
+2. Exercise keyboard traversal/focus, Orca announcements, high contrast, enlarged system
+   fonts, narrow layouts, long/localized copy, live daemon transitions, supported
+   authentication, and Secret Service behavior.
+3. Exercise first-launch setup with no config, a generated snippet, bind-all network hosts,
+   invalid existing config, cancellation, retry, and the post-save runtime transition.
+4. Confirm the release binary against the Bazzite 44 runtime.
+5. After acceptance, choose the production executable/application ID, add GUI v2 to the root
+   workspace and CI/default build targets, update packaging/desktop integration, and retire
+   `gui-gtk` in a separately reviewable change.
+
+These gates are tracked in `.plan/UI-03_gui-v2-manual-validation-and-cutover.md`. They do not
+silently expand v0.4.0 to include the separately deferred capabilities below.
+
+## Deferred or excluded from v0.4.0
+
+This table is the authoritative disposition for capabilities intentionally outside the GUI
+v2 preview. “Deferred” means potentially future work; “not planned” is a design rule, not a
+backlog item.
+
+| Capability | v0.4.0 disposition | Future tracking / reason |
+|---|---|---|
+| Tray implementation and tray-library selection | **Deferred** | The shared snapshot and `AppCommand` action surface is implemented. A tray adapter and dependency will be selected only through a separate design review. |
+| Stored TOTP generation or secret persistence | **Deferred** | Server keyboard-interactive and structured two-factor prompts work. Persisting a seed changes the security model; see `.plan/EPIC-09_ssh-tunnel-integrated-totp.html` and `.plan/AUTH-02_unattended-credentials.md`. |
+| Daemon API for starting/restarting the daemon | **Deferred** | Health/info/refresh are real. GUI lifecycle controls remain WIP until an authenticated, scoped daemon/service-management contract is designed. |
+| SSH config import | **Deferred** | The GUI entry point is visibly WIP and performs no fake import. Parser, merge, conflict, and credential semantics need a separate feature plan. |
+| New traffic, uptime, or last-connected telemetry | **Deferred** | GUI v2 renders fields the daemon already supplies, including daemon-wide uptime. No new per-tunnel traffic, last-connected, or additional uptime field/endpoint was added. |
+| Parsing daemon prompt strings into structured security data | **Not planned** | Free-form daemon text is presentation-only and will never be a control plane. Future host/key/fingerprint facts require additive structured protocol fields. |
+| Cross-distribution, Windows, or macOS GUI v2 compatibility | **Out of scope** | The preview targets the current Bazzite/Fedora 44 system. Portability work starts only after the production cutover and a separate compatibility plan. |
+
 ---
 
 ## Next
@@ -81,7 +136,7 @@ authoritative statement of the auto-reconnect design is
 [the section below](#auto-reconnect-and-health-monitoring), not that plan.
 
 Desktop notifications for connect, disconnect and error events, plus the auto-reconnect
-design below. `notify-rust` is already a declared dependency.
+design below. No notification dependency is currently selected; adding one requires review.
 
 ### Configurable daemon config path
 **Status**: Planned
@@ -161,11 +216,12 @@ creation in both clients (`crates/cli/src/main.rs`,
 `crates/gui-gtk/src/ui/profile_dialog.rs`).
 
 ### Daemon management GUI
-**Status**: Partially planned
-**Files**: `crates/gui-gtk/src/ui/daemon_page.rs` (new)
+**Status**: Information and health refresh implemented in GUI v2; lifecycle operations deferred
+**Files**: `crates/gui-v2/src/daemon_view.rs`, `crates/gui-core/src/runtime.rs`
 
-- Show daemon configuration read from the running daemon over the API, not from the file
-- Start, stop and restart the daemon (user-scoped operations only)
+- Show daemon information read from the running daemon over the API, not from the file — ✅
+- Start, stop and restart the daemon (user-scoped operations only) — 🚧 WIP; see the v0.4.0
+  exclusions above
 - Configure autostart via `systemctl`
 - Configure which profiles start with the daemon
 
@@ -184,7 +240,7 @@ is monitored at a time, but multiple GUI instances can run.
 |---|---|
 | systemd user and system service templates | ✅ Available |
 | Desktop notifications | 🚧 Planned |
-| System tray | 🚧 The old `crates/tray` was removed in v0.1.11 — it had been outside the workspace build since v0.1.6. Any tray support will be written fresh against the current architecture |
+| System tray | 🚧 The old crate remains removed. GUI v2 supplies reusable snapshots and commands; adapter/library selection and rendering are deferred |
 | Profile autostart | 🚧 The option exists in config but is not wired |
 
 ---
@@ -223,7 +279,11 @@ and the systemd unit files.
 | Live SSH tests only runnable by hand, with credentials | ✅ Resolved — an unprivileged localhost sshd covers the key-based half on every pull request with no secrets; the full matrix runs against a provisioned host |
 | RSA timing side channel (`RUSTSEC-2023-0071`) | ⚠️ Accepted — no fixed version exists in any `rsa` release; dropping RSA support would break users' keys. See [architecture/SECURITY.md](architecture/SECURITY.md) |
 | `rustls-pemfile` unmaintained | 🚧 Open — functional, no known vulnerability; migrate to `rustls-pki-types` when convenient |
-| `gui-core` / `gui-gtk` declare unused dependencies | 🚧 Open — reported by `cargo machete`, not yet blocking |
+| `gui-core` / `gui-gtk` declare unused dependencies | 🚧 `gui-core` resolved in v0.4.0; review of the outgoing `gui-gtk` remains until retirement |
+| Two client architectures for the same event stream | ✅ Resolved in v0.5.0 — the CLI hand-rolled its own SSE subscription while the GUI used `EventListener`, so a transport fix on one path missed the other. Both now share `EventListener`, and `gui-core::events` (a trait with no implementors) was removed |
+| Runtime paths derived in three places | ✅ Resolved in v0.5.0 — the socket, the PID file and the client's probe list disagreed under the project's own systemd unit. One module in `common` now owns them |
+| Live suites could report success having run nothing | ✅ Resolved in v0.5.0 — `make test-live` and `make test-live-fixture` run strict, and the local fixture no longer destroys a provisioned target's configuration |
+| Manual GUI validation of event delivery | ⚠️ Open — the v0.5.0 reconnection work is covered by unit and live-CLI tests, but three desktop checks need a human. Tracked in `.plan/ARCH-02_manual-client-validation.md` |
 
 ---
 

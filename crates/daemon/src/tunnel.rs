@@ -135,6 +135,21 @@ impl TunnelManager {
             .map(|p| p.request.clone())
     }
 
+    /// Every authentication prompt currently waiting for an answer.
+    ///
+    /// Used to bring a newly connected event-stream subscriber up to date. Events are
+    /// broadcast only to whoever is listening at the time, so a client that connects — or
+    /// reconnects — after a prompt was raised would otherwise never learn of it, and the
+    /// prompt would expire with nothing shown to the user.
+    pub async fn list_pending_auth(&self) -> Vec<AuthRequest> {
+        let tunnels = self.tunnels.read().await;
+        tunnels
+            .values()
+            .filter_map(|t| t.pending_auth.as_ref())
+            .map(|p| p.request.clone())
+            .collect()
+    }
+
     /// Submit authentication response for a tunnel with request ID verification
     pub async fn submit_auth_by_request_id(
         &self,
@@ -1395,10 +1410,13 @@ async fn run_local_forward_task(
         Err(e) => {
             // Detect permission errors specifically for privileged ports
             if e.kind() == std::io::ErrorKind::PermissionDenied {
+                // Deliberately does not suggest sudo: the daemon refuses to run as root, and
+                // suggesting it here is how that came to be tried in the first place.
                 return Err(anyhow::anyhow!(
-                    "Permission denied binding to {}. Port {} is privileged (<=1024) and requires elevated permissions.\n\
-                     Run the daemon with: sudo ssh-tunnel-daemon\n\
-                     Or grant CAP_NET_BIND_SERVICE capability: sudo setcap cap_net_bind_service=+ep /path/to/ssh-tunnel-daemon",
+                    "Permission denied binding to {}. Port {} is privileged (<1024) and needs the \
+                     CAP_NET_BIND_SERVICE capability.\n\
+                     Grant it on the binary: sudo setcap cap_net_bind_service=+ep /path/to/ssh-tunnel-daemon\n\
+                     Under systemd, the shipped unit already grants it. See docs/architecture/SYSTEMD.md.",
                     bind_addr, local_port
                 ));
             }

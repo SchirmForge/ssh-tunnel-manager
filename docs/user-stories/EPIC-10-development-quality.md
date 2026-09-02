@@ -132,10 +132,15 @@ a failure, at two levels because the two live tiers can support different amount
 - The tier needing real credentials stays `workflow_dispatch` only
 - The supply chain is checked: advisories, licences, dependency sources and unused dependencies
 - Secrets are scanned for on every pull request
-- Every workspace member builds, so `--workspace` needs no carve-out
+- Every root-workspace member builds, so root `--workspace` needs no carve-out
 - Actions are pinned to commit SHAs and the toolchain is pinned by `rust-toolchain.toml`; neither floats
 
 **Implementation**: `.github/workflows/ci.yml`, `deny.toml`, `rust-toolchain.toml`, `.github/dependabot.yml`
+
+GUI v2 is temporarily a separate nested workspace and is not in CI yet. Its locked tests,
+Clippy, release build and dependency policy pass in the Fedora 44 environment, but CI/root
+workspace integration is part of [US-11.7](EPIC-11-desktop-gui-v2.md) rather than being
+silently claimed here.
 
 ---
 
@@ -235,3 +240,79 @@ a failure, at two levels because the two live tiers can support different amount
 >
 > This module had no tests at all before v0.3.0, which is how both the v0.2.0 store change and
 > the remote-daemon defect in US-7.5 reached users.
+
+---
+
+## US-10.12 — Never be told a suite passed when it ran nothing ✅
+
+**As a** contributor
+
+**I want** a live suite with no target configured to fail rather than skip
+
+**so that** a green run always means the code was actually exercised.
+
+**Acceptance criteria**
+- `make test-live` and `make test-live-fixture` both set `SSH_TUNNEL_TEST_STRICT`, so a missing
+  or incomplete target configuration fails loudly
+- `=1` requires the target file; `=all` additionally requires every account a test asks for
+- A bare `cargo test -- --ignored` still skips, and says so on stderr, for the case where that
+  is what you want
+
+**Implementation**: `Makefile` (`test-live`, `test-live-fixture`), `crates/daemon/tests/harness`
+(`live_target_or_skip!`)
+
+> This was not hypothetical. `make test-live` ran zero tests and reported
+> `test result: ok. 11 passed` in 0.00 seconds — indistinguishable from a passing run unless
+> you noticed the timing. The tests had all skipped because their configuration had been
+> destroyed by US-10.13.
+
+---
+
+## US-10.13 — Not lose a provisioned target by running the local fixture ✅
+
+**As a** contributor with a provisioned test host
+
+**I want** the local sshd fixture to leave my target configuration alone
+
+**so that** running the quick tier does not silently destroy credentials that exist nowhere
+else.
+
+**Acceptance criteria**
+- `ssh-fixture.sh up` moves an existing non-fixture `.local/testing/ssh-target.env` aside
+  rather than overwriting it, and `down` restores it
+- The fixture's own file is still removed on `down`, identified by its generated-by marker
+- A full `up`/`down` cycle leaves a pre-existing target configuration byte-identical
+
+**Implementation**: `scripts/ssh-fixture.sh`
+
+> The fixture and the provisioned tiers share one configuration path. `up` overwrote it and
+> `down` then removed it, so running the local fixture destroyed the provisioned host's
+> generated passwords and TOTP secret — which exist only in that file. The failure was
+> invisible: the next `make test-live` skipped everything and reported success.
+
+---
+
+## US-10.14 — Have a live test that fails when the feature is broken ✅
+
+**As a** contributor
+
+**I want** new live tests checked against the unfixed code
+
+**so that** a test cannot pass for a reason unrelated to what it claims to cover.
+
+**Acceptance criteria**
+- A test for a fix is run against the code *without* the fix and observed to fail
+- A test handler that blocks does so releasably: `on_auth_required` is synchronous, so parking
+  it occupies a runtime worker, and `JoinHandle::abort()` cannot interrupt a blocking call
+- Tests using a blocking handler run on a multi-threaded runtime, so the parked thread cannot
+  starve the test body
+
+**Implementation**: `crates/daemon/tests/live_ssh.rs` (`ParksUntilReleased`)
+
+> Two concrete failures drove this. A stream-longevity test counted heartbeats within a window
+> that fit *inside* the 30-second cut it was meant to detect, so it passed against broken code
+> in 30.25 seconds. And a never-answering handler used `thread::sleep(300)`, which the runtime
+> drop then waited out: the tier-2 suite took 300 seconds instead of 20, and whether the test
+> worked at all depended on whether the prompt arrived before the body's next await point. The
+> suite now runs in 5.3 seconds.
+

@@ -19,6 +19,42 @@ use russh::keys::decode_secret_key;
 
 use crate::error::{Error, Result};
 
+/// Validate that an SSH private-key path names a regular file with permissions
+/// suitable for a private key.
+///
+/// This check is intentionally about a path on the current machine. Remote GUI
+/// clients must not call it for a daemon-host path.
+pub fn validate_ssh_key_file(key_path: &Path) -> Result<()> {
+    let metadata = std::fs::metadata(key_path).map_err(|error| {
+        Error::InvalidPath(format!(
+            "SSH key is not accessible at {}: {error}",
+            key_path.display()
+        ))
+    })?;
+    if !metadata.is_file() {
+        return Err(Error::InvalidPath(format!(
+            "SSH key path is not a file: {}",
+            key_path.display()
+        )));
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        let mode = metadata.permissions().mode();
+        if mode & 0o077 != 0 {
+            return Err(Error::InvalidPath(format!(
+                "SSH key has insecure permissions {:o}; use chmod 600 {}",
+                mode & 0o777,
+                key_path.display()
+            )));
+        }
+    }
+
+    Ok(())
+}
+
 fn read_key(key_path: &Path) -> Result<String> {
     std::fs::read_to_string(key_path).map_err(|e| {
         Error::InvalidPath(format!(
@@ -75,6 +111,19 @@ mod tests {
         key.to_openssh(LineEnding::LF)
             .expect("encode key")
             .to_string()
+    }
+
+    #[test]
+    fn regular_private_key_file_is_accepted() {
+        let mut file = tempfile::NamedTempFile::new().unwrap();
+        file.write_all(generate(false).as_bytes()).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(file.path(), std::fs::Permissions::from_mode(0o600)).unwrap();
+        }
+
+        validate_ssh_key_file(file.path()).unwrap();
     }
 
     fn key_file(contents: &str) -> (tempfile::TempDir, std::path::PathBuf) {

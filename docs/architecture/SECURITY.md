@@ -1,6 +1,6 @@
 # SSH Tunnel Manager - Security Documentation
 
-**Version**: v0.3.0
+**Version**: v0.4.0
 **Last Updated**: 2026-09-01
 
 ## Overview
@@ -14,6 +14,7 @@ SSH Tunnel Manager is designed with security as a first-class concern. This docu
 3. **Secure by Default**: Authentication and encryption enabled out of the box
 4. **Fail Secure**: Errors result in denial rather than exposure
 5. **No Secret Transmission**: SSH private keys never sent over network
+6. **Structured Control Plane**: Daemon strings are display copy, never action selectors
 
 ## Authentication & Network Security
 
@@ -21,8 +22,8 @@ SSH Tunnel Manager is designed with security as a first-class concern. This docu
 
 **Token-Based Authentication (Default)**
 - **Enabled by Default**: `require_auth = true` in all daemon modes
-- **Token Generation**: 32-byte cryptographically random token generated on first startup
-- **Token Storage**: Stored in `~/.config/ssh-tunnel-manager/auth-token` with 0600 permissions
+- **Token Generation**: Cryptographically random UUID v4 generated on first startup
+- **Token Storage**: Stored by default in `~/.config/ssh-tunnel-manager/daemon.token` with 0600 permissions
 - **Token Transport**: Sent via `X-Tunnel-Token` HTTP header
 - **Token Lifecycle**: Persists across daemon restarts unless manually regenerated
 
@@ -48,8 +49,8 @@ SSH Tunnel Manager is designed with security as a first-class concern. This docu
 
 **TCP HTTPS Mode (Network Access)**
 - **TLS Required**: Self-signed certificate generated automatically
-- **Certificate Location**: `~/.config/ssh-tunnel-manager/daemon-cert.pem`
-- **Private Key Location**: `~/.config/ssh-tunnel-manager/daemon-key.pem`
+- **Certificate Location**: `~/.config/ssh-tunnel-manager/server.crt`
+- **Private Key Location**: `~/.config/ssh-tunnel-manager/server.key`
 - **Key Permissions**: Both files created with 0600 permissions
 - **Certificate Expiry**: 365 days, automatically regenerated if expired
 - **Fingerprint Pinning**: SHA256 fingerprint of certificate written to CLI config snippet
@@ -80,11 +81,11 @@ SSH Tunnel Manager is designed with security as a first-class concern. This docu
 ### File Permissions
 
 **Sensitive Files (0600 - Owner Read/Write Only)**
-- `~/.config/ssh-tunnel-manager/auth-token` - Daemon authentication token
-- `~/.config/ssh-tunnel-manager/daemon-cert.pem` - TLS certificate
-- `~/.config/ssh-tunnel-manager/daemon-key.pem` - TLS private key
+- `~/.config/ssh-tunnel-manager/daemon.token` - Daemon authentication token
+- `~/.config/ssh-tunnel-manager/server.crt` - TLS certificate
+- `~/.config/ssh-tunnel-manager/server.key` - TLS private key
 - `~/.config/ssh-tunnel-manager/daemon.toml` - Daemon configuration
-- `~/.config/ssh-tunnel-manager/cli.toml` - CLI configuration (contains auth token)
+- `~/.config/ssh-tunnel-manager/cli.toml` - Client configuration (contains the daemon API token; GUI v2 installs it atomically with mode 0600)
 - `~/.config/ssh-tunnel-manager/known_hosts` - SSH host keys
 
 **Profile Files (0600)**
@@ -140,7 +141,8 @@ one, over the same authenticated channel.
 whose. Against a remote daemon the client saved it locally and the daemon looked on its own
 host, so nothing was found and the user was prompted anyway — silently. It is still read,
 because profiles are TOML that users copy and back up, and resolves to `daemon-host` for a
-local daemon and `client` for a remote one. It is no longer written.
+local daemon and `client` for a remote one. The CLI and GUI v2 no longer write it; the
+packaged legacy GUI still does until cutover.
 
 ### The credential store
 
@@ -173,12 +175,13 @@ would take a credential that survives a reboot and put it somewhere that does no
 
 **What gets stored**
 - SSH key passphrases and passwords, if the user chooses
-- **Never** keyboard-interactive responses or TOTP codes: a one-time code is valid for one
-  time step, so storing it would be pointless as well as unsafe
+- **Never** keyboard-interactive responses, TOTP codes, or TOTP seeds. A one-time code is
+  valid for one time step; persisting a generator seed would be a separate security design
+  that v0.4.0 deliberately does not implement
 
 **Security properties**
-- Encrypted at rest by the OS store
-- Protected by the user's login session
+- Secret Service entries are encrypted at rest and protected by the user's login session
+- keyutils entries remain in kernel memory and do not survive reboot
 - Never written to disk in plaintext by this application
 - Never logged or included in error messages
 
@@ -189,6 +192,48 @@ would take a credential that survives a reboot and put it somewhere that does no
   user ever being asked
 - `SSH_TUNNEL_SKIP_KEYRING=1` disables storage entirely, as does
   `credential_store = "none"`
+
+### GUI credential transactions
+
+GUI v2 never loads an existing credential into an editor field or draft. The core accepts an
+explicit redacted operation instead:
+
+- `Keep`: leave the UUID-scoped entry untouched;
+- `Store`: replace it with a newly entered zeroizing value;
+- `Remove`: delete it deliberately.
+
+Profile and credential writes are coordinated with rollback. Duplicating a profile generates
+a new UUID and never copies the original UUID's credential. Deleting a profile confirms the
+operation and coordinates removal of a client-held entry.
+
+A client-held password or key passphrase is offered at most once per connection attempt and
+only for the corresponding structured `Password` or `KeyPassphrase` request code. If it is
+rejected, the next request remains available for a human rather than replaying a stale secret.
+
+The descriptive `DaemonInfo.credential_store` value is diagnostic text. GUI v2 does not use
+it to decide where a credential can be written; storage location comes from structured
+connection/profile state.
+
+### Daemon text and protocol control
+
+All daemon-originating prompt, message, name, instruction, error and descriptive status
+strings are untrusted presentation copy. They may be displayed or logged safely, but they
+must never determine:
+
+- which dialog or widget is created;
+- whether input is hidden;
+- which action becomes enabled;
+- the authentication response type;
+- retry, completion or tunnel-state transitions;
+- host-key acceptance behavior.
+
+The control plane is restricted to event and request variants, `AuthRequestType`,
+`TunnelStatus`, request/tunnel IDs, feature capability variants, and explicit booleans such
+as `hidden`. Unknown, missing or contradictory structured data fails closed.
+
+Host-key prompt text is displayed without extracting host, algorithm or fingerprint fields.
+If richer cards are needed, the daemon API must add those facts as typed fields. Parsing
+free-form text into security data is explicitly not planned.
 
 ### SSH Private Keys
 
@@ -219,8 +264,7 @@ would take a credential that survives a reboot and put it somewhere that does no
 - Credentials zeroized in memory when no longer needed (via `zeroize` crate)
 
 **Auth Token Security**
-- Generated using `rand::thread_rng()` (cryptographically secure PRNG)
-- 32 bytes = 256 bits of entropy
+- Generated as a UUID v4 by the `uuid` crate using its random-number source
 - Stored with 0600 permissions
 - CLI config snippet includes token for initial setup
 - User should secure CLI config file (`chmod 600 ~/.config/ssh-tunnel-manager/cli.toml`)
@@ -231,13 +275,32 @@ would take a credential that survives a reboot and put it somewhere that does no
 
 **Non-Privileged Operation**
 - Daemon runs as regular user by default
-- No root or elevated privileges required (except for privileged ports)
+- **Running as root is refused.** The daemon checks its effective uid at startup, before it
+  writes anything to disk, and exits with an explanation
 - Systemd user service recommended installation method
 - Uses user's home directory for configuration and profiles
 
+### Why root is refused
+
+Two independent reasons, either of which would be sufficient.
+
+**It does not work.** The socket is placed in `$XDG_RUNTIME_DIR`, which for root in a login
+shell is `/run/user/0` — a per-user directory that is mode 0700 *by design*. No other user can
+traverse it, so a CLI or GUI running as a normal user cannot reach the socket and simply
+reports that no daemon is running. Loosening the socket does not help: the daemon only ever
+chmods, so it remains owned by `root:root`, and `group_access` grants access to a group that
+only root is in.
+
+**It concentrates authority that is not needed.** A tunnel daemon reads SSH private keys,
+opens outbound connections and binds local ports. Running that as root means a defect in any
+of it is a root defect, in exchange for one capability that can be granted directly.
+
+The refusal is deliberate and has **no override flag**. A container image that runs the daemon
+as root will fail to start; run it as an unprivileged user with the capability instead.
+
 ### Privileged Port Binding
 
-**Problem**: Ports ≤1024 require root privileges on Linux
+**Problem**: Ports below 1024 require `CAP_NET_BIND_SERVICE` on Linux
 
 **Solution 1: CAP_NET_BIND_SERVICE (Recommended)**
 ```bash
@@ -252,8 +315,8 @@ AmbientCapabilities=CAP_NET_BIND_SERVICE
 
 **Solution 2: Root with Privilege Dropping**
 - Start as root, bind port, drop privileges
-- Not currently implemented
-- Less secure than capability-based approach
+- **Not implemented and not planned** — the daemon refuses to start as root at all
+- Less secure than capability-based approach, and the capability is sufficient
 
 **Solution 3: Port Forwarding**
 - Use iptables/nftables to forward high port to low port
@@ -271,6 +334,9 @@ AmbientCapabilities=CAP_NET_BIND_SERVICE
   - All group members can manage all tunnels
   - Only use with trusted users in the group
   - Alternative: Run separate daemon per user (recommended)
+  - **Requires a dedicated service account**, not root. The daemon does not change the socket's
+    owning group, so `group_access` grants access to the daemon user's own primary group; with
+    a `tunneld` account that is `tunneld`, which members can join
 
 ## Remote Daemon Security
 
@@ -298,7 +364,7 @@ AmbientCapabilities=CAP_NET_BIND_SERVICE
 **Auth Token Security**
 - Keep CLI config file secure: `chmod 600 ~/.config/ssh-tunnel-manager/cli.toml`
 - Don't commit auth tokens to version control
-- Regenerate token if compromised (delete auth-token file, restart daemon)
+- Regenerate the token if compromised (delete `daemon.token`, then restart the daemon)
 - Use separate tokens for different clients if needed
 
 **Network Exposure**
@@ -347,16 +413,18 @@ AmbientCapabilities=CAP_NET_BIND_SERVICE
 - **Result**: Connection refused due to key mismatch
 
 **Scenario 4: Auth Token Theft**
-- **Attack**: Attacker reads auth-token file or CLI config
+- **Attack**: Attacker reads `daemon.token` or the CLI config
 - **Defense**: File permissions (0600), daemon validates token on each request
 - **Result**: If attacker has file access, they can authenticate to daemon
 - **Mitigation**: Regenerate token, investigate how file access was obtained
 
-**Scenario 5: Credential Theft from Keychain**
-- **Attack**: Attacker tries to read credentials from system keychain
-- **Defense**: OS keychain encryption, requires user's login session
-- **Result**: Credentials protected by OS, inaccessible without user login
-- **Limitation**: If attacker has user session access, credentials accessible
+**Scenario 5: Credential Theft from the Selected Store**
+- **Attack**: Attacker tries to read Secret Service or keyutils entries
+- **Defense**: Secret Service encryption/session access controls, or kernel keyring isolation
+  to the owning user/session
+- **Result**: Another unprivileged user cannot retrieve the entries through the application
+- **Limitation**: Compromise of the owning unlocked user session can expose either store;
+  keyutils is a memory cache and offers no persistence after reboot
 
 ## Security Auditing
 
@@ -393,9 +461,10 @@ journalctl --user -u ssh-tunnel-daemon -f | grep -i "connected"
 **File Permission Checks**
 ```bash
 # Check critical file permissions
-ls -la ~/.config/ssh-tunnel-manager/auth-token
+ls -la ~/.config/ssh-tunnel-manager/daemon.token
 ls -la ~/.config/ssh-tunnel-manager/cli.toml
-ls -la ~/.config/ssh-tunnel-manager/daemon-*.pem
+ls -la ~/.config/ssh-tunnel-manager/server.crt
+ls -la ~/.config/ssh-tunnel-manager/server.key
 ```
 
 **Active Connections**
@@ -462,7 +531,7 @@ say what changed and credit you unless you would rather stay anonymous.
 The daemon, the CLI, the GTK front-end and the shared crates underneath them. In particular
 the SSH client path (host key verification, authentication, port forwarding), the daemon's
 HTTP/HTTPS API with its token handling and TLS certificate pinning, credential storage in the
-system keychain, and file and socket permissions.
+Secret Service/keyutils facade, and file and socket permissions.
 
 ## Security Updates
 

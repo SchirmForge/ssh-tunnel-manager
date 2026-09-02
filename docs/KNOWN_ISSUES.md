@@ -1,6 +1,6 @@
 # Known Issues & Limitations
 
-This document tracks known bugs, limitations, and missing features in SSH Tunnel Manager v0.3.0.
+This document tracks known bugs, limitations, and missing features in SSH Tunnel Manager v0.4.0.
 
 For missing features described as user stories with their status, see the
 [user stories](user-stories/). For what is planned about them, see [ROADMAP.md](ROADMAP.md).
@@ -30,6 +30,29 @@ For missing features described as user stories with their status, see the
     right value is open. Regression test:
     `stopping_during_authentication_returns_promptly` in `crates/daemon/tests/live_ssh.rs`
 
+#### Event delivery
+- ~~**Authentication prompts were lost whenever the event stream reconnected**~~ - **Resolved
+  in v0.5.0.** Starting a password-authenticated tunnel could fail with `Authentication prompt
+  timed out after 60s` with a client attached and waiting. The stream carried a *total* request
+  timeout, which in `reqwest` covers the response body, so it was cut at exactly 30 seconds
+  regardless of traffic; the reconnect backoff then doubled without ever resetting. The client
+  settled into a permanent 30s-connected / 30s-disconnected cycle, and a prompt raised in a
+  dead window was never re-sent. The stream now uses a read timeout, the backoff resets after a
+  connection that lasted, and the daemon re-sends outstanding prompts to every new subscriber.
+  See US-6.3 and US-6.6.
+  - **Manual GUI validation outstanding**: the fix is covered by unit tests and by live tests
+    against a real SSH server, but three desktop checks still need a human — reproducing the
+    original report by hand (wait ~40s at a host key prompt, then answer, and confirm the
+    password prompt appears), confirming an idle GUI holds one long-lived `GET /api/events`
+    rather than a new one every 30 seconds, and running the CLI and GUI together without
+    either double-prompting. This is called out rather than assumed because US-6.3 was marked
+    done in v0.4.0 while the stream was in fact broken.
+
+- ~~**A daemon running as root could not be reached by any client**~~ - **Resolved in v0.5.0.**
+  The socket was placed in `$XDG_RUNTIME_DIR`, which for root is `/run/user/0` — mode 0700 by
+  design — so clients running as a normal user reported that no daemon was running. The daemon
+  now refuses to start as root and explains how to get privileged ports instead. See US-5.10.
+
 #### Credentials
 - ~~**"Store in keychain" silently did nothing with a remote daemon**~~ - **Resolved in
   v0.3.0.** `password_storage = "keychain"` recorded only that a credential was in *a*
@@ -37,9 +60,10 @@ For missing features described as user stories with their status, see the
   with the daemon on another machine those are different stores, so nothing was found and the
   user was prompted anyway — no error, no warning. The setting now records **where** the
   credential is, and a client-held one is answered by the client. See US-7.5.
-  - **Still open**: the GTK GUI records the legacy value when saving. It works against a local
-    daemon, as it always did, and is read correctly everywhere. Profiles created with the CLI
-    get the corrected value. To be addressed with the GUI rework.
+  - **Still open in the packaged GUI**: `gui-gtk` records the legacy value when saving. It
+    works against a local daemon and is read correctly everywhere. GUI v2 uses explicit
+    client/daemon-host storage and the common Secret Service/keyutils facade, but remains a
+    source preview until cutover.
 
 - ~~**Credentials saved before v0.2.0 appeared to be lost**~~ - **Resolved in v0.3.0.** The
   `keyring` 3 → 4 upgrade moved the backing store from the kernel keyutils keyring to Secret
@@ -82,13 +106,23 @@ For missing features described as user stories with their status, see the
 
 ### ❌ GUI Features
 
+**GUI v2 preview is not packaged or the default**
+- **Status**: Source implementation and automated validation complete
+- **Current**: The executable is `ssh-tunnel-gui-v2` in an isolated nested Cargo workspace;
+  installed packages and desktop entries still launch `ssh-tunnel-gtk`
+- **Remaining**: Visual comparison, keyboard/focus, Orca, high contrast/font scaling,
+  narrow/localized layouts, live-daemon authentication, Secret Service, Bazzite runtime,
+  production naming, CI/workspace integration, and packaging acceptance
+- **Workaround**: Continue using the packaged GUI, or build the preview from source using the
+  Development Guide
+
 **System Tray Integration**
-- **Status**: Not implemented
+- **Status**: Adapter and library selection deferred; reusable core commands are implemented
 - **Impact**: Cannot minimize GUI to system tray
 - **Workaround**: Close GUI - daemon continues running in background
 
 **Desktop Notifications**
-- **Status**: Dependency present but not wired
+- **Status**: Not implemented
 - **Impact**: No notifications for tunnel status changes
 - **Workaround**: Check status manually or via CLI
 
@@ -101,6 +135,12 @@ For missing features described as user stories with their status, see the
   ExecStart=/usr/bin/ssh-tunnel-daemon
   ExecStartPost=/usr/bin/ssh-tunnel start myprofile
   ```
+
+**GUI v2 WIP controls**
+- Daemon start/restart/shutdown, SSH config import, stored TOTP, unsupported forwarding
+  execution, and unavailable telemetry are labelled WIP and cannot report success
+- Existing daemon-wide uptime is shown; no new traffic or last-connected telemetry exists
+- See the authoritative [v0.4.0 scope table](ROADMAP.md#deferred-or-excluded-from-v040)
 
 ### ❌ CLI Features
 
@@ -138,6 +178,15 @@ For missing features described as user stories with their status, see the
 
 ### ❌ System Integration
 
+**The daemon refuses to run as root, with no override**
+- **Status**: Deliberate, since v0.5.0
+- **Impact**: A container image that runs the daemon as root will fail to start. Nothing in
+  this repository ships such an image
+- **Workaround**: Run as an unprivileged user and grant `CAP_NET_BIND_SERVICE`
+  (`sudo setcap cap_net_bind_service=+ep /path/to/ssh-tunnel-daemon`), or use the shipped
+  systemd unit, which already sets it
+- See [architecture/SECURITY.md](architecture/SECURITY.md) for why
+
 **No Autostart Enabled by Default**
 - **Status**: systemd services exist but manual setup required
 - **Impact**: Daemon doesn't start automatically
@@ -146,7 +195,8 @@ For missing features described as user stories with their status, see the
   # User service (ports 1024+, starts on login)
   systemctl --user enable ssh-tunnel-daemon
 
-  # System service (all ports including <1024, starts at boot)
+  # System service (grants CAP_NET_BIND_SERVICE for ports <1024, starts at boot)
+  # Runs as the named user, never as root -- the daemon refuses to start as root.
   sudo systemctl enable ssh-tunnel-daemon@$USER
   # Or for specific user: sudo systemctl enable ssh-tunnel-daemon@username
   ```
@@ -162,9 +212,10 @@ For missing features described as user stories with their status, see the
 - **Workaround**: Check daemon logs and ensure firewall allows connections
 
 **Architecture Diagrams**
-- **Status**: No visual diagrams for SSE event flow
-- **Impact**: Harder for contributors to understand system architecture
-- **Planned**: a future documentation pass
+- **Status**: ✅ Addressed in v0.5.0. `architecture/TECHNICAL_ARCHITECTURE.html` now carries an
+  authentication event-flow diagram covering subscribe → start → prompt → reconnect → replay,
+  alongside the existing crate dependency graph
+- **Remaining**: no diagram for the tunnel data path or the TLS handshake
 
 ## Platform-Specific Issues
 
@@ -177,8 +228,11 @@ For missing features described as user stories with their status, see the
 - **Solution**: Enable backports or upgrade to Debian 12
 
 ### Headless Servers
-- **Issue**: Keyring unavailable without graphical session
-- **Solution**: Set `SSH_TUNNEL_SKIP_KEYRING=1` environment variable
+- **Issue**: Secret Service is usually unavailable without a graphical session
+- **Current behavior**: `credential_store = "auto"` falls back to the kernel keyutils
+  keyring, which needs no D-Bus session but loses its contents on reboot
+- **Alternatives**: Force `keyutils` or `none` in `daemon.toml`; use
+  `SSH_TUNNEL_SKIP_KEYRING=1` to disable storage
 - See [SYSTEMD.md](architecture/SYSTEMD.md) and the "Server and Headless Environments" section of the
   [README](../README.md#server-and-headless-environments) for detailed guidance
 

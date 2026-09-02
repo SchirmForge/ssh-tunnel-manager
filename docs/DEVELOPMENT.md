@@ -1,7 +1,7 @@
 # Development Guide
 
-**Version**: v0.3.0
-**Last Updated**: 2026-09-01
+**Version**: v0.5.0
+**Last Updated**: 2026-09-02
 
 ## Where documentation lives
 
@@ -68,7 +68,7 @@ Only needed if you are building on the host rather than in the container.
 **For CLI and Daemon:**
 - `cmake`, a C compiler and `pkg-config` (for `aws-lc-sys`)
 
-**For GTK GUI:**
+**For the packaged GTK GUI:**
 - GTK4 (≥4.12)
 - libadwaita (≥1.5)
 - GLib development files
@@ -88,6 +88,10 @@ sudo dnf install gtk4-devel libadwaita-devel gcc pkg-config
 sudo pacman -S gtk4 libadwaita base-devel
 ```
 
+**For GUI v2:** use the Fedora 44 development container. It intentionally targets GTK 4.22,
+libadwaita 1.9, GLib 2.88, and Rust 1.98 as supplied by the current Bazzite/Fedora 44 system;
+other distributions are not a compatibility target yet.
+
 ### Build
 
 ```bash
@@ -103,6 +107,9 @@ cargo build --release --package ssh-tunnel-gui-gtk
 
 # Build the whole workspace: daemon, CLI, common, gui-core, gui-gtk
 cargo build --release
+
+# GUI v2 is an intentionally separate nested workspace
+cargo build --manifest-path crates/gui-v2/Cargo.toml --release --locked
 ```
 
 ### Basic Usage
@@ -135,6 +142,21 @@ RUST_LOG=info ./target/release/ssh-tunnel-daemon
 # Launch the GTK GUI (in another terminal)
 ./target/release/ssh-tunnel-gtk
 ```
+
+#### Using the GUI v2 source preview
+
+GUI v2 validates `cli.toml` before constructing its runtime. With no valid file it offers
+daemon-snippet import or manual Unix socket/HTTP/HTTPS setup, then starts the runtime after a
+validated atomic save. Build it in the Fedora 44 environment, then run its nested-workspace
+binary:
+
+```bash
+cargo build --manifest-path crates/gui-v2/Cargo.toml --locked
+./crates/gui-v2/target/debug/ssh-tunnel-gui-v2
+```
+
+The production name/application ID, desktop entry, root-workspace integration, and packaging
+remain cutover decisions. Do not treat this command as an installed application path.
 
 ### Run with Debug Logging
 
@@ -210,6 +232,12 @@ privilege; those four skip here and are covered by tier 4.
 
 Drive the fixture directly with `scripts/ssh-fixture.sh up|down|status` when debugging.
 
+The fixture writes its own `.local/testing/ssh-target.env` — the same file the tier-4 target
+uses. If you already have a provisioned target configured there, `up` moves it aside to
+`ssh-target.env.real` and `down` puts it back. It used to overwrite it, which silently
+destroyed credentials that only existed in that file, and the only symptom was tier 4
+skipping every test afterwards while still reporting `ok`.
+
 This is what CI runs on every pull request, so the SSH client path is exercised on every
 change rather than on demand.
 
@@ -253,9 +281,11 @@ make test-live     # or: cargo test -- --ignored --nocapture
 reason is only printed to stderr. If you do not see connections happening, read the SKIP
 lines.
 
-`SSH_TUNNEL_TEST_STRICT` closes that trap where it matters. `=1` makes a missing target file
-a failure (tier 2); `=all` additionally requires every account a test asks for (tier 4). CI
-sets both accordingly. Leave it unset locally and skipping stays harmless.
+`SSH_TUNNEL_TEST_STRICT` closes that trap. `=1` makes a missing target file a failure (tier
+2); `=all` additionally requires every account a test asks for (tier 4). **Both `make` targets
+now set it**, so a missing or incomplete configuration fails loudly instead of producing a
+green run that tested nothing. Invoking `cargo test -- --ignored` by hand still skips silently
+unless you set the variable yourself.
 
 ### Manual testing and the dev sandbox
 
@@ -277,6 +307,22 @@ ssh-tunnel-gtk
 
 Exit the shell to stop the daemon and delete the sandbox. Without the target env file it
 still opens an empty sandbox and tells you what is missing.
+
+GUI v2 is not wired into `scripts/dev-env.sh`, the root Makefile, or CI yet. Its isolated
+automated gates are:
+
+```bash
+cargo fmt --manifest-path crates/gui-v2/Cargo.toml -- --check
+cargo test --manifest-path crates/gui-v2/Cargo.toml --locked
+cargo clippy --manifest-path crates/gui-v2/Cargo.toml --locked --all-targets -- -D warnings
+cargo build --manifest-path crates/gui-v2/Cargo.toml --release --locked
+cargo deny --manifest-path crates/gui-v2/Cargo.toml check
+```
+
+The source/automated Phase 7 results are recorded in
+[`crates/gui-v2/PHASE7_VALIDATION.md`](../crates/gui-v2/PHASE7_VALIDATION.md). Manual visual,
+Orca, focus, theme/font scaling, live-daemon, Secret Service, and Bazzite runtime checks are
+still pending; no automated result should be described as completing those runtime checks.
 
 ### Before pushing
 
@@ -314,8 +360,9 @@ a dependency from an unapproved source. It reads the same RustSec database as `c
 and, unlike it, honours the ignore list in `deny.toml`; running both would mean two ignore
 lists drifting apart, so there is one. Use `cargo audit` directly for an ad hoc look.
 
-`cargo machete` is reported but does not fail the build, because `gui-core` and `gui-gtk`
-still declare dependencies they no longer use.
+`cargo machete` is reported but does not fail the build. The v0.4.0 GUI-core dependency
+cleanup resolved its findings; the outgoing `gui-gtk` remains to be reviewed or retired at
+cutover.
 
 Policy lives in [`deny.toml`](../deny.toml). Every ignored advisory there carries a written
 reason and the condition under which it should be revisited — an ignore without one hides

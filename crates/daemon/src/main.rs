@@ -223,6 +223,49 @@ fn log_connection_error(
     }
 }
 
+/// The refusal message for `euid`, or `None` if it may run the daemon.
+///
+/// Running as root does not work and cannot be made to work by adjusting permissions. The
+/// socket path comes from `$XDG_RUNTIME_DIR`, which for root in a login shell is
+/// `/run/user/0` -- a per-user directory that is mode 0700 *by design*. No other user can
+/// traverse it, so a desktop client can never reach the socket inside it. Widening the socket
+/// would not help either: the daemon only ever chmods, so the socket stays owned by
+/// `root:root`.
+///
+/// Root is also unnecessary. The only thing it bought was binding forward ports below 1024,
+/// and `CAP_NET_BIND_SERVICE` grants exactly that without handing the daemon -- and every SSH
+/// key it opens -- the rest of root's authority.
+///
+/// Split from the `geteuid` call so the decision is testable without being root.
+fn root_refusal(euid: u32) -> Option<String> {
+    if euid != 0 {
+        return None;
+    }
+
+    Some(format!(
+        "Refusing to run as root.\n\
+         \n\
+         The daemon puts its socket in $XDG_RUNTIME_DIR, which for root is /run/user/0. That\n\
+         directory is mode 0700 by design, so the CLI and the GUI running as your normal user\n\
+         cannot reach the socket inside it -- they report that no daemon is running.\n\
+         \n\
+         If you need to forward ports below 1024, grant the capability instead of privilege:\n\
+         \n\
+           Under systemd, use the shipped unit -- it already sets\n\
+           AmbientCapabilities=CAP_NET_BIND_SERVICE:\n\
+             sudo cp docs/systemd/ssh-tunnel-daemon@.service /etc/systemd/system/\n\
+             sudo systemctl enable --now ssh-tunnel-daemon@<service-user>.service\n\
+         \n\
+           Otherwise, grant it on the binary and run the daemon as your normal user:\n\
+             sudo setcap cap_net_bind_service=+ep {}\n\
+         \n\
+         See docs/architecture/SYSTEMD.md.",
+        std::env::current_exe()
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|_| "/path/to/ssh-tunnel-daemon".to_string())
+    ))
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     // Set restrictive umask before creating any files
@@ -244,6 +287,14 @@ async fn main() -> Result<()> {
         option_env!("BUILD_DATE").unwrap_or("unknown"),
         option_env!("GIT_HASH").unwrap_or("unknown")
     );
+
+    // Before anything is created on disk: a refused start must leave nothing behind, and as
+    // root the PID file and runtime directory below would be root-owned droppings in a
+    // directory the user's own daemon later needs.
+    if let Some(message) = root_refusal(unsafe { libc::geteuid() }) {
+        eprintln!("{message}");
+        std::process::exit(1);
+    }
 
     // Create PID file to prevent multiple instances
     let _pid_guard = pidfile::PidFileGuard::create()
@@ -576,4 +627,47 @@ async fn wait_for_shutdown(tunnel_manager: TunnelManager) {
 
     tunnel_manager.stop_all().await;
     info!("All tunnels stopped");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn root_is_refused() {
+        let message = root_refusal(0).expect("uid 0 must be refused");
+        assert!(
+            message.contains("CAP_NET_BIND_SERVICE"),
+            "the refusal must say how to get privileged ports instead:\n{message}"
+        );
+    }
+
+    #[test]
+    fn an_ordinary_user_is_allowed() {
+        assert!(root_refusal(1000).is_none());
+        assert!(root_refusal(1).is_none(), "only uid 0 is root");
+    }
+
+    /// The daemon refuses to run as root, so nothing may advise running it that way. This
+    /// exact suggestion used to sit in the privileged-port bind error and is the most likely
+    /// reason anyone tried it.
+    #[test]
+    fn nothing_advises_running_the_daemon_with_sudo() {
+        let sources = [
+            include_str!("main.rs"),
+            include_str!("tunnel.rs"),
+            include_str!("config.rs"),
+        ];
+        for source in sources {
+            for line in source.lines() {
+                // Skip this test's own literal.
+                if line.contains("sudo ssh-tunnel-daemon") && !line.contains("advises") {
+                    assert!(
+                        line.trim_start().starts_with("//"),
+                        "found advice to run the daemon as root:\n{line}"
+                    );
+                }
+            }
+        }
+    }
 }

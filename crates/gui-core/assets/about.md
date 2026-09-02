@@ -1,6 +1,7 @@
 # SSH Tunnel Manager
 
-**Version**: 0.3.0
+**Version**: 0.5.0
+**Release date**: 2026-09-02
 
 ## Description
 
@@ -10,16 +11,44 @@ Supports both local daemon connections via Unix socket and remote daemon connect
 
 ## Features
 
+### New in v0.5.0
+
+Authentication prompts now reach you reliably, and the daemon will not start in a way that
+nothing can connect to.
+
+- **Fixed**: an authentication prompt could be lost when the event stream reconnected, so
+  starting a tunnel failed with "Authentication prompt timed out after 60s" even with the
+  application open and waiting. The stream is no longer cut on a timer, reconnect backoff
+  recovers, and the daemon re-sends any prompt still outstanding to a client that connects.
+- **Fixed**: a repeated prompt could erase itself instead of staying on screen.
+- **Changed**: the daemon refuses to run as root. If you were doing that to forward a port
+  below 1024, grant the capability instead — `sudo setcap cap_net_bind_service=+ep` on the
+  daemon binary — and run it as your normal user.
+- **Changed**: the command line and the graphical clients now share one event path, so a fix
+  to event delivery reaches both.
+
+### New in v0.4.0
+
+The second-generation GTK interface is available as a source preview. It uses a
+toolkit-neutral application core and does not yet replace the packaged GTK GUI.
+
+- **Added**: first-launch client setup with daemon-snippet import and manual
+  Unix socket, HTTP, or HTTPS configuration
+- **Added**: adaptive profile search, filtering, pinning, sorting, and ordering
+- **Added**: typed, request-correlated authentication and explicit WIP states
+- **Changed**: GUI-only preferences are stored separately in `ui.toml`
+- **Security**: daemon text is display-only; structured codes and fields select actions
+
 ### New in v0.3.0
 
 Credential storage. Saving a password or passphrase now works when the daemon runs on
 another machine — previously the credential was stored here and looked for there, so you
 were asked for it every time regardless.
 
-- **Fixed**: "store in keychain" against a remote daemon
+- **Fixed**: client-held credential storage against a remote daemon
 - **Changed**: the daemon reports which credential store it is using
-- **Note**: this application still records the older storage setting; profiles created with
-  the CLI get the corrected one
+- **Changed**: new GUI profiles record an explicit client or daemon-host storage location;
+  the older ambiguous `keychain` value is read but never written
 
 ### In v0.2.0
 
@@ -40,7 +69,7 @@ dependency tree and the tests that verify it.
 
 ### Earlier
 
-- **First-Launch Configuration Wizard**: Automatic daemon configuration detection and setup
+- **Client configuration**: Load daemon connection settings from the shared `cli.toml`
 - **Remote Daemon Support**: Connect to daemons over HTTPS on other machines
 - **Hybrid Profile Mode**: Profiles sent via API while SSH keys stay secure on daemon host
 
@@ -52,12 +81,13 @@ dependency tree and the tests that verify it.
 - **Daemon Architecture**: Background service for reliable tunnel management
 - **Interactive Authentication**: Dynamic prompts for passwords and 2FA codes
 - **SSH Host Key Verification**: OpenSSH-compatible known_hosts with SHA256 fingerprints
-- **Keychain Integration**: Secure password storage in system keyring
+- **Credential Storage**: Secret Service on desktops, with an explicit client/daemon-host location
 - **Modern UI**: Built with GTK4 and Libadwaita for a native GNOME experience
+- **Accessible actions**: Keyboard search, navigation, profile reordering, and labelled controls
 
 ## Components
 
-- **GUI** (`ssh-tunnel-gtk`): This graphical interface
+- **GUI** (`ssh-tunnel-gui-v2`): This graphical interface
 - **Daemon** (`ssh-tunnel-daemon`): Background service managing tunnels
 - **CLI** (`ssh-tunnel`): Command-line interface for scripting and automation
 

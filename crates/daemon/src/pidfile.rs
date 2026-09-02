@@ -77,12 +77,10 @@ impl PidFileGuard {
     }
 
     /// Get the path to the PID file
+    /// Shares the socket's directory by construction -- the two used to be derived
+    /// independently and disagreed whenever `$XDG_RUNTIME_DIR` was already our own directory.
     fn pid_file_path() -> Result<PathBuf> {
-        let runtime_dir = dirs::runtime_dir()
-            .or_else(dirs::cache_dir)
-            .ok_or_else(|| anyhow::anyhow!("Could not determine runtime directory"))?;
-
-        Ok(runtime_dir.join("ssh-tunnel-manager").join("daemon.pid"))
+        ssh_tunnel_common::daemon_pid_path()
     }
 
     /// Check if a process with the given PID is running

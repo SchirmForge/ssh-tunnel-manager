@@ -1,7 +1,7 @@
 # Installation Guide
 
-**Version**: v0.3.0
-**Last Updated**: 2026-09-01
+**Version**: v0.5.0
+**Last Updated**: 2026-09-02
 
 ## Quick Start
 
@@ -19,15 +19,15 @@ See detailed instructions below for your platform.
 Pre-built .deb packages are available for Ubuntu/Debian systems. Three separate packages are available:
 
 ```bash
-# Download packages from releases (v0.3.0)
-wget https://github.com/SchirmForge/ssh-tunnel-manager/releases/download/v0.3.0/ssh-tunnel-daemon_0.3.0-0_amd64.deb
-wget https://github.com/SchirmForge/ssh-tunnel-manager/releases/download/v0.3.0/ssh-tunnel-cli_0.3.0-0_amd64.deb
-wget https://github.com/SchirmForge/ssh-tunnel-manager/releases/download/v0.3.0/ssh-tunnel-gui-gtk_0.3.0-0_amd64.deb
+# Download packages from releases (v0.5.0)
+wget https://github.com/SchirmForge/ssh-tunnel-manager/releases/download/v0.5.0/ssh-tunnel-daemon_0.5.0-0_amd64.deb
+wget https://github.com/SchirmForge/ssh-tunnel-manager/releases/download/v0.5.0/ssh-tunnel-cli_0.5.0-0_amd64.deb
+wget https://github.com/SchirmForge/ssh-tunnel-manager/releases/download/v0.5.0/ssh-tunnel-gui-gtk_0.5.0-0_amd64.deb
 
 # Install all components:
-sudo dpkg -i ssh-tunnel-daemon_0.3.0-0_amd64.deb \
-                ssh-tunnel-cli_0.3.0-0_amd64.deb \
-                ssh-tunnel-gui-gtk_0.3.0-0_amd64.deb
+sudo dpkg -i ssh-tunnel-daemon_0.5.0-0_amd64.deb \
+                ssh-tunnel-cli_0.5.0-0_amd64.deb \
+                ssh-tunnel-gui-gtk_0.5.0-0_amd64.deb
 sudo apt-get install -f  # Install dependencies if needed
 ```
 
@@ -35,16 +35,16 @@ sudo apt-get install -f  # Install dependencies if needed
 
 ```bash
 # Minimal: Daemon only (for headless servers)
-sudo dpkg -i ssh-tunnel-daemon_0.3.0-0_amd64.deb
+sudo dpkg -i ssh-tunnel-daemon_0.5.0-0_amd64.deb
 
 # CLI: Daemon + CLI tool
-sudo dpkg -i ssh-tunnel-daemon_0.3.0-0_amd64.deb \
-                ssh-tunnel-cli_0.3.0-0_amd64.deb
+sudo dpkg -i ssh-tunnel-daemon_0.5.0-0_amd64.deb \
+                ssh-tunnel-cli_0.5.0-0_amd64.deb
 
 # GUI: All components
-sudo dpkg -i ssh-tunnel-daemon_0.3.0-0_amd64.deb \
-                ssh-tunnel-cli_0.3.0-0_amd64.deb \
-                ssh-tunnel-gui-gtk_0.3.0-0_amd64.deb
+sudo dpkg -i ssh-tunnel-daemon_0.5.0-0_amd64.deb \
+                ssh-tunnel-cli_0.5.0-0_amd64.deb \
+                ssh-tunnel-gui-gtk_0.5.0-0_amd64.deb
 ```
 
 ### What Gets Installed
@@ -61,6 +61,10 @@ sudo dpkg -i ssh-tunnel-daemon_0.3.0-0_amd64.deb \
 - `/usr/bin/ssh-tunnel-gtk` - GTK GUI
 - Desktop entry for the GUI application
 
+GUI v2 is **not** part of the v0.5.0 packages. The package and desktop entry deliberately
+remain on `gui-gtk` until GUI v2 completes manual runtime/accessibility validation and the
+production cutover is accepted.
+
 ## Other Distributions
 
 ### RPM (Fedora, RHEL, openSUSE)
@@ -69,7 +73,7 @@ RPM packages are coming soon.
 
 ### From Source
 
-**Prerequisites:**
+**Prerequisites for the packaged/root-workspace GUI:**
 ```bash
 # Ubuntu/Debian
 sudo apt install build-essential pkg-config libgtk-4-dev libadwaita-1-dev
@@ -102,6 +106,26 @@ cp scripts/systemd/ssh-tunnel-daemon.service ~/.config/systemd/user/
 systemctl --user daemon-reload
 ```
 
+### GUI v2 source preview (Bazzite/Fedora 44)
+
+GUI v2 is a separate nested Cargo workspace and currently targets the system stack validated
+on Bazzite/Fedora 44: GTK 4.22, libadwaita 1.9, GLib 2.88, and Rust 1.98. Compatibility with
+other distributions is not claimed for this preview.
+
+Install development libraries in a Fedora 44 distrobox/toolbox rather than changing an
+immutable Bazzite host:
+
+```bash
+sudo dnf install gcc cmake pkg-config gtk4-devel libadwaita-devel glib2-devel
+cargo build --manifest-path crates/gui-v2/Cargo.toml --release --locked
+```
+
+The binary is written to
+`crates/gui-v2/target/release/ssh-tunnel-gui-v2`. It is not installed automatically and has
+no production desktop entry. On first launch it validates `cli.toml`, offers to import a
+daemon-generated snippet, and otherwise opens manual Unix socket/HTTP/HTTPS client setup.
+This configures a connection to an existing daemon; it does not start the daemon process.
+
 ## Post-Installation Setup
 
 ### 1. Choose Daemon Mode
@@ -117,8 +141,12 @@ The daemon can run in two modes depending on your port forwarding needs:
 **Option B: System Service**
 - Runs as a specific user account (typically your account or a dedicated service account)
 - Starts at boot (before login)
-- **Can forward all ports including privileged ports (80, 443, etc.)**
+- **Can forward privileged ports (80, 443, etc.)** — the unit grants `CAP_NET_BIND_SERVICE`
 - Use this if you need to forward ports like 80 (HTTP) or 443 (HTTPS)
+
+> Neither option runs as root, and the daemon refuses to start if you try. Privileged ports
+> come from the capability, not from privilege — see
+> [architecture/SYSTEMD.md](architecture/SYSTEMD.md).
 - Requires specifying which user account to run as
 
 ### 2. Start the Daemon
@@ -200,14 +228,15 @@ ssh-tunnel-daemon &
 
 ### 3. First-Time Setup
 
-#### Option A: Using the GUI (Easiest)
+#### Option A: Using a desktop GUI (Easiest)
 
 ```bash
 # Launch the GUI
 ssh-tunnel-gtk
 ```
 
-The **configuration wizard** runs automatically on first launch:
+Both the packaged `ssh-tunnel-gtk` application and the GUI v2 source preview run client
+setup automatically when no valid `cli.toml` is available:
 - Detects daemon-generated configuration snippet and offers to import it
 - For network access (daemon on `0.0.0.0`), prompts for actual IP address
 - Falls back to manual configuration dialog if snippet not found
@@ -299,7 +328,8 @@ sudo cat /home/username/.config/ssh-tunnel-manager/cli-config.snippet
 
 **Automatic import:**
 
-Both CLI and GUI will automatically detect and offer to import this snippet on first use:
+The CLI and both desktop GUIs automatically detect and offer to import this snippet on first
+use:
 
 ```bash
 # CLI - Run any command and you'll be prompted
@@ -309,6 +339,10 @@ ssh-tunnel start <any-profile>
 # GUI - Launch the application
 ssh-tunnel-gtk
 # Will show configuration wizard on first launch
+
+# GUI v2 source preview
+./crates/gui-v2/target/debug/ssh-tunnel-gui-v2
+# Will show its client setup window on first launch
 ```
 
 **Understanding empty `daemon_host` (network access scenarios):**
@@ -332,7 +366,8 @@ This is intentional because:
 
 **What happens when you import:**
 
-Both CLI and GUI will automatically detect the empty `daemon_host` and prompt you for the actual IP address:
+The CLI and both desktop GUIs detect the empty `daemon_host` and prompt for the actual IP
+address:
 
 1. **CLI**: Interactive prompt asking for the daemon's IP address
    ```bash
@@ -342,7 +377,7 @@ Both CLI and GUI will automatically detect the empty `daemon_host` and prompt yo
    > Configuration saved successfully
    ```
 
-2. **GUI**: Dialog box requesting the daemon's IP address
+2. **Desktop GUI**: Setup field requesting the daemon's IP address
    - Shows suggested default (e.g., 192.168.1.100)
    - Validates the input before saving
 
@@ -362,8 +397,8 @@ Create configuration matching this format:
 connection_mode = "https"
 daemon_host = "192.168.1.100"  # Replace with your daemon's actual IP
 daemon_port = 3443
-auth_token = "paste-token-here"  # Get from daemon.token file
-tls_cert_fingerprint = "paste-fingerprint-here"  # Get from tls-cert.fingerprint
+auth_token = "paste-token-here"  # Get from daemon.token
+tls_cert_fingerprint = "paste-fingerprint-here"  # Get from the generated snippet or daemon log
 ```
 
 **Get the authentication token:**
@@ -374,12 +409,16 @@ cat ~/.config/ssh-tunnel-manager/daemon.token
 
 **Get the TLS certificate fingerprint:**
 ```bash
-# For user service:
-cat ~/.config/ssh-tunnel-manager/tls-cert.fingerprint
+# Preferred: read the daemon-generated protected client snippet
+grep tls_cert_fingerprint ~/.config/ssh-tunnel-manager/cli-config.snippet
 
-# For system service:
-sudo cat /home/username/.config/ssh-tunnel-manager/tls-cert.fingerprint
+# Or inspect the daemon startup log for a user/system service
+journalctl --user -u ssh-tunnel-daemon | grep "Certificate fingerprint"
+sudo journalctl -u ssh-tunnel-daemon@$USER | grep "Certificate fingerprint"
 ```
+
+The daemon does not create a separate fingerprint file. It writes the fingerprint into
+`cli-config.snippet` and reports it at startup.
 
 The fingerprint looks like:
 ```
@@ -568,7 +607,7 @@ Common issues:
 
 2. If daemon is on a different host (HTTPS mode), ensure configuration is correct:
    ```bash
-   # GUI will prompt with configuration wizard on first launch
+   # Both desktop GUIs prompt for client configuration on first launch
    # Or manually check:
    cat ~/.config/ssh-tunnel-manager/cli.toml
    ```

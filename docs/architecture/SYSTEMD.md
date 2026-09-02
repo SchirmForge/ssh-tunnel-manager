@@ -4,6 +4,20 @@ Two ways to run the daemon with journald logs:
 - Per-user service (default; non-privileged ports).
 - System service as a dedicated `tunneld` user with capability to bind ports <1024.
 
+> **The daemon refuses to run as root.** It exits at startup with an explanation.
+>
+> Root does not work and cannot be made to work: the socket path comes from
+> `$XDG_RUNTIME_DIR`, which for root in a login shell is `/run/user/0` — a per-user directory
+> that is mode 0700 *by design*. No other user can traverse it, so the CLI and the GUI simply
+> report that no daemon is running. Widening the socket does not help, because it remains
+> owned by `root:root`.
+>
+> Root was only ever needed to bind forward ports below 1024, and `CAP_NET_BIND_SERVICE`
+> grants exactly that without giving the daemon — and every SSH key it opens — the rest of
+> root's authority. The system unit below already sets it; for a daemon started by hand, use
+> `sudo setcap cap_net_bind_service=+ep /path/to/ssh-tunnel-daemon` and then run it as your
+> normal user.
+
 ## Quick Installation
 
 Use the provided `install.sh` script for automated installation:
@@ -18,29 +32,34 @@ sudo ./scripts/install.sh --system-unit --instance tunneld --enable
 
 The script handles building binaries, installing them to `/usr/local/bin`, and setting up systemd units.
 
-## ⚠️ Important: Keyring Limitations for System Services
+## Credential storage for system services
 
-SSH Tunnel Manager uses the system keyring (Secret Service on Linux, Keychain on macOS, Credential Manager on Windows) to securely store SSH passwords and key passphrases.
+Secret Service normally needs a desktop D-Bus session, but its absence no longer means that
+all credential storage is unavailable. With the default `credential_store = "auto"`, the
+daemon tries Secret Service and falls back to the Linux kernel keyutils keyring.
 
-### Impact on Systemd Services
+| Store | Desktop session | Survives reboot | Suitable for a system service |
+|---|---|---|---|
+| Secret Service | Required in normal setups | Yes | Usually no |
+| keyutils | Not required | **No** | Yes, as a session-lifetime cache |
+| none | Not required | — | Yes, but every secret requires a client prompt |
 
-When running as a systemd **system service** (under the `tunneld` user):
-- **Keyring is NOT accessible** - system services run without a user session
-- Profiles with `password_storage = "keychain"` will **request passwords interactively**
-- If no client is connected to the daemon, tunnels will **timeout after 60 seconds**
+The daemon reports the selected store at startup and in `DaemonInfo`. Force it in the service
+user's `daemon.toml`:
 
-### Solutions
-
-**Option 1: Don't Store Passwords (Recommended)**
-```bash
-# Create profiles without keyring storage
-sudo -u tunneld ssh-tunnel add myprofile --host server.com --user myuser --key ~/.ssh/id_ed25519
-# Answer "No" when prompted about keychain storage
-
-# The CLI will automatically detect keyring is unavailable and skip it
+```toml
+credential_store = "keyutils" # or "auto", "secret-service", "none"
 ```
 
-**Option 2: Use Unencrypted SSH Keys**
+Keyutils solves access without a desktop session, but its contents disappear on reboot. A
+daemon with no attached client can therefore still fail after restart when it needs a lost
+password/passphrase: it emits its structured prompt and times out after 60 seconds if nobody
+answers. Persistent unattended credentials are separate work tracked in
+`.plan/AUTH-02_unattended-credentials.md`.
+
+### Operational choices
+
+**Option 1: Use an unencrypted service key**
 ```bash
 # Generate a key WITHOUT a passphrase for the service
 sudo -u tunneld ssh-keygen -t ed25519 -f /var/lib/tunneld/.ssh/id_service -N ""
@@ -50,24 +69,30 @@ sudo -u tunneld ssh-tunnel add myprofile --host server.com --user myuser \
   --key /var/lib/tunneld/.ssh/id_service
 ```
 
-**Option 3: Disable Keyring via Environment Variable**
+This avoids stored authentication secrets but changes the key's at-rest threat model. Protect
+the service account and key file permissions.
+
+**Option 2: Use keyutils and repopulate after reboot**
+
+Choose `credential_store = "keyutils"`, attach a CLI/GUI client after restart, and store or
+answer the credential again. Do not describe this as persistent unattended operation.
+
+**Option 3: Store nothing**
+
+Set `credential_store = "none"`, or disable all store access for automation:
+
 ```systemd
 # In /etc/systemd/system/ssh-tunnel-daemon@.service
 [Service]
 Environment="SSH_TUNNEL_SKIP_KEYRING=1"
 ```
 
-### Detecting Keyring Issues
+### Diagnosing credential-store issues
 
-If tunnels fail with errors like:
-```
-Failed to retrieve password from keychain: Keychain error: ...
-Authentication prompt timed out after 60s
-```
-
-This indicates keyring is not accessible. The daemon will fall back to requesting passwords interactively, but systemd services typically have no connected clients.
-
-**Solution:** Use unencrypted keys or don't store passwords in keychain for service profiles.
+Check `journalctl` for the startup line naming Secret Service, keyutils, or disabled storage.
+An authentication timeout means no client answered; it does not by itself identify which
+store was selected. Use structured `password_storage` values (`client`, `daemon-host`, or
+`none`) rather than the legacy ambiguous `keychain` value when creating new profiles.
 
 ## Manual Installation
 

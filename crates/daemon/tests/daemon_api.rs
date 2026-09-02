@@ -222,6 +222,62 @@ async fn status_of_an_unknown_tunnel_is_not_found() {
 
 // --- SSE ------------------------------------------------------------------
 
+/// The SSE stream must survive far longer than one heartbeat interval.
+///
+/// Regression guard for a client that killed every stream at exactly 30 seconds: the shared
+/// client applied `.timeout(30s)`, which in reqwest covers the whole request *including the
+/// response body*, so a long-lived stream was cut regardless of traffic. Combined with a
+/// reconnect backoff that never reset, the client settled into 30s connected / 30s
+/// disconnected and missed roughly half of all daemon events — including authentication
+/// prompts, which then timed out after 60s with nothing shown to the user.
+///
+/// 40 seconds is deliberately past the old 30s cliff and past four 10s heartbeats.
+#[tokio::test]
+async fn event_stream_survives_longer_than_the_client_timeout() {
+    use futures_util::StreamExt;
+
+    let daemon = DaemonHarness::start_http().await;
+
+    let url = format!(
+        "{}/api/events",
+        daemon.client_config().daemon_base_url().expect("base url")
+    );
+    // The streaming client, because that is what the SSE path uses. The request client's
+    // total timeout is correct for requests and fatal for streams.
+    let client = ssh_tunnel_common::create_streaming_client(&daemon.client_config())
+        .expect("streaming client");
+    let response = ssh_tunnel_common::add_auth_header(client.get(&url), &daemon.client_config())
+        .expect("auth header")
+        .send()
+        .await
+        .expect("event stream should connect");
+    assert!(response.status().is_success());
+
+    let mut stream = response.bytes_stream();
+
+    // The property is "the stream is still open", not "we saw N heartbeats". Counting beats
+    // is not enough: three of them fit inside the old 30s cliff, so a cut stream still
+    // satisfied a `>= 3` assertion. The only pass here is the timeout elapsing with the
+    // stream alive.
+    let cut = tokio::time::timeout(std::time::Duration::from_secs(40), async {
+        while let Some(chunk) = stream.next().await {
+            if let Err(error) = chunk {
+                return format!("transport error after {error}");
+            }
+        }
+        "stream ended cleanly".to_string()
+    })
+    .await;
+
+    assert!(
+        cut.is_err(),
+        "the event stream was cut within 40s ({}), so a daemon event raised in that window \
+         would never reach the client\n{}",
+        cut.unwrap_or_default(),
+        daemon.log()
+    );
+}
+
 #[tokio::test]
 async fn event_stream_connects_and_sends_heartbeats() {
     use futures_util::StreamExt;

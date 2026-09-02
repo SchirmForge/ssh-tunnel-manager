@@ -2,9 +2,9 @@
 
 ## Current State
 
-**Version**: v0.3.0
-**Status**: ✅ Production-ready CLI, daemon and GTK GUI with a full REST + SSE architecture
-**Release date**: 2026-09-01
+**Version**: v0.5.0
+**Status**: ✅ Production-ready CLI, daemon, and packaged GTK GUI; 🧪 GUI v2 source preview validated automatically
+**Release date**: 2026-09-02
 
 A snapshot of what exists today. For what is planned see [ROADMAP.md](ROADMAP.md); for what
 shipped when see [CHANGELOG.md](CHANGELOG.md); for behaviour described from the user's point
@@ -12,9 +12,11 @@ of view see the [user stories](user-stories/).
 
 | Area | State |
 |---|---|
-| Daemon | ✅ Local port forwarding, interactive authentication over SSE, host key verification, three listener modes |
+| Daemon | ✅ Local port forwarding, interactive authentication over SSE, host key verification, three listener modes. Refuses to run as root; privileged ports come from `CAP_NET_BIND_SERVICE` |
+| Event delivery | ✅ One `EventListener` shared by the CLI and every GUI. Outstanding authentication prompts are re-sent to any client that connects, so a reconnect no longer loses them |
 | CLI | ✅ Profile CRUD, tunnel control, status, watch |
-| GTK GUI | ✅ Full profile CRUD, live status, first-launch wizard, remote daemon support |
+| Packaged GTK GUI (`gui-gtk`) | ✅ Full profile CRUD, live status, first-launch wizard, remote daemon support |
+| GUI v2 preview | 🧪 Source implementation includes first-launch setup; manual runtime/accessibility acceptance and production cutover pending |
 | Testing | ✅ Four tiers (static, hermetic, live SSH on a local fixture, live SSH on a real host), sandboxed, all but the last gating CI |
 | Supply chain | ✅ `cargo deny check` gates every pull request; git dependencies banned; 1 known advisory, documented as accepted |
 | Credential storage | ✅ Store selected at runtime and reported; works with a local or remote daemon; migrates from the pre-v0.2.0 store |
@@ -25,8 +27,10 @@ of view see the [user stories](user-stories/).
 
 ### ✅ Common (`crates/common`)
 - Typed configs (`Profile`, `ConnectionConfig`, `ForwardingConfig`, `TunnelOptions`) with validation and TOML persistence.
-- `PasswordStorage` enum (keychain/file/none) with backward-compatible deserialization from boolean values.
-- Keychain module with availability detection (`is_keychain_available()`) and storage operations.
+- `PasswordStorage` records `client`, `daemon-host`, `none`, reserved `file`, and legacy
+  `keychain`, with backward-compatible deserialization and location-aware resolution.
+- Credential-store facade with Secret Service/keyutils selection, availability detection,
+  migration, and storage operations.
 - Shared types for auth flows (`AuthType`, `AuthRequest`, `TunnelStatus`, events).
 - Daemon client helpers (reqwest setup, auth header, TLS pinning helpers, socket path auto-detection).
 - **Config validation helpers** - `validate_daemon_config()`, `get_cli_config_snippet_path()`, `cli_config_snippet_exists()` for proactive validation.
@@ -44,23 +48,54 @@ of view see the [user stories](user-stories/).
 
 ### ✅ CLI (`crates/cli`)
 - Profile CRUD (add/list/show/delete/info) with interactive prompts and non-interactive flags.
-- Keychain integration for passwords/passphrases with graceful fallback for headless environments.
-- Automatic keyring availability detection - profile creation succeeds even when keyring unavailable.
+- Credential-store integration for passwords/passphrases with graceful Secret
+  Service/keyutils fallback.
+- Store availability detection: profile creation succeeds even when no store is available.
 - Tunnel control: start/stop/restart/status with `--all` flag support.
 - **Proactive daemon config validation** - checks config before connection attempts with interactive snippet copy.
 - Table/JSON output, colorized UX, validation of key permissions and privileged ports.
-- Start/stop/status using **shared SSE-first flow** from common module; interactive auth handling.
+- Start/stop/status using the **shared `EventListener`** from the common module, the same one
+  the GUIs use; interactive auth handling. The CLI no longer carries its own SSE parsing.
 
 ### ✅ GUI Core (`crates/gui-core`)
-- Framework-agnostic business logic for GTK and future presentation adapters
-- Profile management: `load_profiles`, `save_profile`, `delete_profile`, `validate_profile`, `profile_name_exists`
-- View models: `ProfileViewModel` with formatted display data, status colors, and action states
-- Shared `AppController`, typed commands/effects, immutable snapshots, and code-derived action availability
-- FIFO authentication queue and typed answers driven only by structured daemon request/status codes
-- Versioned GUI preferences for profile order, pins, filters, and sorting in `ui.toml`
-- Compatibility state: `AppCore` remains available to the current GTK implementation
-- Event handling trait: `TunnelEventHandler` for framework-agnostic event notifications
-- Daemon helpers: `load_daemon_config`, configuration path utilities
+- Framework-agnostic application state and operations for GTK and future presentation adapters.
+- Shared `AppController`, immutable `AppSnapshot`, typed `AppCommand`/`ControllerEffect`,
+  code-derived `ActionAvailability`, and explicit feature capabilities.
+- Toolkit-neutral runtime/effect executor for profile I/O, daemon health/inventory/SSE,
+  preferences, authentication, editor persistence, and client-held credentials.
+- FIFO authentication queue and typed answers correlated by request/tunnel IDs. Structured
+  daemon request/status codes and booleans are the only control plane.
+- Redacted profile-editor contracts with structured field validation and transactional
+  Keep/Store/Remove credential updates.
+- Toolkit-neutral client setup discovery, snippet loading, mode-specific validation, token
+  redaction, and atomic `0600` persistence before runtime construction.
+- Versioned GUI preferences for profile order, pins, filters, and sorting in `ui.toml`, with
+  atomic writes and safe recovery from missing, malformed, stale, or unknown IDs.
+- Presentation-ready profile list/detail, daemon, authentication, WIP, empty, and offline
+  state. `AppCore` remains available only for compatibility with the packaged GUI.
+
+### 🧪 GUI v2 (`crates/gui-v2`)
+
+- Parallel GTK 4/libadwaita application in an isolated nested Cargo workspace, targeting the
+  Bazzite/Fedora 44 GTK 4.22 and libadwaita 1.9 runtime.
+- First-launch client setup gates runtime creation, imports daemon-generated snippets,
+  completes empty network hosts, repairs invalid configuration, or collects Unix
+  socket/HTTP/HTTPS settings manually.
+- Adaptive profile list and details with search, connected-only filtering, name/manual sort,
+  pinning, drag ordering, and keyboard ordering within pin sections.
+- Shared connect/cancel/disconnect/retry, edit, duplicate, delete, pin, order, and
+  auto-reconnect commands routed exclusively through `gui-core`.
+- Profile editor with local/remote key-path semantics, redacted credential changes, dynamic
+  auth/2FA/account/auto-reconnect fields, and explicit WIP capability presentation.
+- One request-ID-keyed authentication dialog at a time, FIFO advancement, structured hidden
+  input, typed host-key decisions, and SSE/inventory-confirmed completion.
+- Real daemon health/info/refresh, empty-profile and offline states. Start, restart, shutdown,
+  SSH import, unsupported forwarding/runtime options, and missing telemetry are honest WIP
+  surfaces.
+- System fonts, semantic theme colors, labelled controls, alert/status semantics, keyboard
+  shortcuts, wrapping layouts, and long-content scrollers.
+- Automated/source validation passes. The GUI has not yet been launched for visual, Orca,
+  focus, high-contrast/font-scaling, live-daemon, Secret Service, or Bazzite runtime review.
 
 ### ✅ GUI GTK (`crates/gui-gtk`)
 - Libadwaita/GTK4 application with functional start/stop using **shared SSE-first flow** from common
@@ -93,7 +128,7 @@ of view see the [user stories](user-stories/).
 
 ## Current Capabilities
 
-✅ Create profiles and store credentials in system keychain  
+✅ Create profiles and store credentials through Secret Service or keyutils
 ✅ Connect with key, password, or keyboard-interactive (2FA)  
 ✅ Verify SSH host keys and prompt on first connect  
 ✅ Local port forwarding with real-time status via SSE  
@@ -111,6 +146,11 @@ of view see the [user stories](user-stories/).
 ✅ GNOME Settings-style UI with proper switch styling
 ✅ DEB packaging
 
+🧪 GUI v2 profile search, pinning, ordering, filtering, and safe CRUD
+🧪 GUI v2 structured FIFO authentication and client-held credential resolution
+🧪 GUI v2 daemon/empty/offline views and adaptive/accessibility groundwork
+🧪 GUI v2 remains source-only and is not the default executable or packaged desktop entry
+
 ✅ Sandboxed test suite across four tiers, blocking supply-chain audit, CI, clippy clean
 
 ❌ Remote forwarding — [not planned](ROADMAP.md#not-planned)
@@ -120,6 +160,9 @@ of view see the [user stories](user-stories/).
 ❌ System tray — crate removed in v0.1.11; to be rewritten if wanted
 ❌ Desktop notifications — [planned](ROADMAP.md#next)
 ❌ Packaging: Flatpak, AUR ([RPM in progress](ROADMAP.md#packaging))
+
+The complete list of features deferred or excluded from v0.4.0 is maintained in
+[ROADMAP.md](ROADMAP.md#deferred-or-excluded-from-v040).
 
 ## Security Notes
 
@@ -134,7 +177,8 @@ of view see the [user stories](user-stories/).
 - Configuration validation prevents insecure daemon configurations at startup.
 - Token is generated to disk; avoid logging or exposing it in CLI output.
 - Host keys are verified and stored in `~/.config/ssh-tunnel-manager/known_hosts`.
-- Credentials remain in OS keyring; SSH keys are referenced by path only.
+- Credentials remain behind the Secret Service/keyutils facade; SSH keys are referenced by
+  path only.
 
 ## Quick Commands
 

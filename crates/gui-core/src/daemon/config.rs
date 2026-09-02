@@ -6,6 +6,8 @@
 use anyhow::{Context, Result};
 use ssh_tunnel_common::DaemonClientConfig;
 
+use crate::client_setup::ClientSetupRepository;
+
 /// Load daemon client configuration from CLI config file
 pub fn load_daemon_config() -> Result<DaemonClientConfig> {
     use std::fs;
@@ -58,7 +60,7 @@ pub fn daemon_config_snippet_exists() -> bool {
 /// Configuration status for first-launch detection
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConfigStatus {
-    /// Configuration file exists and is valid
+    /// Configuration file exists (legacy compatibility; contents are not inspected here)
     Exists,
     /// No config file, but a daemon-generated snippet is available
     SnippetAvailable,
@@ -84,63 +86,23 @@ pub fn check_config_status() -> ConfigStatus {
 
 /// Load snippet configuration from daemon-generated file
 pub fn load_snippet_config() -> Result<DaemonClientConfig> {
-    use std::fs;
-
-    let snippet_path = get_daemon_config_snippet_path()?;
-
-    if !snippet_path.exists() {
-        anyhow::bail!("Configuration snippet does not exist");
-    }
-
-    let contents =
-        fs::read_to_string(&snippet_path).context("Failed to read configuration snippet")?;
-
-    let config: DaemonClientConfig =
-        toml::from_str(&contents).context("Failed to parse configuration snippet")?;
-
-    Ok(config)
+    let repository = ClientSetupRepository::for_default_paths()?;
+    let draft = repository.load_snippet()?;
+    let auth_token = draft.authentication_token().to_string();
+    Ok(DaemonClientConfig {
+        connection_mode: draft.connection_mode,
+        daemon_host: draft.daemon_host,
+        daemon_port: draft.daemon_port.parse().unwrap_or(3443),
+        daemon_url: draft.daemon_url,
+        auth_token,
+        tls_cert_fingerprint: draft.tls_cert_fingerprint,
+        skip_ssh_setup_warning: draft.skip_ssh_setup_warning,
+    })
 }
 
 /// Save daemon configuration to cli.toml
 pub fn save_daemon_config(config: &DaemonClientConfig) -> Result<()> {
-    use std::fs;
-
-    // Validate configuration before saving
-    ssh_tunnel_common::validate_client_config(config)?;
-
-    let config_path = get_cli_config_path()?;
-
-    // Create parent directory if it doesn't exist
-    if let Some(parent) = config_path.parent() {
-        fs::create_dir_all(parent).context("Failed to create config directory")?;
-    }
-
-    // Wrap in CliConfig structure for proper serialization
-    #[derive(serde::Serialize)]
-    struct CliConfig {
-        #[serde(flatten)]
-        daemon_config: DaemonClientConfig,
-    }
-
-    let cli_config = CliConfig {
-        daemon_config: config.clone(),
-    };
-
-    let toml_content =
-        toml::to_string_pretty(&cli_config).context("Failed to serialize configuration")?;
-
-    fs::write(&config_path, toml_content).context("Failed to write configuration file")?;
-
-    // Set restrictive permissions on Unix
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let permissions = fs::Permissions::from_mode(0o600);
-        fs::set_permissions(&config_path, permissions)
-            .context("Failed to set config file permissions")?;
-    }
-
-    Ok(())
+    ClientSetupRepository::for_default_paths()?.persist_config(config)
 }
 
 /// Save the skip SSH setup warning preference to config file

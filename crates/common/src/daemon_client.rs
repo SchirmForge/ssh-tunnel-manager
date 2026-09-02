@@ -4,12 +4,10 @@
 // SSH Tunnel Manager - Daemon Client Module
 // Shared daemon connection logic for CLI and GUI
 
-use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use anyhow::{Context, Result};
-use futures_util::StreamExt;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
@@ -110,11 +108,9 @@ impl DaemonClientConfig {
 
     /// Get the Unix socket path (for UnixSocket mode)
     ///
-    /// Checks multiple locations in priority order:
-    /// 1. Explicit path in daemon_url (if absolute path)
-    /// 2. User runtime directory (/run/user/<uid>/ssh-tunnel-manager/ssh-tunnel-manager.sock)
-    /// 3. Legacy user runtime directory (/run/user/<uid>/ssh-tunnel-manager.sock)
-    /// 4. System-wide location (/run/ssh-tunnel-manager/ssh-tunnel-manager.sock)
+    /// An absolute path in the config wins. Otherwise the daemon's own locations are probed in
+    /// priority order -- see [`crate::runtime_paths::client_socket_candidates`], which is
+    /// shared with the daemon so the two cannot disagree about where the socket is.
     pub fn socket_path(&self) -> Result<PathBuf> {
         if self.connection_mode == ConnectionMode::UnixSocket {
             let candidate = self.daemon_url.trim();
@@ -128,45 +124,14 @@ impl DaemonClientConfig {
             }
         }
 
-        // Try user runtime directory first (for user-mode daemon)
-        if let Some(runtime_dir) = dirs::runtime_dir() {
-            let socket_dir = if runtime_dir.file_name() == Some(OsStr::new("ssh-tunnel-manager")) {
-                runtime_dir.clone()
-            } else {
-                runtime_dir.join("ssh-tunnel-manager")
-            };
-            let user_socket = socket_dir.join("ssh-tunnel-manager.sock");
-            if user_socket.exists() {
-                return Ok(user_socket);
-            }
-
-            // Backward compatibility: legacy path without subdirectory
-            let legacy_socket = runtime_dir.join("ssh-tunnel-manager.sock");
-            if legacy_socket.exists() {
-                return Ok(legacy_socket);
-            }
+        let candidates = crate::runtime_paths::client_socket_candidates();
+        if let Some(existing) = candidates.iter().find(|path| path.exists()) {
+            return Ok(existing.clone());
         }
 
-        // Fall back to system-wide location (for system-mode daemon)
-        let system_socket = PathBuf::from("/run/ssh-tunnel-manager/ssh-tunnel-manager.sock");
-        if system_socket.exists() {
-            return Ok(system_socket);
-        }
-
-        // If neither exists, default to user runtime directory (will be created by daemon)
-        dirs::runtime_dir()
-            .map(|runtime_dir| {
-                if runtime_dir.file_name() == Some(OsStr::new("ssh-tunnel-manager")) {
-                    runtime_dir.join("ssh-tunnel-manager.sock")
-                } else {
-                    runtime_dir
-                        .join("ssh-tunnel-manager")
-                        .join("ssh-tunnel-manager.sock")
-                }
-            })
-            .ok_or_else(|| {
-                anyhow::anyhow!("Could not determine runtime directory and no system socket found")
-            })
+        // Nothing there yet. Report the location a daemon started by this user would create,
+        // so the error names the path that was actually expected.
+        crate::runtime_paths::daemon_socket_path()
     }
 }
 
@@ -213,19 +178,28 @@ pub fn validate_client_config(config: &DaemonClientConfig) -> Result<()> {
     Ok(())
 }
 
-/// # Arguments
-/// * `config` - Daemon client configuration
+/// How long a streaming response may go silent before it is treated as dead.
 ///
-/// # Returns
-/// Configured reqwest::Client ready to connect to daemon
-pub fn create_daemon_client(config: &DaemonClientConfig) -> Result<Client> {
-    let mut client_builder = Client::builder().timeout(Duration::from_secs(30));
+/// The daemon heartbeats every 10 seconds (`heartbeat_stream` in `crates/daemon/src/api.rs`),
+/// so this tolerates two missed beats. **If that interval changes, change this too** — a
+/// read timeout shorter than the heartbeat would tear down healthy streams.
+const STREAM_READ_TIMEOUT: Duration = Duration::from_secs(30);
 
-    // Configure client based on connection mode
+/// How long an ordinary request may take end to end.
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Apply the connection-mode setup shared by every client we build.
+///
+/// Factored out so the request client and the streaming client cannot drift apart in how they
+/// reach the daemon — only in how they time out.
+fn configure_transport(
+    mut builder: reqwest::ClientBuilder,
+    config: &DaemonClientConfig,
+) -> Result<reqwest::ClientBuilder> {
     match config.connection_mode {
         ConnectionMode::UnixSocket => {
             let socket_path = config.socket_path()?;
-            client_builder = client_builder.unix_socket(socket_path);
+            builder = builder.unix_socket(socket_path);
         }
         ConnectionMode::Http => {
             // HTTP mode - no TLS
@@ -235,18 +209,47 @@ pub fn create_daemon_client(config: &DaemonClientConfig) -> Result<Client> {
             if !config.tls_cert_fingerprint.is_empty() {
                 // Certificate pinning enabled
                 let tls_config = create_pinned_tls_config(config.tls_cert_fingerprint.clone())?;
-                client_builder = client_builder.use_preconfigured_tls(tls_config);
+                builder = builder.use_preconfigured_tls(tls_config);
             } else {
                 // No pinning - use default system roots (accept any valid cert)
                 let tls_config = create_insecure_tls_config()?;
-                client_builder = client_builder.use_preconfigured_tls(tls_config);
+                builder = builder.use_preconfigured_tls(tls_config);
             }
         }
     }
+    Ok(builder)
+}
 
-    client_builder
+/// A client for ordinary request/response calls to the daemon.
+///
+/// **Do not use this for the event stream** — see [`create_streaming_client`].
+///
+/// # Arguments
+/// * `config` - Daemon client configuration
+///
+/// # Returns
+/// Configured reqwest::Client ready to connect to daemon
+pub fn create_daemon_client(config: &DaemonClientConfig) -> Result<Client> {
+    configure_transport(Client::builder().timeout(REQUEST_TIMEOUT), config)?
         .build()
         .context("Failed to build daemon client")
+}
+
+/// A client for long-lived streaming responses, such as `/api/events`.
+///
+/// The difference from [`create_daemon_client`] is the timeout, and it matters more than it
+/// looks. `reqwest`'s `timeout` is a **total** request timeout that includes reading the
+/// response body, so applying it to Server-Sent Events cut every stream at exactly 30 seconds
+/// no matter how much traffic flowed. Paired with a reconnect backoff that never reset, the
+/// client spent half its life disconnected and silently missed daemon events — including
+/// authentication prompts, which then expired with nothing shown to the user.
+///
+/// `read_timeout` is the right tool: it fires only when *nothing arrives* for that long,
+/// which the heartbeat makes a genuine liveness signal.
+pub fn create_streaming_client(config: &DaemonClientConfig) -> Result<Client> {
+    configure_transport(Client::builder().read_timeout(STREAM_READ_TIMEOUT), config)?
+        .build()
+        .context("Failed to build daemon streaming client")
 }
 
 /// Add authentication header to request if configured
@@ -451,135 +454,21 @@ pub async fn start_tunnel_with_events<H: TunnelEventHandler>(
 
     // A credential the client holds itself, offered once before any human is asked.
     let mut stored = ClientHeldCredential::for_profile(profile, config);
+    let mut answered = AnsweredRequests::default();
 
     let base_url = config.daemon_base_url()?;
 
-    // Subscribe to SSE events BEFORE sending start request
-    // This ensures we don't miss any events that fire immediately after the tunnel starts
-    let client_for_events = client.clone();
-    let config_for_events = config.clone();
-    let (event_tx, mut event_rx) = tokio::sync::mpsc::unbounded_channel();
-    let (sse_ready_tx, mut sse_ready_rx) = tokio::sync::mpsc::channel::<Result<()>>(1);
-
-    tokio::spawn(async move {
-        let url = format!(
-            "{}/api/events",
-            config_for_events.daemon_base_url().unwrap()
-        );
-        let request = match add_auth_header(client_for_events.get(&url), &config_for_events) {
-            Ok(req) => req,
-            Err(e) => {
-                let err_msg = e.to_string();
-                let _ = sse_ready_tx.send(Err(anyhow::anyhow!("{}", err_msg))).await;
-                let _ = event_tx.send(Err(e));
-                return;
-            }
-        };
-
-        let resp = match request.send().await {
-            Ok(r) => r,
-            Err(e) => {
-                let err_msg = e.to_string();
-                let _ = sse_ready_tx.send(Err(anyhow::anyhow!("{}", err_msg))).await;
-                let _ = event_tx.send(Err(anyhow::anyhow!(e)));
-                return;
-            }
-        };
-
-        if !resp.status().is_success() {
-            let status = resp.status();
-            let err_msg = if status == reqwest::StatusCode::UNAUTHORIZED {
-                "Authentication failed: 401 Unauthorized\n\n\
-                    The daemon requires authentication but no valid token was provided.\n\
-                    \n\
-                    To fix this:\n\
-                    1. Check if the daemon has generated a CLI config snippet at:\n\
-                       ~/.config/ssh-tunnel-manager/cli-config.snippet\n\
-                    \n\
-                    2. Copy it to your CLI config:\n\
-                       cp ~/.config/ssh-tunnel-manager/cli-config.snippet ~/.config/ssh-tunnel-manager/cli.toml\n\
-                    \n\
-                    3. Or manually add the auth_token to ~/.config/ssh-tunnel-manager/cli.toml\n\
-                    \n\
-                    The daemon generates this snippet on first startup when authentication is enabled.".to_string()
-            } else {
-                format!("Daemon returned non-success status for events: {}", status)
-            };
-            let _ = sse_ready_tx.send(Err(anyhow::anyhow!("{}", err_msg))).await;
-            let _ = event_tx.send(Err(anyhow::anyhow!("{}", err_msg)));
-            return;
-        }
-
-        // SSE connection established - signal ready
-        let _ = sse_ready_tx.send(Ok(())).await;
-
-        let mut stream = resp.bytes_stream();
-        let mut buffer = String::new();
-
-        while let Some(chunk) = stream.next().await {
-            let chunk = match chunk {
-                Ok(c) => c,
-                Err(e) => {
-                    let _ = event_tx.send(Err(anyhow::anyhow!(e)));
-                    break;
-                }
-            };
-
-            buffer.push_str(std::str::from_utf8(&chunk).unwrap_or(""));
-
-            while let Some(pos) = buffer.find('\n') {
-                let line = buffer[..pos].trim_end().to_string();
-                buffer.drain(..=pos);
-
-                if line.is_empty() || line.starts_with(':') {
-                    continue;
-                }
-
-                if let Some(rest) = line.strip_prefix("data:") {
-                    let json_str = rest.trim();
-                    if json_str.is_empty() {
-                        continue;
-                    }
-
-                    match serde_json::from_str::<TunnelEvent>(json_str) {
-                        Ok(ev) => {
-                            // Filter events for this tunnel (except heartbeats)
-                            let should_forward = match &ev {
-                                TunnelEvent::Heartbeat { .. } => true,
-                                TunnelEvent::Starting { id }
-                                | TunnelEvent::Connected { id }
-                                | TunnelEvent::Disconnected { id, .. }
-                                | TunnelEvent::Error { id, .. }
-                                | TunnelEvent::AuthRequired { id, .. } => *id == tunnel_id,
-                            };
-
-                            if should_forward {
-                                let _ = event_tx.send(Ok(ev));
-                            }
-                        }
-                        Err(e) => {
-                            let _ = event_tx.send(Err(anyhow::anyhow!(
-                                "Failed to parse event JSON: {e} (line: {json_str})"
-                            )));
-                        }
-                    }
-                }
-            }
-        }
-    });
-
-    // Wait for SSE connection to be ready (with timeout)
-    match tokio::time::timeout(Duration::from_secs(5), sse_ready_rx.recv()).await {
-        Ok(Some(Ok(()))) => {
-            // SSE connection established, proceed with start request
-        }
-        Ok(Some(Err(e))) => {
-            anyhow::bail!("Failed to establish SSE connection: {}", e);
-        }
-        Ok(None) | Err(_) => {
-            anyhow::bail!("Timed out waiting for SSE connection to establish");
-        }
-    }
+    // Subscribe before starting, so the daemon cannot raise a prompt — or connect outright —
+    // in the window between the start request and this client being ready to hear about it.
+    //
+    // This is the shared `EventListener`, not a second hand-rolled subscription. That copy
+    // used the *request* client, whose total timeout cuts a stream at 30 seconds regardless of
+    // traffic, so any prompt answered after that was delivered to nobody.
+    let listener = crate::sse::EventListener::new(config.clone());
+    let mut event_rx = listener
+        .listen_ready()
+        .await
+        .context("Failed to establish SSE connection")?;
 
     // Determine if daemon is remote (HTTP/HTTPS) vs local (Unix socket)
     let is_remote_daemon = matches!(
@@ -632,7 +521,12 @@ pub async fn start_tunnel_with_events<H: TunnelEventHandler>(
         anyhow::bail!("Failed to start tunnel: {} - {}", status, body);
     }
 
-    // SSE-driven flow with fallback
+    // SSE-driven flow, with a periodic status poll as a backstop.
+    //
+    // The daemon re-emits *outstanding auth prompts* to every new subscriber, so a prompt can
+    // no longer be lost in a reconnect gap. A `Connected` event still can: it is a one-off with
+    // nothing to replay. Without this poll such a tunnel would connect fine and the caller
+    // would sit here until `overall_timeout`, so the fallback stays.
     let idle_fallback = Duration::from_secs(15);
     let overall_timeout = Duration::from_secs(60);
     let idle_timer = tokio::time::sleep(idle_fallback);
@@ -655,7 +549,7 @@ pub async fn start_tunnel_with_events<H: TunnelEventHandler>(
                         }
                         TunnelStatus::WaitingForAuth => {
                             if let Some(auth_request) = status.pending_auth {
-                                handle_auth_interactive(client, config, tunnel_id, &auth_request, handler, &mut stored)
+                                handle_auth_interactive(client, config, tunnel_id, &auth_request, handler, &mut stored, &mut answered)
                                     .await?;
                             }
                         }
@@ -669,40 +563,55 @@ pub async fn start_tunnel_with_events<H: TunnelEventHandler>(
                 idle_timer.as_mut().reset(tokio::time::Instant::now() + idle_fallback);
             }
             maybe_event = event_rx.recv() => {
-                match maybe_event {
-                    Some(Ok(ev)) => {
-                        handler.on_event(&ev);
-                        match ev {
-                            TunnelEvent::Connected { .. } => {
-                                handler.on_connected();
-                                return Ok(());
-                            }
-                            TunnelEvent::Error { error, .. } => anyhow::bail!("Tunnel failed: {error}"),
-                            TunnelEvent::Disconnected { reason, .. } => anyhow::bail!("Tunnel disconnected: {reason}"),
-                            TunnelEvent::AuthRequired { request, .. } => {
-                                handle_auth_interactive(client, config, tunnel_id, &request, handler, &mut stored)
-                                    .await?;
-                            }
-                            TunnelEvent::Starting { .. } | TunnelEvent::Heartbeat { .. } => {}
+                let Some(ev) = maybe_event else {
+                    // The listener reconnects on its own, so it only ends when it has given
+                    // up for good. Reconcile once before failing.
+                    if let Some(status) = fetch_tunnel_status(client, config, tunnel_id).await? {
+                        if status.status == TunnelStatus::Connected {
+                            handler.on_connected();
+                            return Ok(());
                         }
                     }
-                    Some(Err(e)) => {
-                        eprintln!("Event stream error: {e}");
+                    anyhow::bail!("Event stream closed and tunnel status unknown");
+                };
+
+                // `/api/events` is a global broadcast, so skip other tunnels' events without
+                // letting them hold off the idle fallback below.
+                if !event_concerns(&ev, tunnel_id) {
+                    continue;
+                }
+
+                handler.on_event(&ev);
+                match ev {
+                    TunnelEvent::Connected { .. } => {
+                        handler.on_connected();
+                        return Ok(());
                     }
-                    None => {
-                        // Stream ended; reconcile once, then fail
-                        if let Some(status) = fetch_tunnel_status(client, config, tunnel_id).await? {
-                            if status.status == TunnelStatus::Connected {
-                                handler.on_connected();
-                                return Ok(());
-                            }
-                        }
-                        anyhow::bail!("Event stream closed and tunnel status unknown");
+                    TunnelEvent::Error { error, .. } => anyhow::bail!("Tunnel failed: {error}"),
+                    TunnelEvent::Disconnected { reason, .. } => anyhow::bail!("Tunnel disconnected: {reason}"),
+                    TunnelEvent::AuthRequired { request, .. } => {
+                        handle_auth_interactive(client, config, tunnel_id, &request, handler, &mut stored, &mut answered)
+                            .await?;
                     }
+                    TunnelEvent::Starting { .. } | TunnelEvent::Heartbeat { .. } => {}
                 }
                 idle_timer.as_mut().reset(tokio::time::Instant::now() + idle_fallback);
             }
         }
+    }
+}
+
+/// Whether a broadcast event concerns `tunnel_id`.
+///
+/// Heartbeats concern every subscriber; everything else only its own tunnel.
+fn event_concerns(event: &TunnelEvent, tunnel_id: Uuid) -> bool {
+    match event {
+        TunnelEvent::Heartbeat { .. } => true,
+        TunnelEvent::Starting { id }
+        | TunnelEvent::Connected { id }
+        | TunnelEvent::Disconnected { id, .. }
+        | TunnelEvent::Error { id, .. }
+        | TunnelEvent::AuthRequired { id, .. } => *id == tunnel_id,
     }
 }
 
@@ -741,41 +650,86 @@ async fn fetch_tunnel_status(
 /// The daemon is unchanged by this: it raises its usual prompt over SSE and waits. All that
 /// differs is who answers — this, or a human. That is what makes `PasswordStorage::Client`
 /// work identically for a local and a remote daemon.
+/// Whether a prompt may be answered from a credential the *client* holds.
+///
+/// Two conditions, both load-bearing:
+///
+/// - the profile keeps its secret client-side, once the legacy `Keychain` value is resolved
+///   against where the daemon actually runs. That resolution is the v0.3.0 fix: a credential
+///   saved here but looked for there is why "save to keychain" silently did nothing against a
+///   remote daemon; and
+/// - the prompt asks for something *stable for the profile*. A TOTP code is valid for one time
+///   step, keyboard-interactive text is server-supplied and must be shown verbatim, and a host
+///   key is a trust decision — none of those may come out of storage.
+///
+/// This is the single copy of that policy. The CLI and the GUI each submit their own answer
+/// over their own HTTP client, but they must not disagree about *whether* to answer.
+pub fn client_credential_applies(
+    storage: crate::PasswordStorage,
+    daemon_is_local: bool,
+    request_type: &crate::AuthRequestType,
+) -> bool {
+    storage.resolved(daemon_is_local).is_client_held()
+        && matches!(
+            request_type,
+            crate::AuthRequestType::Password | crate::AuthRequestType::KeyPassphrase
+        )
+}
+
+/// [`client_credential_applies`] for a whole profile.
+pub fn profile_uses_client_credential(
+    profile: &crate::Profile,
+    daemon_is_local: bool,
+    request_type: &crate::AuthRequestType,
+) -> bool {
+    client_credential_applies(
+        profile.connection.password_storage,
+        daemon_is_local,
+        request_type,
+    )
+}
+
 struct ClientHeldCredential {
     profile_id: Uuid,
-    enabled: bool,
+    storage: crate::PasswordStorage,
+    daemon_is_local: bool,
     /// Whether the stored secret has already been offered for this tunnel start.
     spent: bool,
 }
 
+/// Requests already answered during this tunnel start.
+///
+/// The daemon re-sends outstanding prompts to a newly connected subscriber, so the same
+/// `AuthRequest` arrives again whenever the stream reconnects. A request id identifies the
+/// *question*, not the delivery: answering one twice would prompt the user a second time and
+/// then fail, because the daemon takes the pending request on first submit and rejects the
+/// second with "Request ID mismatch".
+#[derive(Default)]
+struct AnsweredRequests {
+    ids: std::collections::HashSet<Uuid>,
+}
+
+impl AnsweredRequests {
+    /// Record `id` as answered; returns false if it already was.
+    fn record(&mut self, id: Uuid) -> bool {
+        self.ids.insert(id)
+    }
+}
+
 impl ClientHeldCredential {
     fn for_profile(profile: &crate::Profile, config: &DaemonClientConfig) -> Self {
-        // A legacy `Keychain` profile becomes client-held when the daemon is remote, which is
-        // the case where it never worked: the credential was saved here and looked for there.
-        let daemon_is_local = config.connection_mode == ConnectionMode::UnixSocket;
-        let storage = profile
-            .connection
-            .password_storage
-            .resolved(daemon_is_local);
-
         Self {
             profile_id: profile.metadata.id,
-            enabled: storage.is_client_held(),
+            storage: profile.connection.password_storage,
+            daemon_is_local: config.connection_mode == ConnectionMode::UnixSocket,
             spent: false,
         }
     }
 
     /// Whether this prompt is one a stored credential may answer.
-    ///
-    /// Only secrets that are stable for the profile. A TOTP code is valid for one time step
-    /// and a host key decision is a judgement, so neither can come from storage.
     fn may_answer(&self, request: &AuthRequest) -> bool {
-        self.enabled
-            && !self.spent
-            && matches!(
-                request.auth_type,
-                crate::AuthRequestType::Password | crate::AuthRequestType::KeyPassphrase
-            )
+        !self.spent
+            && client_credential_applies(self.storage, self.daemon_is_local, &request.auth_type)
     }
 
     /// A stored answer for this prompt, or `None` to let a human answer.
@@ -819,7 +773,18 @@ async fn handle_auth_interactive<H: TunnelEventHandler>(
     auth_request: &AuthRequest,
     handler: &mut H,
     stored: &mut ClientHeldCredential,
+    answered: &mut AnsweredRequests,
 ) -> Result<()> {
+    if !answered.record(auth_request.id) {
+        // A repeat of a question already answered. Silently ignore it: re-prompting would
+        // ask the user the same thing twice, and re-submitting would be rejected.
+        tracing::debug!(
+            "Ignoring repeated auth request {} for tunnel {tunnel_id}",
+            auth_request.id
+        );
+        return Ok(());
+    }
+
     let response = match stored.answer(auth_request) {
         Some(secret) => secret,
         None => handler.on_auth_required(auth_request)?,
@@ -892,10 +857,17 @@ mod client_held_credential_tests {
         }
     }
 
+    /// `enabled` selects a storage value that is client-held (or not) against a local daemon,
+    /// which is what the policy actually keys on.
     fn holder(enabled: bool) -> ClientHeldCredential {
         ClientHeldCredential {
             profile_id: Uuid::new_v4(),
-            enabled,
+            storage: if enabled {
+                crate::PasswordStorage::Client
+            } else {
+                crate::PasswordStorage::None
+            },
+            daemon_is_local: true,
             spent: false,
         }
     }
@@ -906,6 +878,28 @@ mod client_held_credential_tests {
 
     fn nothing_stored(_: &Uuid) -> crate::error::Result<String> {
         Err(crate::Error::Keychain("no password stored".into()))
+    }
+
+    #[test]
+    fn only_this_tunnels_events_are_acted_on_and_heartbeats_always_are() {
+        let mine = Uuid::new_v4();
+        let theirs = Uuid::new_v4();
+
+        assert!(event_concerns(&TunnelEvent::Connected { id: mine }, mine));
+        assert!(
+            !event_concerns(&TunnelEvent::Connected { id: theirs }, mine),
+            "`/api/events` is a global broadcast: another tunnel connecting must not be \
+             mistaken for this one"
+        );
+
+        // The heartbeat carries no tunnel id and is what keeps the idle fallback from firing
+        // on a healthy but quiet stream, so it has to reach every caller.
+        assert!(event_concerns(
+            &TunnelEvent::Heartbeat {
+                timestamp: chrono::Utc::now()
+            },
+            mine
+        ));
     }
 
     #[test]
@@ -976,6 +970,24 @@ mod client_held_credential_tests {
     }
 
     /// Nothing saved, or an unreachable store: fall through to the human rather than fail.
+    #[test]
+    fn a_repeated_request_id_is_recorded_only_once() {
+        let mut answered = AnsweredRequests::default();
+        let id = Uuid::new_v4();
+        assert!(answered.record(id), "first delivery must be handled");
+        assert!(
+            !answered.record(id),
+            "a repeat of the same question must be ignored, not answered again"
+        );
+    }
+
+    #[test]
+    fn distinct_requests_are_each_answered() {
+        let mut answered = AnsweredRequests::default();
+        assert!(answered.record(Uuid::new_v4()));
+        assert!(answered.record(Uuid::new_v4()));
+    }
+
     #[test]
     fn a_lookup_miss_falls_through_to_the_human_without_spending_the_attempt() {
         let mut h = holder(true);

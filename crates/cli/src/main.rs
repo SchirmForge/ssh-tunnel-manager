@@ -1344,9 +1344,10 @@ fn validate_ssh_key(key_path: &PathBuf) -> Result<()> {
 }
 
 fn validate_local_port(port: u16, non_interactive: bool) -> Result<()> {
-    if port <= 1024 {
+    // Privileged ports are below 1024; 1024 itself is not one.
+    if port < 1024 {
         let warning = format!(
-            "⚠️  Port {} requires root/admin privileges (privileged port)",
+            "⚠️  Port {} is privileged and needs CAP_NET_BIND_SERVICE on the daemon",
             port
         );
         println!("{}", warning.yellow());

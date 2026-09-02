@@ -27,22 +27,25 @@ reused, so references from commits, issues and tests stay valid.
 | 1 | [Profile management](EPIC-01-profile-management.md) | 8 | Creating, listing, inspecting, editing and deleting connection profiles |
 | 2 | [Tunnel lifecycle](EPIC-02-tunnel-lifecycle.md) | 9 | Starting, stopping, restarting and inspecting tunnels; port forwarding |
 | 3 | [Authentication](EPIC-03-authentication.md) | 9 | Keys, passphrases, passwords, two-factor, credential storage |
-| 4 | [Host key verification](EPIC-04-host-key-verification.md) | 4 | Trusting a server on first connect, and detecting a changed key |
-| 5 | [Daemon connectivity](EPIC-05-daemon-connectivity.md) | 9 | Listener modes, token authentication, TLS pinning, client configuration, first-run setup |
-| 6 | [Real-time status](EPIC-06-realtime-status.md) | 5 | The event stream, live indicators, heartbeat and reconnection |
-| 7 | [Remote daemon](EPIC-07-remote-daemon.md) | 4 | Managing a daemon on another machine without moving private keys |
-| 8 | [Security hardening](EPIC-08-security-hardening.md) | 6 | Permissions, authentication defaults, network restrictions |
+| 4 | [Host key verification](EPIC-04-host-key-verification.md) | 5 | Trusting a server on first connect, and detecting a changed key |
+| 5 | [Daemon connectivity](EPIC-05-daemon-connectivity.md) | 10 | Listener modes, token authentication, TLS pinning, client configuration, first-run setup |
+| 6 | [Real-time status](EPIC-06-realtime-status.md) | 7 | The event stream, live indicators, heartbeat, reconnection and prompt reconciliation |
+| 7 | [Remote daemon](EPIC-07-remote-daemon.md) | 5 | Managing a daemon on another machine without moving private keys |
+| 8 | [Security hardening](EPIC-08-security-hardening.md) | 9 | Permissions, authentication defaults, network restrictions |
 | 9 | [Deployment and operations](EPIC-09-deployment-operations.md) | 6 | Service setup, headless operation, packaging, diagnostics |
-| 10 | [Development and quality](EPIC-10-development-quality.md) | 7 | Testing, sandboxing and CI — stories for contributors |
+| 10 | [Development and quality](EPIC-10-development-quality.md) | 14 | Testing, sandboxing and CI — stories for contributors |
+| 11 | [Second-generation desktop GUI](EPIC-11-desktop-gui-v2.md) | 7 | Adaptive profile UI, safe editing/authentication, accessibility and production rollout |
 
-**67 stories**: 61 ✅ implemented, 1 ⚠️ partial, 5 ❌ not implemented.
+**89 stories**: 76 ✅ implemented, 7 ⚠️ partial, 6 ❌ not implemented.
 
-The five gaps are worth knowing up front: no `ssh-tunnel edit` command
+The six unimplemented stories are worth knowing up front: no `ssh-tunnel edit` command
 ([US-1.8](EPIC-01-profile-management.md)), no remote or dynamic forwarding
 ([US-2.8](EPIC-02-tunnel-lifecycle.md)), no tunnel auto-reconnect
 ([US-2.9](EPIC-02-tunnel-lifecycle.md)), `ssh-tunnel daemon start|stop|status` are stubs
 ([US-5.9](EPIC-05-daemon-connectivity.md)), and no configurable daemon logging
-([US-9.6](EPIC-09-deployment-operations.md)).
+([US-9.6](EPIC-09-deployment-operations.md)). GUI v2 is not yet installed as the production
+desktop application ([US-11.7](EPIC-11-desktop-gui-v2.md)); its other six stories are partial
+until runtime validation and cutover are complete.
 
 ## Personas
 

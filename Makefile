@@ -29,8 +29,12 @@ test:
 # Live SSH tests against the host in .local/testing/ssh-target.env.
 # Without that file each test skips; --nocapture makes the skip reasons visible.
 # See docs/testing/ssh-target.env.template.
+# Tier-3/4 live tests against a provisioned host (.local/testing/ssh-target.env).
+# STRICT=1 is not optional: without it a missing or incomplete target config makes every
+# test skip itself and the suite still reports "ok", which is indistinguishable from a
+# passing run. See scripts/provision-test-target.sh to create the config.
 test-live:
-	cargo test -- --ignored --nocapture
+	SSH_TUNNEL_TEST_STRICT=all cargo test -- --ignored --nocapture
 
 # Tier-2 live tests: an unprivileged sshd on localhost. No root, no container,
 # no secrets, nothing to install. Covers the key-based half of the live tier;

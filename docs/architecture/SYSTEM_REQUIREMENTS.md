@@ -1,5 +1,7 @@
 # System Requirements
 
+**Version**: v0.4.0
+
 ## Supported Platforms
 
 **Operating Systems:**
@@ -15,6 +17,16 @@
 - macOS (not planned)
 - BSD systems (may work but untested)
 
+The list above describes the established CLI, daemon, and packaged `gui-gtk` application.
+The second-generation GUI source preview has a deliberately narrower validation target:
+
+- Bazzite based on Fedora 44
+- GTK 4.22, libadwaita 1.9, GLib 2.88
+- Rust 1.98.0
+
+No compatibility claim is made yet for GUI v2 on other Linux distributions, Windows, or
+macOS. That work is outside v0.4.0 rather than assumed from the packaged GUI's history.
+
 ## Runtime Dependencies
 
 ### Core Dependencies (All Components)
@@ -27,13 +39,20 @@
 
 ### GUI-Specific Dependencies
 
-**Required for GTK GUI:**
+**Required for packaged GTK GUI:**
 - GTK4 ≥ 4.10
 - libadwaita ≥ 1.4
 - Secret Service API provider:
   - gnome-keyring (GNOME/GTK environments)
   - KDE Wallet (KDE/Qt environments)
   - Any compatible Secret Service implementation
+
+**Required for GUI v2 preview:**
+- GTK 4.22
+- libadwaita 1.9
+- GLib 2.88
+- A Secret Service provider for persistent client-held credentials; the application remains
+  usable without one and reports credential-store errors
 
 ### Network Dependencies
 
@@ -75,7 +94,7 @@ Only needed if building from source.
 ### Compiler and Build Tools
 
 **Required:**
-- Rust ≥ 1.85 (pinned by `rust-toolchain.toml`; rustup installs it automatically)
+- Rust 1.98.0 (pinned by `rust-toolchain.toml`; rustup installs it automatically)
 - cargo (Rust package manager)
 - C/C++ compiler (gcc or clang)
 - **cmake** — `aws-lc-sys`, pulled in by both `rustls` and `russh`, compiles C and will not
@@ -103,6 +122,12 @@ sudo dnf install gtk4-devel libadwaita-devel
 
 # Arch
 sudo pacman -S gtk4 libadwaita
+```
+
+GUI v2 is validated in the Fedora 44 development environment only:
+
+```bash
+sudo dnf install gtk4-devel libadwaita-devel glib2-devel gcc cmake pkg-config
 ```
 
 ## Network Requirements
@@ -133,7 +158,7 @@ sudo pacman -S gtk4 libadwaita
 
 ## Desktop Environment Compatibility
 
-### Tested Environments
+### Tested environments for the packaged GUI
 
 **Fully Supported:**
 - ✅ GNOME 43+ (primary development environment)
@@ -148,6 +173,10 @@ sudo pacman -S gtk4 libadwaita
 
 **Known Issues:**
 - ⚠️ Tiling window managers may require manual configuration for dialogs
+
+GUI v2 desktop-environment compatibility has not yet been established through runtime
+testing. Automated/source validation is not a claim that GNOME, KDE, XFCE, tiling window
+managers, or non-Fedora distributions have passed visual/accessibility review.
 
 ## Keyring/Secret Storage
 
@@ -243,19 +272,22 @@ See [SYSTEMD.md](SYSTEMD.md) and the "Server and Headless Environments" section 
 
 ### GTK4/Libadwaita Updates
 
-The application is compatible with:
+The packaged GUI is compatible with:
 - GTK4: 4.10 through 4.16+
 - libadwaita: 1.4 through 1.6+
 
 Newer versions should work without issues.
 
+GUI v2 makes no range claim yet: its validated preview baseline is GTK 4.22 and libadwaita
+1.9 on Bazzite/Fedora 44.
+
 ### Rust Toolchain
 
-**Minimum supported Rust version (MSRV):** 1.85
+**Pinned Rust version:** 1.98.0
 
-Raised from 1.75 in v0.2.0: russh 0.63 requires it. The version is pinned in
-`rust-toolchain.toml`, so CI and every developer compile with the same rustc rather than
-whatever `stable` happens to be.
+The repository pins the exact toolchain in `rust-toolchain.toml`, so CI and every developer
+compile with the same rustc rather than whatever `stable` happens to be. GUI v2 declares a
+crate-level minimum of Rust 1.92 but is validated with the repository's pinned 1.98 toolchain.
 
 To update Rust:
 ```bash

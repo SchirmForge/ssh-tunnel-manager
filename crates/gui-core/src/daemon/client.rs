@@ -14,9 +14,9 @@ use serde::Deserialize;
 use uuid::Uuid;
 
 use ssh_tunnel_common::{
-    add_auth_header, create_daemon_client, prepare_profile_for_remote, AuthRequest, AuthResponse,
-    ConnectionMode, DaemonClientConfig, DaemonInfo, Profile, ProfileSourceMode, StartTunnelRequest,
-    TunnelStatus,
+    add_auth_header, create_daemon_client, prepare_profile_for_remote, AuthRequest, ConnectionMode,
+    DaemonClientConfig, DaemonInfo, Profile, ProfileSourceMode, StartTunnelRequest,
+    TunnelStatusResponse,
 };
 
 /// Daemon client for tunnel operations
@@ -26,25 +26,10 @@ pub struct DaemonClient {
     pub config: DaemonClientConfig,
 }
 
-/// Response from start/stop operations
-#[derive(Debug, Deserialize)]
-pub struct OperationResponse {
-    #[allow(dead_code)]
-    pub message: String,
-}
-
 /// Error response from daemon API
 #[derive(Debug, Deserialize)]
 pub struct ErrorResponse {
     pub error: String,
-}
-
-/// Tunnel status response
-#[derive(Debug, Deserialize)]
-pub struct TunnelStatusResponse {
-    pub id: Uuid,
-    pub status: TunnelStatus,
-    pub pending_auth: Option<AuthRequest>,
 }
 
 /// List of active tunnels
@@ -281,34 +266,7 @@ impl DaemonClient {
         }
     }
 
-    /// Submit authentication response for a tunnel
-    pub async fn submit_auth(&self, profile_id: Uuid, auth_response: String) -> Result<()> {
-        let url = format!("{}/api/tunnels/{}/auth", self.base_url()?, profile_id);
-        let request = self.client.post(&url);
-        let request = add_auth_header(request, &self.config)?;
-
-        let auth = AuthResponse {
-            tunnel_id: profile_id,
-            response: auth_response,
-        };
-
-        let response = request
-            .json(&auth)
-            .send()
-            .await
-            .context("Failed to send auth response")?;
-
-        if response.status().is_success() {
-            Ok(())
-        } else {
-            let error: ErrorResponse = response.json().await.unwrap_or_else(|_| ErrorResponse {
-                error: "Unknown error".to_string(),
-            });
-            anyhow::bail!("Failed to submit auth: {}", error.error)
-        }
-    }
-
-    /// Submit authentication response for a tunnel with request ID
+    /// Submit authentication response for a tunnel and its exact request ID.
     pub async fn submit_auth_with_id(
         &self,
         profile_id: Uuid,

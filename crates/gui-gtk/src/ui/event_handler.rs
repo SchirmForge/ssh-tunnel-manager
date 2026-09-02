@@ -3,9 +3,9 @@
 
 //! GTK event handling utilities
 //!
-//! Note: The TunnelEventHandler trait requires Send + Sync, but GTK widgets and Rc
-//! are not thread-safe. Instead of implementing the trait directly, we provide
-//! utility functions that can be called from the event loop.
+//! Note: GTK widgets and `Rc` are not thread-safe, so this module cannot sit behind a
+//! `Send + Sync` handler trait. It provides utility functions to be called from the event
+//! loop instead.
 
 use gtk4::prelude::*;
 use libadwaita as adw;

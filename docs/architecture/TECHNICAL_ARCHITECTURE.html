@@ -132,7 +132,7 @@
 <p class="subtitle">SSH Tunnel Manager — the decisions behind the implementation, and how the code is organised.</p>
 
 <div class="meta">
-  <span><strong>Version</strong> v0.3.0</span>
+  <span><strong>Version</strong> v0.4.0</span>
   <span><strong>Audience</strong> Contributors</span>
   <span><strong>Companion</strong> <a href="FUNCTIONAL_ARCHITECTURE.html">Functional Architecture</a></span>
 </div>
@@ -204,22 +204,110 @@
 </div>
 
 <div class="decision">
-  <h3>1.5 Optional keychain</h3>
+  <h3>1.5 Runtime-selected credential store</h3>
   <dl>
     <dt>Decision</dt>
-    <dd>Use the OS keyring where one exists, and degrade gracefully where it does not.</dd>
+    <dd>Use Secret Service on a desktop, fall back to kernel keyutils on a headless Linux host, and keep the selected location explicit.</dd>
     <dt>Rationale</dt>
-    <dd>Encryption at rest is the OS's job, not ours. But the same binaries have to work on a headless server with no Secret Service, so an unavailable keyring must never be fatal — profile creation still succeeds, and the credential is simply asked for each time.</dd>
+    <dd>Encryption at rest is the OS's job, not ours. The same binaries must also work without a desktop session. Store selection must be visible because an unexpected backend looks exactly like an empty store, and keyutils credentials do not survive reboot.</dd>
     <dt>Implementation</dt>
-    <dd>Availability is determined by attempting a real keyring operation, not by guessing from environment variables. <code>SSH_TUNNEL_SKIP_KEYRING=1</code> forces it off for automation. <code>PasswordStorage</code> is an enum (<code>none</code> / <code>keychain</code> / <code>file</code>) that still deserialises the pre-v0.1.7 boolean form.</dd>
+    <dd><code>keyring-core</code> plus the Secret Service and keyutils store implementations. <code>credential_store</code> selects <code>auto</code>, <code>secret-service</code>, <code>keyutils</code> or <code>none</code>. <code>PasswordStorage</code> distinguishes <code>client</code> and <code>daemon-host</code>; legacy <code>keychain</code> is read and resolved but no longer written by GUI v2.</dd>
   </dl>
 </div>
+
+<div class="decision">
+  <h3>1.6 Toolkit-neutral GUI controller and effect runtime</h3>
+  <dl>
+    <dt>Decision</dt>
+    <dd>GTK views render immutable <code>AppSnapshot</code> values and dispatch typed <code>AppCommand</code> values. <code>gui-core</code> owns the reducer, effects, preferences, editor rules, authentication queue and profile-action availability.</dd>
+    <dt>Rationale</dt>
+    <dd>Daemon/profile/security behavior is testable without GTK and cannot drift between the main window and a future tray. Widgets stay presentation-only, while <code>ActionAvailability</code> is the single source for enabled operations.</dd>
+    <dt>Consequence</dt>
+    <dd><code>gui-v2</code> bridges the GLib main context to a dedicated Tokio runtime thread through messages. GTK objects never cross to Tokio tasks. The outgoing <code>AppCore</code> remains only for <code>gui-gtk</code> compatibility.</dd>
+  </dl>
+</div>
+
+<div class="decision">
+  <h3>1.7 Structured protocol data is the UI control plane</h3>
+  <dl>
+    <dt>Decision</dt>
+    <dd>Daemon prompt, message, instruction, name, error and descriptive status strings are presentation-only. Request/event/status variants, IDs, capabilities and explicit booleans select every dialog, action and state transition.</dd>
+    <dt>Rationale</dt>
+    <dd>Text may be localized, misleading, changed by the server or absent. Parsing it is brittle and can turn display copy into a security boundary.</dd>
+    <dt>Consequence</dt>
+    <dd>Unknown or contradictory codes fail closed. Future host/key/fingerprint fields must be added to the daemon protocol; string parsing is not a fallback or future backlog item.</dd>
+  </dl>
+</div>
+
+<div class="decision">
+  <h3>1.8 At-least-once prompt delivery, reconciled by the daemon</h3>
+  <dl>
+    <dt>Decision</dt>
+    <dd>On subscribe, the daemon replays an <code>auth_required</code> for every tunnel with an outstanding prompt. Re-delivery keeps the <strong>same</strong> request id; clients dedupe.</dd>
+    <dt>Rationale</dt>
+    <dd><code>/api/events</code> is a live broadcast, so a prompt raised while no client was attached &mdash; including during a reconnect &mdash; was unrecoverable and expired after <code>AUTH_RESPONSE_TIMEOUT</code> with nothing shown to the user. Reconciling daemon-side fixes every client at once, rather than each front-end inventing its own recovery.</dd>
+    <dt>Why not a fresh id per delivery</dt>
+    <dd>It looks like it sidesteps duplicate handling, but it breaks multi-client. <code>submit_auth_by_request_id</code> matches the pending request's id, so reissuing it stales the id a client is already holding and its answer fails with &ldquo;Request ID mismatch&rdquo;. Correctness would depend on how many clients happened to be attached. The id identifies <strong>the question, not the delivery</strong>; a genuinely new question, such as the prompt after a rejected password, still gets a new id.</dd>
+    <dt>Consequence</dt>
+    <dd>Clients must tolerate seeing a prompt twice. The CLI tracks answered request ids; the GUI keys its one active modal by request id and its pending-prompt insert is idempotent.</dd>
+  </dl>
+</div>
+
+<figure>
+<svg viewBox="0 0 700 330" role="img" aria-labelledby="sse-title">
+  <title id="sse-title">Authentication event flow: a client subscribes before starting a tunnel, the daemon raises a prompt, the stream drops and reconnects, and the daemon replays the outstanding prompt with the same request id so the client can answer it</title>
+  <defs>
+    <marker id="arrow-sse" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" class="d-arrowhead"/>
+    </marker>
+  </defs>
+
+  <text x="120" y="26" class="d-title">CLIENT</text>
+  <text x="470" y="26" class="d-title">DAEMON</text>
+
+  <rect x="60" y="36" width="170" height="34" rx="6" class="d-box d-client"/>
+  <text x="76" y="58" class="d-label">EventListener</text>
+
+  <rect x="420" y="36" width="170" height="34" rx="6" class="d-box d-daemon"/>
+  <text x="436" y="58" class="d-label">/api/events</text>
+
+  <line x1="145" y1="70" x2="145" y2="310" class="d-edge d-dim"/>
+  <line x1="505" y1="70" x2="505" y2="310" class="d-edge d-dim"/>
+
+  <line x1="145" y1="96" x2="505" y2="96" class="d-edge" marker-end="url(#arrow-sse)"/>
+  <text x="180" y="90" class="d-sub">1. listen_ready() &mdash; subscribe first</text>
+
+  <line x1="145" y1="130" x2="505" y2="130" class="d-edge" marker-end="url(#arrow-sse)"/>
+  <text x="180" y="124" class="d-sub">2. POST /tunnels/{id}/start</text>
+
+  <line x1="505" y1="164" x2="145" y2="164" class="d-edge" marker-end="url(#arrow-sse)"/>
+  <text x="180" y="158" class="d-sub">3. auth_required (id = R)</text>
+
+  <rect x="230" y="182" width="240" height="30" rx="6" class="d-box d-ext"/>
+  <text x="246" y="202" class="d-sub">4. stream drops &mdash; prompt unanswered</text>
+
+  <line x1="145" y1="240" x2="505" y2="240" class="d-edge" marker-end="url(#arrow-sse)"/>
+  <text x="180" y="234" class="d-sub">5. reconnect (backoff reset if healthy)</text>
+
+  <line x1="505" y1="274" x2="145" y2="274" class="d-edge" marker-end="url(#arrow-sse)"/>
+  <text x="180" y="268" class="d-sub">6. replay auth_required &mdash; same id R</text>
+
+  <line x1="145" y1="304" x2="505" y2="304" class="d-edge" marker-end="url(#arrow-sse)"/>
+  <text x="180" y="298" class="d-sub">7. POST /auth with id R &mdash; matches</text>
+</svg>
+<figcaption>
+  Subscribing before starting (step 1) closes the window in which the daemon could raise a
+  prompt the client was not yet listening for. Replaying on reconnect (step 6) closes the
+  window in which one was raised while it was not listening any more. Because the id is
+  unchanged, the answer in step 7 still matches the daemon's pending request.
+</figcaption>
+</figure>
 
 <h2 id="crates">2. Crate layout</h2>
 
 <figure>
 <svg viewBox="0 0 690 330" role="img" aria-labelledby="crates-title">
-  <title id="crates-title">Crate dependency graph: common underpins daemon, cli and gui-core; gui-core underpins gui-gtk</title>
+  <title id="crates-title">Crate dependency graph: common underpins daemon, cli and gui-core; gui-core underpins the packaged gui-gtk compatibility path and isolated gui-v2 preview</title>
   <defs>
     <marker id="arrow3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M 0 0 L 10 5 L 0 10 z" class="d-arrowhead"/>
@@ -238,22 +326,22 @@
   <text x="256" y="85" class="d-sub">crates/cli</text>
 
   <rect x="450" y="46" width="180" height="52" rx="6" class="d-box d-client"/>
-  <text x="466" y="68" class="d-label">ssh-tunnel-gtk</text>
-  <text x="466" y="85" class="d-sub">crates/gui-gtk</text>
+  <text x="466" y="68" class="d-label">GTK GUI adapters</text>
+  <text x="466" y="85" class="d-sub">gui-gtk · isolated gui-v2</text>
 
 
   <!-- gui-core -->
   <text x="30" y="150" class="d-title">SHARED</text>
   <rect x="450" y="162" width="210" height="48" rx="6" class="d-box d-client"/>
   <text x="466" y="182" class="d-label">gui-core</text>
-  <text x="466" y="199" class="d-sub">view models · AppCore state · profile ops</text>
+  <text x="466" y="199" class="d-sub">controller · runtime · snapshots · actions</text>
 
   <path d="M 540 162 L 540 100" class="d-edge" marker-end="url(#arrow3)"/>
 
   <!-- common -->
   <rect x="30" y="246" width="630" height="52" rx="6" class="d-box d-daemon"/>
   <text x="46" y="268" class="d-label">common</text>
-  <text x="46" y="285" class="d-sub">types · profile I/O · daemon client · SSE EventListener · keychain · TLS · validation</text>
+  <text x="46" y="285" class="d-sub">types · profile I/O · daemon client · SSE · credential facade · TLS · SSH key validation</text>
 
   <path d="M 120 246 L 120 100" class="d-edge" marker-end="url(#arrow3)"/>
   <path d="M 330 246 L 330 100" class="d-edge" marker-end="url(#arrow3)"/>
@@ -261,17 +349,18 @@
 
   <text x="140" y="230" class="d-sub">depends on</text>
 </svg>
-<figcaption>Every crate in the workspace builds by default; <code>common</code> underpins all of them.</figcaption>
+<figcaption>The root workspace builds the packaged GUI; GUI v2 is temporarily a nested workspace. Both reuse <code>gui-core</code> and <code>common</code>.</figcaption>
 </figure>
 
 <table>
   <thead><tr><th>Crate</th><th>Kind</th><th>Holds</th></tr></thead>
   <tbody>
-    <tr><td><code>common</code></td><td>lib</td><td>Profile and config types, TOML persistence, the SSE <code>EventListener</code>, the daemon HTTP client, keychain access, TLS pinning helpers, the shared SSE-first tunnel control flow</td></tr>
+    <tr><td><code>common</code></td><td>lib</td><td>Profile and config types, TOML persistence, SSE <code>EventListener</code>, daemon HTTP client, credential-store facade, TLS pinning, SSH-key validation, shared SSE-first tunnel control</td></tr>
     <tr><td><code>daemon</code></td><td>bin</td><td>Axum API server, tunnel manager and SSH lifecycle, <code>known_hosts</code>, TLS setup, PID guard, permission enforcement</td></tr>
     <tr><td><code>cli</code></td><td>bin</td><td>clap command surface, interactive prompts, table and JSON rendering</td></tr>
-    <tr><td><code>gui-core</code></td><td>lib</td><td>View models, <code>AppCore</code> state, profile operations, daemon config helpers — no toolkit dependency</td></tr>
+    <tr><td><code>gui-core</code></td><td>lib</td><td>Client setup, controller/reducer, snapshots, typed actions/effects, runtime, auth queue, editor contracts, <code>ui.toml</code>, view models — no toolkit dependency</td></tr>
     <tr><td><code>gui-gtk</code></td><td>bin</td><td>GTK4 / libadwaita widgets, dialogs, the configuration wizard</td></tr>
+    <tr><td><code>gui-v2</code></td><td>bin + temporary nested workspace</td><td>GTK4/libadwaita 0.22-generation adapter, first-launch setup, GLib/Tokio bridge, adaptive views, actions and dialogs; source preview pending cutover</td></tr>
   </tbody>
 </table>
 
@@ -330,7 +419,7 @@
 
 <h4>The GUI side</h4>
 <p>
-  GTK is single-threaded, and async work runs on the GLib main context via
+  The packaged GUI is single-threaded, and its async work runs on the GLib main context via
   <code>spawn_local</code>. Shared client state sits in <code>RefCell</code>, which means a
   borrow must never be held across an <code>await</code> — if anything borrows the same cell
   while the future is suspended, the process panics with "already borrowed". The daemon
@@ -346,12 +435,32 @@ if let Some(client) = client {
   catches it, and CI runs clippy with <code>-D warnings</code>.
 </p>
 
+<p>
+  GUI v2 uses a different boundary: GTK objects remain on the GLib main context while an
+  <code>AppRuntime</code> runs on a dedicated Tokio thread. Commands cross to the runtime and
+  typed <code>ControllerEvent</code>/<code>PresentationRequest</code> messages return to GLib.
+  The controller reduces each event into a new immutable snapshot before widgets render it.
+  Blocking profile, key-file and Secret Service operations therefore do not run in widget
+  callbacks, and Tokio never receives a GTK object.
+</p>
+
+<p>
+  Before that Tokio runtime exists, GUI v2 asks the toolkit-neutral
+  <code>ClientSetupRepository</code> to classify local <code>cli.toml</code> state. Only a
+  parsed and field-validated configuration can construct <code>AppRuntime</code>. Missing or
+  invalid files remain in a non-blocking GTK setup flow, which can import
+  <code>cli-config.snippet</code> or collect mode-specific settings. Saving uses a redacted
+  draft and atomic <code>0600</code> replacement. This preflight does not contact or manage
+  the daemon, and no daemon-originating text controls it.
+</p>
+
 <h2 id="deps">4. Dependency strategy</h2>
 
 <p>
   Versions are pinned once in <code>[workspace.dependencies]</code> and inherited with
   <code>{ workspace = true }</code>, so a bump happens in one place. Crate versions likewise
-  inherit <code>version.workspace = true</code>.
+  inherit <code>version.workspace = true</code>. GUI v2 is the temporary exception: its
+  nested workspace pins the newer mutually compatible gtk-rs generation until cutover.
 </p>
 
 <table>
@@ -365,7 +474,8 @@ if let Some(client) = client {
     <tr><td>Serialisation</td><td><code>serde</code>, <code>serde_json</code>, <code>toml</code></td><td>Profiles and config on disk, JSON on the wire</td></tr>
     <tr><td>Secrets</td><td><code>keyring-core</code>, <code>zbus-secret-service-keyring-store</code>, <code>linux-keyutils-keyring-store</code></td><td>Credential storage behind <code>ssh-tunnel-common</code>. The store crates directly rather than the <code>keyring</code> facade: see below</td></tr>
     <tr><td>CLI</td><td><code>clap</code>, <code>dialoguer</code>, <code>comfy-table</code>, <code>colored</code></td><td>Argument parsing, prompts, tables, colour</td></tr>
-    <tr><td>GUI</td><td><code>gtk4</code>, <code>libadwaita</code>, <code>pulldown-cmark</code></td><td>Widgets, GNOME styling, Markdown for Help/About</td></tr>
+    <tr><td>Packaged GUI</td><td><code>gtk4</code> 0.9, <code>libadwaita</code> 0.7, <code>pulldown-cmark</code></td><td>Current root-workspace widgets, GNOME styling, Markdown Help/About</td></tr>
+    <tr><td>GUI v2 preview</td><td><code>gtk4</code> 0.11.4, <code>libadwaita</code> 0.9.2, <code>glib-build-tools</code> 0.22.8</td><td>GTK 4.22/libadwaita 1.9 APIs and embedded resources on Bazzite/Fedora 44</td></tr>
     <tr><td>Test support</td><td><code>tempfile</code></td><td>Sandbox directories</td></tr>
   </tbody>
 </table>
@@ -488,6 +598,14 @@ if let Some(client) = client {
   <li><strong>Unit</strong> — config parsing and validation, profile TOML round-trip including the <code>PasswordStorage</code> boolean-to-enum migration, <code>known_hosts</code> entry parsing, token generation, TLS fingerprints, PID file recovery from stale and corrupt files</li>
   <li><strong>Integration</strong> (<code>crates/daemon/tests/daemon_api.rs</code>) — a real daemon process per test, driven through the REST/SSE API using the real client from <code>common</code>: health and info per listener mode, token missing/wrong/correct, the loopback-only rule for plain HTTP, socket <code>0600</code> and runtime dir <code>0700</code>, token file <code>0600</code>, the single-instance PID guard, and SSE connect, heartbeat and authentication</li>
 </ul>
+<p>
+  GUI-core tests cover reducer transitions, action availability, preference recovery and
+  ordering, redacted editor behavior, FIFO authentication and the structured-text invariant.
+  The isolated GUI v2 workspace adds tests for action routing, dialog selection, status
+  mapping, ordering constraints and system-font/semantic-color CSS. Its locked test, Clippy,
+  release-build and dependency-policy commands are run separately until root-workspace/CI
+  integration is accepted.
+</p>
 
 <h3>5.3 Tiers 2 and 3 — live SSH (<code>cargo test -- --ignored</code>)</h3>
 <p>
@@ -526,6 +644,7 @@ if let Some(client) = client {
 <ul>
   <li><code>scripts/dev-env.sh</code> — a sandbox with a daemon, a wired <code>cli.toml</code>, seeded profiles per auth type and the debug binaries on <code>PATH</code>. This is how the GTK GUI is exercised; it is not automated.</li>
   <li><code>scripts/test-network-modes.sh</code> — drives the CLI against all three listener modes, including TLS certificate generation and fingerprint pinning.</li>
+  <li>GUI v2 runtime validation — visual parity, keyboard/focus, Orca, high contrast/font scaling, narrow/localized content, live daemon/auth/Secret Service and Bazzite runtime. Pending explicit launch authorization and not implied by a successful build.</li>
 </ul>
 
 <h3>5.5 CI</h3>
@@ -554,21 +673,22 @@ if let Some(client) = client {
   <thead><tr><th>Target</th><th>Command</th><th>Needs</th></tr></thead>
   <tbody>
     <tr><td>Daemon and CLI</td><td><code>cargo build -p ssh-tunnel-daemon -p ssh-tunnel-cli</code></td><td>Nothing beyond Rust</td></tr>
-    <tr><td>Whole workspace</td><td><code>cargo build --release</code></td><td>GTK4 ≥ 4.12, libadwaita ≥ 1.5</td></tr>
+    <tr><td>Root workspace</td><td><code>cargo build --release</code></td><td>GTK4 ≥ 4.12, libadwaita ≥ 1.5</td></tr>
+    <tr><td>GUI v2 preview</td><td><code>cargo build --manifest-path crates/gui-v2/Cargo.toml --release --locked</code></td><td>Fedora 44: GTK 4.22, libadwaita 1.9, GLib 2.88 development files</td></tr>
   </tbody>
 </table>
 
 <p>
-  Every workspace member builds, so <code>cargo build</code>, <code>cargo test</code> and
-  <code>--workspace</code> are equivalent in coverage; no <code>default-members</code>
-  carve-out is needed.
+  Every root-workspace member builds by default. GUI v2 remains a nested workspace so the
+  packaged GUI can stay on gtk-rs 0.20 while the preview uses 0.22. Root-workspace/CI/default
+  target integration and removal of the duplicate generation happen only at accepted cutover.
 </p>
 
 <h4>Packaging status</h4>
 <table>
   <thead><tr><th>Format</th><th>Status</th></tr></thead>
   <tbody>
-    <tr><td>DEB</td><td><span class="status ok">✅ Available</span> for daemon, CLI and GTK GUI</td></tr>
+    <tr><td>DEB</td><td><span class="status ok">✅ Available</span> for daemon, CLI and packaged <code>gui-gtk</code>; no GUI v2 package yet</td></tr>
     <tr><td>RPM</td><td><span class="status partial">⚠️ In progress</span></td></tr>
     <tr><td>AUR, Flatpak</td><td><span class="status no">❌ Not started</span></td></tr>
   </tbody>

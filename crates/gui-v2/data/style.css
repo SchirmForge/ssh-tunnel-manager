@@ -1,0 +1,215 @@
+.stm-shell-content {
+  padding: 32px;
+}
+
+.stm-daemon-content {
+  padding: 20px;
+}
+
+.stm-daemon-content > .stm-status-pill {
+  margin-bottom: 2px;
+}
+
+.stm-daemon-message {
+  padding-bottom: 42px;
+  padding-top: 42px;
+}
+
+.stm-daemon-metrics {
+  background-color: alpha(@window_fg_color, 0.10);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.stm-daemon-metric {
+  background-color: @view_bg_color;
+  padding: 11px 12px;
+}
+
+.stm-daemon-details {
+  padding-bottom: 0;
+  padding-top: 0;
+}
+
+.stm-daemon-detail-row {
+  border-bottom: 1px solid alpha(@window_fg_color, 0.08);
+  padding-bottom: 11px;
+  padding-top: 11px;
+}
+
+.stm-daemon-detail-row:last-child {
+  border-bottom: none;
+}
+
+.stm-shell-card {
+  background-color: @card_bg_color;
+  border: 1px solid alpha(@window_fg_color, 0.12);
+  border-radius: 12px;
+  padding: 24px;
+}
+
+.stm-status-pill {
+  border-radius: 999px;
+  padding: 5px 10px;
+}
+
+.stm-status-online {
+  background-color: alpha(@success_color, 0.14);
+  color: @success_color;
+}
+
+.stm-status-offline {
+  background-color: alpha(@warning_color, 0.14);
+  color: @warning_color;
+}
+
+.stm-status-checking {
+  background-color: alpha(@accent_bg_color, 0.14);
+  color: @accent_color;
+}
+
+.stm-status-dot {
+  border-radius: 999px;
+  min-width: 7px;
+  min-height: 7px;
+}
+
+.stm-status-online .stm-status-dot {
+  background-color: @success_color;
+}
+
+.stm-status-offline .stm-status-dot {
+  background-color: @warning_color;
+}
+
+.stm-status-checking .stm-status-dot {
+  background-color: @accent_color;
+}
+
+.stm-wip-badge {
+  background-color: alpha(@warning_color, 0.14);
+  border-radius: 999px;
+  color: @warning_color;
+  font-size: 0.78em;
+  font-weight: 700;
+  padding: 3px 7px;
+}
+
+.stm-muted {
+  color: alpha(@window_fg_color, 0.62);
+}
+
+.stm-page-title {
+  font-size: 1.45em;
+  font-weight: 700;
+}
+
+.stm-card-title {
+  font-size: 1.08em;
+  font-weight: 700;
+}
+
+.stm-profiles-content {
+  padding: 16px;
+}
+
+.stm-offline-banner {
+  background-color: alpha(@warning_color, 0.12);
+  border: 1px solid alpha(@warning_color, 0.28);
+  border-radius: 9px;
+  padding: 10px 12px;
+}
+
+.stm-section-header {
+  color: alpha(@window_fg_color, 0.56);
+  font-size: 0.82em;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 4px 5px 0;
+}
+
+.stm-profile-list {
+  background-color: @card_bg_color;
+}
+
+.stm-profile-row-content {
+  padding: 11px 14px;
+}
+
+.stm-profile-summary,
+.stm-profile-error {
+  font-size: 0.88em;
+}
+
+.stm-profile-status {
+  border-radius: 999px;
+  font-size: 0.72em;
+  font-weight: 700;
+  padding: 3px 7px;
+}
+
+.stm-profile-status-connected {
+  background-color: alpha(@success_color, 0.14);
+  color: @success_color;
+}
+
+.stm-profile-status-transition {
+  background-color: alpha(@warning_color, 0.14);
+  color: @warning_color;
+}
+
+.stm-profile-status-failed {
+  background-color: alpha(@error_color, 0.14);
+  color: @error_color;
+}
+
+.stm-profile-status-idle {
+  background-color: alpha(@window_fg_color, 0.08);
+  color: alpha(@window_fg_color, 0.64);
+}
+
+.stm-empty-state {
+  padding: 54px 24px;
+}
+
+.stm-popover-setting {
+  border-bottom: 1px solid alpha(@window_fg_color, 0.10);
+  border-top: 1px solid alpha(@window_fg_color, 0.10);
+  padding: 10px 0;
+}
+
+popover.stm-profile-popover contents {
+  padding: 16px;
+}
+
+.error.stm-shell-card {
+  margin: 16px 16px 0;
+  padding: 12px;
+}
+
+.stm-editor-content {
+  padding: 18px;
+}
+
+.stm-field-label {
+  color: alpha(@window_fg_color, 0.58);
+  font-size: 0.78em;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.stm-option-row {
+  border-bottom: 1px solid alpha(@window_fg_color, 0.08);
+  padding: 7px 0;
+}
+
+.stm-auth-content {
+  padding: 20px;
+}
+
+.stm-auth-prompt {
+  background-color: @card_bg_color;
+  border: 1px solid alpha(@window_fg_color, 0.12);
+  border-radius: 8px;
+  padding: 11px 12px;
+}

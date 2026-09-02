@@ -446,8 +446,32 @@ pub async fn event_stream(
     // Heartbeat stream to keep connections warm and allow clients to detect liveness
     let heartbeat_stream = heartbeat_stream();
 
-    // Merge tunnel events and heartbeats
-    let merged = stream::select(tunnel_events, heartbeat_stream);
+    // Bring this subscriber up to date before live events start flowing.
+    //
+    // Events are broadcast only to whoever is listening at the time, so a prompt raised
+    // while nobody was connected — or during a reconnect — would otherwise never reach a
+    // client, and would expire after AUTH_RESPONSE_TIMEOUT with nothing shown to the user.
+    //
+    // The request id is deliberately unchanged: it identifies the question, not the
+    // delivery. Reissuing it would invalidate the id any already-connected client is
+    // holding, so its answer would be rejected as a mismatch. Clients dedupe on the id.
+    let pending = state.tunnel_manager.list_pending_auth().await;
+    let replay = stream::iter(pending.into_iter().map(|request| {
+        let outgoing = OutgoingEvent::AuthRequired {
+            id: request.tunnel_id,
+            request,
+        };
+        match serde_json::to_string(&outgoing) {
+            Ok(json) => Ok(Event::default().data(json)),
+            Err(e) => {
+                tracing::error!("Failed to serialise pending auth for replay: {e}");
+                Ok(Event::default().data(heartbeat_payload()))
+            }
+        }
+    }));
+
+    // Merge tunnel events and heartbeats, after the catch-up
+    let merged = replay.chain(stream::select(tunnel_events, heartbeat_stream));
 
     // Take events until shutdown signal is received
     let shutdown_aware = merged.take_until(async move {

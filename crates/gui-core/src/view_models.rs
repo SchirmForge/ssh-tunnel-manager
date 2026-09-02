@@ -3,7 +3,7 @@
 
 //! View models - Data structures prepared for UI display
 
-use ssh_tunnel_common::{AuthType, Profile, TunnelStatus};
+use ssh_tunnel_common::{AuthType, ForwardingType, PasswordStorage, Profile, TunnelStatus};
 use uuid::Uuid;
 
 /// Profile data prepared for UI display
@@ -19,8 +19,84 @@ pub struct ProfileViewModel {
     pub connection_summary: String,
     pub forwarding_description: String,
     pub auth_type_display: String,
-    pub can_start: bool,
-    pub can_stop: bool,
+}
+
+/// Complete profile details prepared without exposing any credential value.
+#[derive(Debug, Clone)]
+pub struct ProfileDetailsViewModel {
+    pub forwarding_type: ForwardingType,
+    pub forwarding_type_display: &'static str,
+    pub unsupported_forwarding: bool,
+    pub bind_address: String,
+    pub local_port: Option<u16>,
+    pub remote_host: Option<String>,
+    pub remote_port: Option<u16>,
+    pub auth_type_display: &'static str,
+    pub key_path: Option<String>,
+    pub password_storage: PasswordStorage,
+    pub password_storage_display: &'static str,
+    pub compression: bool,
+    pub keepalive_interval: u64,
+    pub auto_reconnect: bool,
+    pub reconnect_attempts: u32,
+    pub reconnect_delay: u64,
+    pub tcp_keepalive: bool,
+    pub max_packet_size: u32,
+    pub window_size: u32,
+}
+
+impl ProfileDetailsViewModel {
+    pub fn from_profile(profile: &Profile, daemon_is_local: bool) -> Self {
+        let forwarding_type_display = match profile.forwarding.forwarding_type {
+            ForwardingType::Local => "Local",
+            ForwardingType::Remote => "Remote",
+            ForwardingType::Dynamic => "Dynamic / SOCKS",
+        };
+        let password_storage = profile
+            .connection
+            .password_storage
+            .resolved(daemon_is_local);
+        let password_storage_display = match password_storage {
+            PasswordStorage::None => "Not stored",
+            PasswordStorage::Client => "This client",
+            PasswordStorage::DaemonHost => "Daemon host",
+            PasswordStorage::File => "Daemon-host file · WIP",
+            PasswordStorage::Keychain => unreachable!("legacy storage was resolved"),
+        };
+
+        Self {
+            forwarding_type: profile.forwarding.forwarding_type.clone(),
+            forwarding_type_display,
+            unsupported_forwarding: !matches!(
+                profile.forwarding.forwarding_type,
+                ForwardingType::Local
+            ),
+            bind_address: profile.forwarding.bind_address.clone(),
+            local_port: profile.forwarding.local_port,
+            remote_host: profile.forwarding.remote_host.clone(),
+            remote_port: profile.forwarding.remote_port,
+            auth_type_display: match profile.connection.auth_type {
+                AuthType::Key => "SSH key",
+                AuthType::Password => "Password",
+                AuthType::PasswordWith2FA => "Password + 2FA",
+            },
+            key_path: profile
+                .connection
+                .key_path
+                .as_ref()
+                .map(|path| path.to_string_lossy().into_owned()),
+            password_storage,
+            password_storage_display,
+            compression: profile.options.compression,
+            keepalive_interval: profile.options.keepalive_interval,
+            auto_reconnect: profile.options.auto_reconnect,
+            reconnect_attempts: profile.options.reconnect_attempts,
+            reconnect_delay: profile.options.reconnect_delay,
+            tcp_keepalive: profile.options.tcp_keepalive,
+            max_packet_size: profile.options.max_packet_size,
+            window_size: profile.options.window_size,
+        }
+    }
 }
 
 /// Status color for UI indicators
@@ -37,15 +113,6 @@ impl ProfileViewModel {
     pub fn from_profile(profile: &Profile, status: TunnelStatus) -> Self {
         let status_color = Self::status_color_for(&status);
         let status_text = Self::status_text_for(&status);
-        let can_start = matches!(
-            status,
-            TunnelStatus::NotConnected | TunnelStatus::Disconnected | TunnelStatus::Failed(_)
-        );
-        let can_stop = !matches!(
-            status,
-            TunnelStatus::NotConnected | TunnelStatus::Disconnected
-        );
-
         Self {
             id: profile.metadata.id,
             name: profile.metadata.name.clone(),
@@ -57,8 +124,6 @@ impl ProfileViewModel {
             connection_summary: Self::format_connection_summary(profile),
             forwarding_description: Self::format_forwarding(profile),
             auth_type_display: Self::format_auth_type(profile),
-            can_start,
-            can_stop,
         }
     }
 

@@ -48,7 +48,8 @@ stored. This is the most intricate part of the product and the part most protect
 **Acceptance criteria**
 - `auth_type = "password"` raises an `AuthRequired` event of type `Password`
 - Input is hidden in both the terminal and the GUI dialog
-- A stored password is used automatically when `password_storage = "keychain"`
+- A daemon-held password is used automatically; an attached client may answer a structured
+  password request from `password_storage = "client"`
 - A wrong password re-prompts while the server still permits attempts
 - A password loaded from the keychain is tried **once**: if it is stale, the user is
   prompted rather than the stored value being replayed until the server cuts the connection
@@ -62,6 +63,9 @@ stored. This is the most intricate part of the product and the part most protect
 > fail" work had been applied to keyboard-interactive alone. A documented criterion, a named
 > test and working behaviour are three different things.
 
+GUI v2 selects its password entry only from `AuthRequestType::Password` and the structured
+`hidden` flag; prompt text cannot select or reveal the control.
+
 ---
 
 ## US-3.4 — Complete two-factor authentication ✅
@@ -73,6 +77,8 @@ stored. This is the most intricate part of the product and the part most protect
 - Keyboard-interactive authentication is supported, including publickey + keyboard-interactive combinations
 - The server's own prompt text is shown verbatim, so non-English servers read correctly
 - Multiple prompts within one keyboard-interactive session are handled in order
+- Clients do not call every keyboard-interactive challenge “2FA” unless the daemon supplies
+  the structured two-factor request type
 
 **Implementation**: `crates/daemon/src/tunnel.rs` (`authenticate_keyboard_interactive`)
 **Tests**: `live_ssh::two_factor_authentication_connects_with_a_valid_code`
@@ -92,7 +98,9 @@ stored. This is the most intricate part of the product and the part most protect
 - When the server finally refuses, the tunnel fails with a clear reason
 - In the GUI the dialog stays open showing "Verifying…" until an SSE event confirms the next state, so there is no race between the submit and the result
 
-**Implementation**: `crates/daemon/src/tunnel.rs` (two-loop retry structure), `crates/gui-gtk/src/ui/auth_dialog.rs`
+**Implementation**: `crates/daemon/src/tunnel.rs` (two-loop retry structure),
+`crates/gui-gtk/src/ui/auth_dialog.rs`, `crates/gui-core/src/auth.rs`,
+`crates/gui-v2/src/auth_dialog.rs`
 **Tests**: `live_ssh::a_wrong_2fa_code_is_re_prompted_not_fatal`
 
 > Fixed in v0.1.10; nothing guarded it until the live test suite arrived in v0.1.11.
@@ -116,11 +124,13 @@ stored. This is the most intricate part of the product and the part most protect
   is prompted, rather than the stale value being replayed until the server's `MaxAuthTries`
   is exhausted
 - If retrieval fails for any reason, the user is prompted rather than the connection failing
-- The GUI puts the "Store in Keychain" switch *before* the password field, and only shows the
-  field when storing
+- The packaged GUI puts the "Store in Keychain" switch before the password field. GUI v2
+  exposes explicit client/daemon-host storage, reveals the new-secret field only for a real
+  Store operation, and never loads an existing secret into editor state
 
 **Implementation**: `crates/common/src/keychain.rs`, `crates/common/src/daemon_client.rs`
-(`ClientHeldCredential`), `crates/daemon/src/security.rs`
+(`ClientHeldCredential`), `crates/daemon/src/security.rs`, `crates/gui-core/src/editor.rs`,
+`runtime.rs`
 
 **Note**: A TOTP second factor is inherently single-use and is never stored.
 
@@ -130,8 +140,9 @@ stored. This is the most intricate part of the product and the part most protect
 > machines, so nothing was found and the user was prompted anyway — silently, every time.
 > The legacy value is still read and resolves by where the daemon is.
 >
-> The GTK GUI still records the legacy value; profiles created with the CLI get the corrected
-> one. That is addressed with the GUI rework rather than by patching the outgoing front-end.
+> The packaged `gui-gtk` still records the legacy value. GUI v2 records the explicit location
+> and uses the common Secret Service/keyutils facade, but does not become the packaged GUI
+> until its manual validation and cutover gates pass.
 
 ---
 
@@ -190,5 +201,7 @@ stored. This is the most intricate part of the product and the part most protect
 - The answer must carry the matching request id, so a stale response cannot be replayed
 - If nothing answers within `AUTH_RESPONSE_TIMEOUT` (60s) the attempt fails; cancelling explicitly returns immediately
 
-**Implementation**: `crates/daemon/src/tunnel.rs` (`AuthContext::request_input`), `crates/daemon/src/api.rs` (`submit_auth`)
+**Implementation**: `crates/daemon/src/tunnel.rs` (`AuthContext::request_input`),
+`crates/daemon/src/api.rs` (`submit_auth`), `crates/gui-core/src/auth.rs`, `controller.rs`,
+`crates/gui-v2/src/auth_dialog.rs`
 **Tests**: `daemon_api::*` for the endpoint behaviour; `live_ssh::stopping_during_authentication_returns_promptly`

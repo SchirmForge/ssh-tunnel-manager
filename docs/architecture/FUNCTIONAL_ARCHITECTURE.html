@@ -135,8 +135,8 @@
 <p class="subtitle">SSH Tunnel Manager — what the system is made of, and how its parts behave.</p>
 
 <div class="meta">
-  <span><strong>Version</strong> v0.3.0</span>
-  <span><strong>Status</strong> Production-ready CLI, daemon and GTK GUI</span>
+  <span><strong>Version</strong> v0.4.0</span>
+  <span><strong>Status</strong> Production clients plus an automated/source-validated GUI v2 preview</span>
   <span><strong>Companion</strong> <a href="TECHNICAL_ARCHITECTURE.html">Technical Architecture</a></span>
 </div>
 
@@ -171,7 +171,7 @@
 <table>
   <thead><tr><th>Principle</th><th>What it means in practice</th></tr></thead>
   <tbody>
-    <tr><td><strong>Security first</strong></td><td>Memory-safe implementation, credentials in the OS keyring, least privilege, authentication on by default, HTTPS required for any non-loopback access.</td></tr>
+    <tr><td><strong>Security first</strong></td><td>Memory-safe implementation, credentials behind the Secret Service/keyutils facade, least privilege, authentication on by default, HTTPS required for any non-loopback access, and structured protocol data as the only UI control plane.</td></tr>
     <tr><td><strong>Unix philosophy</strong></td><td>The daemon does one thing. Everything else talks to it through a documented API.</td></tr>
     <tr><td><strong>User choice</strong></td><td>GUI for interactive use, CLI for scripting and servers. Both are first-class and share the same client logic.</td></tr>
     <tr><td><strong>Remote capability</strong></td><td>A client can manage a daemon on another host without the private keys ever crossing the network.</td></tr>
@@ -195,12 +195,12 @@
   <text x="38" y="44" class="d-title">CLIENTS</text>
 
   <rect x="50" y="56" width="230" height="42" rx="6" class="d-box d-client"/>
-  <text x="66" y="76" class="d-label">GTK4 / libadwaita GUI</text>
-  <text x="66" y="91" class="d-sub">crates/gui-gtk</text>
+  <text x="66" y="76" class="d-label">GTK4 / libadwaita adapters</text>
+  <text x="66" y="91" class="d-sub">gui-gtk packaged · gui-v2 preview</text>
 
   <rect x="50" y="106" width="230" height="42" rx="6" class="d-box d-client"/>
-  <text x="66" y="126" class="d-label">Framework-agnostic core</text>
-  <text x="66" y="141" class="d-sub">crates/gui-core</text>
+  <text x="66" y="126" class="d-label">Toolkit-neutral app core</text>
+  <text x="66" y="141" class="d-sub">controller · runtime · snapshots · actions</text>
 
   <path d="M 165 98 L 165 106" class="d-edge" marker-end="url(#arrow)"/>
 
@@ -214,7 +214,7 @@
   <text x="626" y="76" class="d-label">Shared client library</text>
   <text x="626" y="91" class="d-sub">crates/common</text>
   <text x="626" y="112" class="d-sub">SSE listener, daemon client,</text>
-  <text x="626" y="128" class="d-sub">profile I/O, keychain, types</text>
+  <text x="626" y="128" class="d-sub">profile I/O, credential facade, types</text>
 
   <!-- Transport -->
   <path d="M 300 190 L 300 236" class="d-edge" marker-end="url(#arrow)"/>
@@ -314,7 +314,8 @@
   <li><code>EventListener</code>: the single SSE client, shared by CLI and GUI, reconnecting with exponential backoff</li>
   <li>Daemon client: connection modes, token header, TLS pinning, socket path discovery, config validation</li>
   <li><code>start_tunnel_with_events</code> / <code>stop_tunnel</code>: the SSE-first control flow both front-ends use, with a <code>TunnelEventHandler</code> trait for the interactive parts</li>
-  <li>Keychain access with availability detection and graceful headless fallback</li>
+  <li>Credential-store facade with Secret Service/keyutils selection, migration, availability reporting and graceful fallback</li>
+  <li>SSH private-key inspection and local-file validation shared by clients without exposing <code>russh</code> to GUI crates</li>
 </ul>
 
 <h3>3.3 CLI — <code>ssh-tunnel</code></h3>
@@ -335,21 +336,35 @@
   TOML file; there is no <code>edit</code> command.
 </p>
 
-<h3>3.4 GUI — <code>crates/gui-core</code> + <code>crates/gui-gtk</code></h3>
-<p><span class="status ok">✅ Implemented</span> (GTK4 / libadwaita).</p>
+<h3>3.4 GUI — <code>gui-core</code>, <code>gui-gtk</code> and <code>gui-v2</code></h3>
+<p><span class="status partial">🧪 Parallel delivery</span>: <code>gui-gtk</code> is packaged;
+  <code>gui-v2</code> is source/automated validated and awaits runtime acceptance and cutover.</p>
 <p>
-  <code>gui-core</code> holds everything that is not toolkit-specific — profile operations,
-  view models with formatted display data and status colours, the <code>AppCore</code>
-  application state, and the event-handling trait. <code>gui-gtk</code> supplies the widgets.
-  Roughly 60–70% of the GUI is reusable by a second toolkit.
+  <code>gui-core</code> owns immutable snapshots, typed commands/effects, action availability,
+  feature capabilities, FIFO authentication state, profile-editor contracts, GUI preferences,
+  pre-runtime client setup, daemon/profile effects and presentation-ready models. Toolkit adapters render a snapshot
+  and dispatch <code>AppCommand</code>; they do not call daemon endpoints or mutate profile
+  files independently. <code>AppCore</code> remains only for compatibility with
+  <code>gui-gtk</code>.
 </p>
 <ul>
-  <li>First-launch configuration wizard with automatic snippet detection</li>
-  <li>Full profile CRUD in a GNOME-Settings-style dialog, with an advanced options section</li>
-  <li>Live status dots driven by the SSE stream, and daemon connection monitoring with heartbeat timeout</li>
-  <li>Authentication dialogs whose state is driven by SSE rather than local guesses</li>
-  <li>Help and About rendered from Markdown bundled in <code>gui-core/assets/</code></li>
+  <li><code>gui-gtk</code>: packaged application, including the first-launch configuration wizard</li>
+  <li><code>gui-v2</code>: first-launch snippet/manual client setup, adaptive search/filter/sort/pin/order views, details, safe CRUD, authentication, daemon information, empty and offline states</li>
+  <li>Profile actions use the same toolkit-neutral command surface intended for a future tray adapter</li>
+  <li>Unsupported behavior is labelled WIP; useful form reveal/hide and validation still operate without false persistence or success</li>
+  <li>Daemon copy is display-only. Event/request/status variants, IDs, capabilities and booleans select every action and state transition</li>
+  <li>Help and About are Markdown assets bundled in <code>gui-core/assets/</code></li>
 </ul>
+
+<p>
+  GUI v2 inspects <code>cli.toml</code> before constructing its daemon runtime. A valid file
+  proceeds directly; a daemon-generated snippet is offered for import; and missing,
+  unreadable, malformed or incomplete configuration stays in a setup-required state. Network
+  snippets with an empty host request the actual connection target. Manual setup exposes
+  mode-specific Unix socket, HTTP or HTTPS fields, validates by typed field codes, and
+  atomically installs a <code>0600</code> file before normal health/SSE work starts. This flow
+  configures a client connection and never starts or restarts the daemon.
+</p>
 
 <h2 id="flows">4. Data flow</h2>
 
@@ -381,7 +396,7 @@
     <tr>
       <td><strong>Password</strong></td>
       <td>The daemon, or the server via <code>remaining_methods</code></td>
-      <td>User, via the client — or the keychain</td>
+      <td>User, the daemon's credential store, or a client-held credential response</td>
       <td><strong>Yes.</strong> Sent to the server for validation</td>
     </tr>
     <tr>
@@ -395,7 +410,7 @@
 
 <div class="note">
   <p>
-    The first two never reach the server, so the daemon can satisfy them from the keychain
+    The first two never reach the server, so a daemon-held credential store can satisfy them
     with nobody watching. The fourth cannot be satisfied that way at all: a TOTP code is
     single-use and issued by the server at the moment of connection. That is why a
     <code>PasswordWith2FA</code> profile can never reconnect unattended — see
@@ -558,7 +573,7 @@
 
 <p>
   When the profile's authentication needs no human, the exchange collapses to the daemon and
-  the SSH server, with the keychain supplying whatever secret is required. No client need be
+  the SSH server, with a daemon-held credential store supplying whatever secret is required. No client need be
   attached at all — any that is simply observes the resulting events.
 </p>
 
@@ -625,7 +640,7 @@
 <p>A profile takes this path when <strong>all</strong> of the following hold:</p>
 <ul>
   <li>the host key is already in <code>known_hosts</code></li>
-  <li>authentication is by key with no passphrase, or the passphrase or password is in the keychain</li>
+  <li>authentication is by key with no passphrase, or the passphrase/password is available in a daemon-held credential store</li>
   <li>the server does not demand a second factor</li>
 </ul>
 
@@ -642,12 +657,6 @@
     that needs any arrow reaching the user in §4.2 cannot reconnect without one, which is
     the reasoning behind the eligibility table in
     <a href="../ROADMAP.md">ROADMAP.md</a>.
-  </p>
-</div>
-
-    blocking call, the same daemon serves an interactive GUI, a terminal session and a
-    headless script without knowing which is attached — and it can run as a system service
-    with no controlling terminal.
   </p>
 </div>
 
@@ -677,13 +686,14 @@
   <thead><tr><th>What</th><th>Where</th><th>Permissions</th></tr></thead>
   <tbody>
     <tr><td>Profiles</td><td><code>~/.config/ssh-tunnel-manager/profiles/&lt;uuid&gt;.toml</code></td><td>0600</td></tr>
-    <tr><td>Client config</td><td><code>~/.config/ssh-tunnel-manager/cli.toml</code></td><td>0600</td></tr>
+    <tr><td>Client config</td><td><code>~/.config/ssh-tunnel-manager/cli.toml</code></td><td>Atomic replacement; 0600; contains daemon API token</td></tr>
+    <tr><td>GUI preferences</td><td><code>~/.config/ssh-tunnel-manager/ui.toml</code></td><td>Presentation-only; atomic writes</td></tr>
     <tr><td>Daemon config</td><td><code>~/.config/ssh-tunnel-manager/daemon.toml</code></td><td>0600</td></tr>
     <tr><td>Auth token</td><td><code>~/.config/ssh-tunnel-manager/daemon.token</code></td><td>0600</td></tr>
     <tr><td>Known hosts</td><td><code>~/.config/ssh-tunnel-manager/known_hosts</code></td><td>0600</td></tr>
     <tr><td>TLS cert and key</td><td><code>~/.config/ssh-tunnel-manager/server.{crt,key}</code></td><td>0600</td></tr>
     <tr><td>Socket and PID file</td><td><code>$XDG_RUNTIME_DIR/ssh-tunnel-manager/</code></td><td>0600 socket, 0700 dir</td></tr>
-    <tr><td>Passwords and passphrases</td><td>OS keyring (Secret Service), service <code>ssh-tunnel-manager</code></td><td>OS-managed</td></tr>
+    <tr><td>Passwords and passphrases</td><td>Secret Service or kernel keyutils through the common credential facade, service <code>ssh-tunnel-manager</code></td><td>OS-managed; keyutils does not survive reboot</td></tr>
     <tr><td>SSH private keys</td><td>Referenced by path, never copied or transmitted</td><td>0600/0400, verified before use</td></tr>
   </tbody>
 </table>
@@ -710,7 +720,7 @@ port = 22
 user = "myuser"
 auth_type = "key"              # key | password | passwordwith2fa
 key_path = "/home/user/.ssh/id_ed25519"
-password_storage = "keychain"  # none | keychain | file
+password_storage = "client"   # none | client | daemon-host; keychain is legacy
 
 [forwarding]
 type = "local"                 # local (remote and dynamic are not implemented)
@@ -732,8 +742,22 @@ window_size = 2097152          # 2 MiB</code></pre>
 <p>
   Profile metadata is flattened at the top level rather than nested under a section.
   <code>password_storage</code> also accepts the pre-v0.1.7 boolean form, so profiles written
-  by older versions still load.
+  by older versions still load. The legacy <code>keychain</code> value is resolved from the
+  structured client/daemon connection location and is no longer written by GUI v2.
 </p>
+
+<p>
+  <code>ui.toml</code> stores only profile order, pinned IDs, connected-only filtering and sort
+  mode. Missing or malformed preferences fall back safely, stale IDs are discarded and new
+  profiles are appended deterministically. Deleting it cannot alter a connection profile.
+</p>
+
+<div class="note">
+  <p><strong>Protocol-control invariant.</strong> Prompt, message, instruction, name, error and
+  descriptive status strings received from the daemon may be displayed or logged, but are
+  never searched or parsed to select a control or action. Future host, key and fingerprint
+  facts must be added as structured protocol fields rather than extracted from text.</p>
+</div>
 
 <h2 id="api">6. API behaviour</h2>
 

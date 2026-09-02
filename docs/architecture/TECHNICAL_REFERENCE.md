@@ -1,237 +1,283 @@
 # SSH Tunnel Manager Technical Reference
 
-Suggested name: `TECHNICAL_REFERENCE.md`. Purpose: internal architecture map of the CLI, daemon, GUI, shared library, and their dependencies.
+**Version**: v0.4.0
+**Scope**: Current modules, public contracts, persistence, daemon API, GUI boundaries, and
+build/validation requirements.
 
-## Module List
-- Common library (`crates/common`): shared config/types, daemon client helpers, TLS pinning, profile I/O.
-- Daemon (`crates/daemon`): long-lived service exposing REST/SSE, manages SSH tunnels and auth, TLS, known_hosts, PID guard.
-- CLI (`crates/cli`): terminal client for profile CRUD and tunnel lifecycle, talks to daemon.
-- GUI Core (`crates/gui-core`): framework-agnostic business logic, view models, profile management, event handling trait (~60-70% code reuse).
-- GUI GTK (`crates/gui-gtk`): GTK4/libadwaita desktop app consuming daemon API with SSE updates, uses gui-core for business logic.
-- Config/docs/scripts: `docs/*.md`, `config-files/*.toml`, `quick-setup.sh`, `Makefile`, `daemon.toml.example`, `cli.toml.example`.
+## Crates and executables
 
-## Source Files & Related Assets
-- Common
-  - `crates/common/src/lib.rs`: module exports/re-exports.
-  - `config.rs`: `Profile`/`ConnectionConfig`/`ForwardingConfig`/`TunnelOptions` + validation.
-  - `types.rs`: auth/forwarding enums, tunnel status, `TunnelDomainEvent` (business logic events, renamed from TunnelEvent in v0.1.10), auth request/response, `StartTunnelResult`.
-  - `sse.rs`: `EventListener` and `TunnelEvent` (SSE wire protocol) - NEW in v0.1.10, moved from gui-core for CLI/GUI code reuse.
-  - `daemon_client.rs`: `DaemonClientConfig`, connection mode, reqwest client builder, auth header helper, config validation. Duplicate TunnelEvent removed in v0.1.10.
-  - `tls.rs`: rustls client config, fingerprint pinning.
-  - `profile_manager.rs`: profile load/save/delete utilities (used by CLI/daemon/GUI).
-  - `error.rs`: common error enum (not widely used in newer code paths).
-- Daemon
-  - `src/main.rs`: startup, logging, PID guard, config load, token handling, router wiring, listeners for Unix/TCP/HTTPS.
-  - `api.rs`: axum routes `/api/health`, `/api/tunnels`, start/stop/status/auth, SSE `/api/events`.
-  - `tunnel.rs`: `TunnelManager`, SSH connection/auth/forwarding, known_hosts checks, event broadcast, auth prompts.
-  - `config.rs`: daemon config file handling, listener modes, CLI snippet writer (writes empty `daemon_host` when binding to 0.0.0.0/::).
-  - `auth.rs`: token generation/persistence, axum middleware.
-  - `tls.rs`: self-signed cert generation, rustls server config, fingerprinting.
-  - `known_hosts.rs`: parse/verify/write known_hosts.
-  - `pidfile.rs`: singleton guard.
-  - `monitor.rs`: placeholder.
-  - `security.rs`: keyring password retrieval.
-  - Related examples: `daemon.toml.example`.
-- CLI
-  - `src/main.rs`: clap command tree (add/list/edit/delete/info/start/stop/restart/status/daemon/watch), profile creation flow, SSE watcher, auth prompts, daemon client wrapper.
-  - `config.rs`: wraps `DaemonClientConfig` for cli.toml I/O.
-  - Related examples: `cli.toml.example`.
-- GUI Core (`crates/gui-core`)
-  - `src/lib.rs`: public API exports for all GUI implementations.
-  - `state.rs`: `AppCore` struct with profiles, tunnel statuses, daemon connection state, auth tracking.
-  - `profiles.rs`: profile CRUD operations (`load_profiles`, `save_profile`, `delete_profile`, `validate_profile`, `profile_name_exists`).
-  - `view_models.rs`: `ProfileViewModel` with formatted display data, `StatusColor` enum for UI consistency.
-  - `events.rs`: `TunnelEventHandler` trait for framework-agnostic event handling.
-  - `daemon/config.rs`: daemon configuration helpers (`load_daemon_config`, `save_daemon_config`, `check_config_status`, `load_snippet_config`, config path utilities).
-  - `daemon/mod.rs`: re-exports SSE types from common crate (`EventListener`, `TunnelEvent`) for convenience.
-- GUI GTK (`crates/gui-gtk`)
-  - `src/main.rs`: GTK/libadwaita bootstrap with Tokio runtime.
-  - `ui/window.rs`: main window, header, connection indicator, event listener hook, `AppState` with `AppCore` integration.
-  - `ui/navigation.rs`: navigation between Client/Daemon pages.
-  - `ui/profiles_list.rs`: profile list with real-time status, uses `ProfileViewModel` for display.
-  - `ui/profile_details.rs`: profile detail pane, start/stop/edit/delete actions.
-  - `ui/profile_dialog.rs`: create/edit profile dialog, uses gui-core validation and save functions.
-  - `ui/auth_dialog.rs`: interactive authentication prompts, integrates with `AppCore` auth state.
-  - `ui/event_handler.rs`: GTK event handling utilities, updates `AppCore` and UI.
-  - `ui/config_wizard.rs`: first-launch configuration wizard (snippet import, manual config, IP address prompts).
-  - `ui/client_config.rs`: client configuration page with pending config review and save.
-  - `ui/daemon_settings.rs`: daemon settings page (placeholder).
-  - `ui/help_dialog.rs`: markdown-rendered help documentation.
-  - `ui/about_dialog.rs`: about dialog with version info.
-  - `daemon/client.rs`: REST client for daemon API.
-  - `models/profile_model.rs`: GObject wrapper around `Profile` for GTK state.
-  - Note: SSE module moved to common crate in v0.1.10, imported via `ssh_tunnel_common::sse` or re-exported from gui-core.
-  - `utils/profiles.rs`: profile directory utilities (mostly superseded by gui-core).
+| Crate | Kind | Responsibility |
+|---|---|---|
+| `crates/common` | Library | Shared configuration/types, profile I/O, daemon HTTP/SSE client, TLS pinning, credential-store facade, SSH-key inspection and validation |
+| `crates/daemon` | `ssh-tunnel-daemon` | REST/SSE service, SSH lifecycle, authentication, local forwarding, host-key verification, listeners and process security |
+| `crates/cli` | `ssh-tunnel` | Profile and tunnel commands, terminal authentication, table/JSON output |
+| `crates/gui-core` | Library | Toolkit-neutral client setup, controller/runtime, actions/effects, snapshots, preferences, editor/auth contracts, view models |
+| `crates/gui-gtk` | `ssh-tunnel-gtk` | Packaged GTK4/libadwaita application and first-launch wizard; uses compatibility `AppCore` paths |
+| `crates/gui-v2` | `ssh-tunnel-gui-v2` | Isolated second-generation GTK adapter; source preview pending manual validation and cutover |
 
-## Dependencies by Module / File
-- Common
-  - Core: `serde`, `toml`, `serde_json`, `chrono`, `uuid`, `anyhow`, `thiserror`, `dirs`, `tracing`.
-  - TLS: `rustls`, `webpki-roots`, `sha2`.
-  - HTTP client for daemon access: `reqwest`.
-- Daemon
-  - Async/HTTP: `tokio`, `axum`, `tower`, `tower-http`, `hyper`, `hyper-util`, `axum-server`.
-  - SSH: `russh`, `russh-util` (Eugeny fork), `tokio-util` (codec helpers).
-  - TLS: `rcgen`, `rustls`, `tokio-rustls`, `rustls-pemfile`, `sha2`, `time`.
-  - Config/serde/logging: `serde`, `toml`, `tracing`, `tracing-subscriber`, `anyhow`, `thiserror`, `dirs`, `chrono`, `uuid`.
-  - Security: `secret-service`, `keyring`, `zeroize`, `libc` (PID), `base64` (known_hosts).
-  - File-specific highlights:
-    - `tunnel.rs`: russh client/auth, `tokio::sync` (broadcast/mpsc/oneshot/RwLock), `tokio::net::TcpListener`, `tokio::io::copy_bidirectional`, auth timeouts, known_hosts integration.
-    - `api.rs`: axum extractors, SSE via `axum::response::sse` + `BroadcastStream`.
-    - `tls.rs`: cert generation/loading with `rcgen`/`rustls`.
-    - `auth.rs`: `zeroize` for token, middleware over axum.
-    - `pidfile.rs`: `libc::kill` on Unix for process liveness.
-- CLI
-  - UI/CLI: `clap`, `dialoguer`, `indicatif`, `colored`, `comfy-table`, `shellexpand`.
-  - HTTP: `reqwest` (shares config with daemon_client), SSE parsing via `futures` stream.
-  - Storage: `keyring` for password/passphrase.
-  - Data: `serde`/`toml`, `chrono`, `dirs`.
-- GUI Core
-  - Core: `serde`, `toml`, `uuid`, `anyhow`, `dirs`.
-  - Shared: `ssh-tunnel-common` for types and config.
-  - No UI framework dependencies (framework-agnostic).
-- GUI GTK
-  - UI: `gtk4` (≥4.12), `libadwaita` (≥1.5), `glib`, `gio`.
-  - Async/HTTP: `tokio` runtime, `reqwest`, `futures-util` for SSE streams.
-  - Data: `serde`, `toml`, `uuid`, `chrono`, `dirs`, `tracing`.
-  - Shared: `ssh-tunnel-common`, `ssh-tunnel-gui-core`.
-  - Markdown: `pulldown-cmark` for help/about rendering.
+`gui-v2` contains a temporary nested Cargo workspace. Root `--workspace` commands do not
+include it; its manifest must be supplied explicitly until cutover.
 
-## Classes (Structs/Enums) by Module
-- Common (mostly public)
-  - `config.rs`: `Profile`, `ProfileMetadata`, `ConnectionConfig`, `ForwardingConfig`, `TunnelOptions` (all public); defaults/validation methods.
-  - `types.rs`: `AuthType`, `ForwardingType`, `TunnelStatus`, `TunnelEvent`, `AuthRequestType`, `AuthRequest`, `AuthResponse`, `StartTunnelResult`, `TunnelStatusResponse`; helper methods on `TunnelStatus`.
-  - `daemon_client.rs`: `ConnectionMode`, `DaemonClientConfig`; helper fns `create_daemon_client`, `add_auth_header`.
-  - `tls.rs`: internal `FingerprintVerifier` (private); public `create_pinned_tls_config`, `create_insecure_tls_config`.
-  - `profile_manager.rs`: public helpers `profiles_dir`, `load_*`, `save_profile`, `delete_profile_*`, `profile_exists_*`.
-  - `error.rs`: `Error` enum, `Result` alias.
-- Daemon
-  - `main.rs`: orchestrates `AppState` (from `api.rs`), `TunnelManager` usage; no new public structs.
-  - `api.rs`: `AppState`, `ErrorResponse`, `SuccessResponse`, `TunnelStatusResponse`, `TunnelsListResponse`, `OutgoingEvent`.
-  - `tunnel.rs`: `TunnelManager`, `ActiveTunnel`, `PendingAuth`, `AuthContext` (private), `ClientHandler` (private), `TunnelEvent` (daemon-side broadcast enum), `AuthResponseSender`.
-  - `config.rs`: `ListenerMode`, `DaemonConfig`.
-  - `auth.rs`: `AuthState`.
-  - `tls.rs`: helpers; no exported structs beyond functions.
-  - `known_hosts.rs`: `KnownHosts`, `VerifyResult`.
-  - `pidfile.rs`: `PidFileGuard`.
-  - `security.rs`: functions only.
-  - Visibility: most are crate-private; external clients interact via HTTP API rather than Rust API.
-- CLI
-  - `main.rs`: `Cli`, `Commands`, `DaemonCommands`, `TunnelStatusResponse` (local), internal `IncomingEvent` enums.
-  - `config.rs`: `CliConfig`.
-- GUI Core
-  - `state.rs`: `AppCore` (public struct with tunnel statuses, auth state, daemon connection), `Page` enum.
-  - `profiles.rs`: helper functions only (load/save/delete/validate).
-  - `view_models.rs`: `ProfileViewModel` (formatted display data), `StatusColor` enum (Green/Orange/Red/Gray).
-  - `events.rs`: `TunnelEventHandler` trait, `GuiEvent` enum.
-  - `daemon.rs`: helper functions only.
-- GUI GTK
-  - `main.rs`: constants only.
-  - `ui/window.rs`: `AppState` (contains `AppCore` via RefCell).
-  - `ui/navigation.rs`: `NavigationPage` enum, helper functions.
-  - `ui/profiles_list.rs`: functions only, uses `ProfileViewModel`.
-  - `ui/profile_details.rs`: functions only.
-  - `ui/profile_dialog.rs`: functions only.
-  - `ui/event_handler.rs`: helper functions for event processing (`handle_status_changed`, `handle_auth_required`, etc.).
-  - `daemon/client.rs`: `DaemonClient`, `OperationResponse`, `ErrorResponse`, `TunnelStatusResponse`, `TunnelsListResponse`.
-  - `daemon/sse.rs`: `TunnelEvent`, `EventListener`.
-  - `models/profile_model.rs`: GObject `ProfileModel` (public methods for profile fields).
-  - `utils/profiles.rs`: helpers only (mostly superseded by gui-core).
+## Common library
 
-## Data Model
-- Profiles (`Profile`):
-  - Metadata: `id: Uuid`, `name`, optional `description`, `created_at`, `modified_at`, `tags`.
-  - Connection: `host`, `port`, `user`, `auth_type` (`Key`, `Password`, `PasswordWith2FA`), `key_path`, `password_stored`.
-  - Forwarding: `forwarding_type` (`Local`|`Remote`|`Dynamic`), `local_port`, `remote_host`, `remote_port`, `bind_address`.
-  - Options: `compression`, `keepalive_interval`, `auto_reconnect`, `reconnect_attempts`, `reconnect_delay`, `tcp_keepalive`, `max_packet_size`, `window_size`.
-- Runtime tunnel state:
-  - `TunnelStatus`: `NotConnected`, `Connecting`, `WaitingForAuth`, `Connected`, `Disconnecting`, `Disconnected`, `Reconnecting`, `Failed(String)`.
-  - Daemon events: `TunnelEvent` (daemon) with variants `Starting`, `Connected`, `Disconnected{reason}`, `Error{error}`, `AuthRequired{request}`.
-  - Auth exchange: `AuthRequest` (type, prompt, hidden, tunnel_id) and `AuthResponse`.
-  - API status payloads: `TunnelStatusResponse` (status + optional pending auth), `StartTunnelResult` (when starting directly in daemon code).
-- Persistence:
-  - Profiles stored as TOML under `~/.config/ssh-tunnel-manager/profiles/{uuid}.toml`.
-  - Daemon config: `~/.config/ssh-tunnel-manager/daemon.toml`.
-  - CLI config: `~/.config/ssh-tunnel-manager/cli.toml`.
-  - Auth token: `~/.config/ssh-tunnel-manager/daemon.token`.
-  - Known hosts: `~/.config/ssh-tunnel-manager/known_hosts` (custom), can use system one manually.
-  - PID file: `$XDG_RUNTIME_DIR/ssh-tunnel-manager/daemon.pid`.
-  - Unix socket: `$XDG_RUNTIME_DIR/ssh-tunnel-manager/ssh-tunnel-manager.sock`.
+Primary modules:
 
-## API Description (daemon HTTP/SSE)
-- Authentication: optional X-Tunnel-Token header when `require_auth` is true; enforced via axum middleware.
-- Endpoints (from `crates/daemon/src/api.rs`):
-  - `GET /api/health` → `"OK"`; 200.
-  - `GET /api/tunnels` → `{"tunnels":[{id,status,pending_auth?}]}`; always 200.
-  - `POST /api/tunnels/{id}/start` → 202 Accepted on success; 404 if profile missing; 500 on failure.
-  - `POST /api/tunnels/{id}/stop` → 200 or 404 if not active; 500 on error.
-  - `GET /api/tunnels/{id}/status` → 200 with `TunnelStatusResponse` or 404 if not active.
-  - `GET /api/tunnels/{id}/auth` → pending `AuthRequest` or 404 if none.
-  - `POST /api/tunnels/{id}/auth` (body `AuthResponse`) → 200 on acceptance; 400 on mismatch/invalid.
-  - `GET /api/events` → SSE stream; events serialized as `OutgoingEvent` (`starting`, `connected`, `disconnected`, `error`, `auth_required`).
-- Listener modes (daemon config):
-  - Unix socket (default, no TLS).
-  - TCP HTTP (no TLS; local/dev only; warns on startup).
-  - TCP HTTPS (rustls; auto-generates self-signed cert; fingerprint logged + written to CLI snippet).
+- `config.rs`: `Profile`, `ProfileMetadata`, `ConnectionConfig`, `ForwardingConfig`,
+  `TunnelOptions`, `PasswordStorage`, defaults and validation.
+- `types.rs`: `AuthType`, `ForwardingType`, `TunnelStatus`, `AuthRequestType`, `AuthRequest`,
+  `AuthResponse`, `TunnelStatusResponse`, `DaemonInfo`, `StartTunnelRequest`, and source mode.
+- `sse.rs`: the shared `EventListener` and daemon-wire `TunnelEvent` variants. `listen()`
+  returns immediately and reconnects in the background; `listen_ready()` does not return until
+  the stream is established, which a caller that is about to *cause* events must use or it
+  races the daemon for its own first events. Reconnect backoff resets after a connection that
+  lasted, so early blips cannot pin it at the ceiling for the life of the process.
+- `daemon_client.rs`: `ConnectionMode`, `DaemonClientConfig`, client construction, token
+  headers, TLS/Unix transport and the shared SSE-first start/stop flow, which is built on
+  `EventListener` rather than a second subscription of its own.
+  - **Two clients, deliberately.** `create_daemon_client` sets a *total* request timeout;
+    `create_streaming_client` sets a **read** timeout instead. A total timeout covers the
+    response body, so using the request client for a stream cuts it on schedule regardless of
+    traffic. The read timeout is sized against the 10-second heartbeat (two missed beats) and
+    the dependency is commented at both ends.
+  - `client_credential_applies` is the single decision on whether a prompt may be answered
+    from client-side storage: the profile keeps its secret client-side once a legacy
+    `keychain` value is resolved against where the daemon runs, **and** the prompt asks for
+    something stable for the profile. Submission stays per-client.
+- `runtime_paths.rs`: the one place that knows where the daemon's socket and PID file live and
+  where clients look for them. Falls back to `/run/ssh-tunnel-manager` when `$XDG_RUNTIME_DIR`
+  is unset, which is the case for a service account with no login session, and collapses a
+  runtime directory that is already named `ssh-tunnel-manager` instead of nesting a second
+  level. These were three independent copies that disagreed under the project's own systemd
+  unit.
+- `profile_manager.rs`: profile paths, load/save/delete, remote preparation and formatted
+  endpoint helpers.
+- `keychain.rs`: runtime-selected credential facade using Secret Service or kernel keyutils,
+  migration, availability and test injection.
+- `ssh_key.rs`: encrypted-key detection, passphrase validation and
+  `validate_ssh_key_file`. The file validator applies only to a path on the current host;
+  remote daemon paths must not be passed to it.
+- `tls.rs`, `network.rs`, `error.rs`: certificate pinning, address classification and common
+  error types.
 
-## Error Handling
-- Libraries: `anyhow` for context-rich errors; `thiserror` for `ssh_tunnel_common::Error`.
-- Daemon runtime:
-  - API handlers translate errors to HTTP codes with JSON `{"error": ...}`.
-  - `TunnelManager` sets status to `Failed(reason)` and broadcasts `Error` events on connection/auth/forwarding failures; `fail_tunnel` centralizes status update.
-  - Auth timeouts (60s) and connect timeouts (15s) produce failures; privileged port binding returns specific guidance.
-  - Known_hosts mismatches are hard failures with detailed logging; unknown keys prompt user via `AuthRequired` host verification prompt.
-  - PID guard aborts startup if another instance is running (or removes stale PID).
-  - TLS module regenerates cert/key if missing; errors surface during startup.
-- Clients:
-  - CLI surfaces daemon HTTP status and body; parses SSE errors; prompts user for auth/host-key.
-  - GUI shows errors via dialogs and eprintln output; event listener logs warnings on parse errors.
+`PasswordStorage` meanings:
 
-## Testing Overview
-- Unit tests present in:
-  - `crates/common`: `config.rs` validation, `daemon_client.rs`, `tls.rs`, `profile_manager.rs` (note: some test structs outdated vs current schema), `types.rs` methods.
-  - `crates/daemon`: `auth.rs`, `tls.rs`, `known_hosts.rs`, `pidfile.rs`.
-  - `crates/cli`: `config.rs`.
-- Integration/manual guidance:
-  - `TESTING_PLAN.md`: scenario-based plan for UnixSocket/TcpHttp/TcpHttps (auth, TLS pinning).
-  - Scripts: `test-cli-snippet.sh`, `test-pidfile.sh`, `test-network-modes.sh` (see root).
-  - `QUICK_TEST_GUIDE.md` describes quick checks.
-- Gaps:
-  - No automated tests for tunnel lifecycle or GUI; `monitor.rs` unimplemented; remote/dynamic forwarding not yet covered.
+| Value | Location | Consumer |
+|---|---|---|
+| `none` | Not stored | Human prompt |
+| `client` | Client host credential store | Attached client answers a structured daemon request |
+| `daemon-host` | Daemon host credential store | Daemon |
+| `file` | Reserved daemon-host file | WIP / not implemented |
+| `keychain` | Legacy ambiguous value | Resolved from structured client/daemon location; no longer written by GUI v2 |
 
-## GUI Multi-Framework Architecture
-- **Design Goal**: Support multiple desktop environments (GNOME/GTK and KDE/Qt) with maximum code reuse.
-- **Implementation**:
-  - `gui-core`: Framework-agnostic business logic (~60-70% of GUI code)
-    - Profile management (CRUD, validation)
-    - View models with formatted display data
-    - Application state (`AppCore`)
-    - Event handling trait for framework implementations
-  - `gui-gtk`: GTK4/libadwaita implementation (~30-40% GTK-specific)
-    - Renders UI using GTK widgets
-    - Implements event handlers calling gui-core utilities
-    - Maintains GTK-specific state (GObject wrappers, widget references)
-- **Benefits**:
-  - Consistent behavior across GUI front-ends
-  - Reduced maintenance burden
-  - Easier testing (business logic separate from UI framework)
-  - Clear separation of concerns
+## Daemon
 
-## Build Requirements
-- **All modules**: Rust 1.85+ (pinned by `rust-toolchain.toml`), plus cmake and a C compiler for `aws-lc-sys`
-- **CLI/Daemon**: No additional system dependencies
-- **GUI GTK**:
-  - GTK4 ≥4.12
-  - libadwaita ≥1.5
-  - GLib development files
-  - pkg-config
-  - Platform-specific installation:
-    - Debian/Ubuntu: `libgtk-4-dev libadwaita-1-dev build-essential pkg-config`
-    - Fedora: `gtk4-devel libadwaita-devel gcc pkg-config`
-    - Arch: `gtk4 libadwaita base-devel`
+Primary modules:
 
-## Additional Notes / Gaps
-- `monitor.rs` is a stub; tunnel health monitoring beyond port-forward loop is future work.
-- Remote/dynamic forwarding branches in `tunnel.rs` return "not yet implemented".
-- `profile_manager` tests use outdated field names (`username`, `password`); real code paths rely on `ssh-tunnel-common` definitions.
-- Security: passwords/passphrases can be stored in system keychain; auth token persisted with 0600 perms; known_hosts uses custom path by default.
-- Distribution/packaging and systemd integration are not yet represented in code (see README/SETUP for future plans).
+- `main.rs`: configuration, logging, store selection, token/PID setup and listener startup.
+  Refuses to run as uid 0 before anything is written to disk — see `root_refusal`.
+- `api.rs`: Axum routes, authentication middleware state, REST responses and outgoing SSE.
+- `tunnel.rs`: `TunnelManager`, per-tunnel task, SSH negotiation/authentication, forwarding,
+  request-correlated prompts and lifecycle events.
+- `known_hosts.rs`: OpenSSH-format verification and append, including hard refusal on changed
+  keys.
+- `config.rs`: listener modes, `daemon.toml`, CLI snippet and path policy.
+- `auth.rs`, `tls.rs`, `pidfile.rs`, `security.rs`: API token, TLS server, singleton guard and
+  credential access.
+- `monitor.rs`: placeholder; tunnel auto-reconnect/health monitoring remains unimplemented.
+
+External Rust clients interact through HTTP/SSE rather than daemon crate types.
+
+## GUI core
+
+New adapters should build on these modules rather than `AppCore`:
+
+### `actions.rs`
+
+- `AppCommand`: complete presentation-to-controller command enum.
+- `ProfileAction`: reusable profile actions for GTK and a future tray.
+- `ActionAvailability`: enabled operations derived from `TunnelStatus` and outstanding
+  structured operations.
+- `ControllerEffect`: side effects emitted by the reducer.
+
+### `controller.rs`
+
+- `AppController`: synchronous reducer and command validator.
+- `AppSnapshot`: immutable presentation state with profiles, tunnel inventory, daemon state,
+  auth queue, preferences, operations, features and errors.
+- `ControllerEvent`: typed completion/input events consumed by the reducer.
+- `FeatureState` / `FeatureAvailability`: available, UI-only WIP, or unavailable capability.
+- `CommandRejected`, `UiError`, `OperationOutcome`: structured failures and operation results.
+
+Action enablement must come from `ActionAvailability`. Views must not derive it again from
+labels or daemon text.
+
+### `client_setup.rs`
+
+- `ClientSetupRepository`: path-injectable discovery, snippet loading, and atomic `cli.toml`
+  persistence.
+- `ClientSetupDiscovery`: ready, snippet available, or setup-required state selected from
+  local file/configuration facts.
+- `ClientSetupDraft`: redaction-safe editable settings for Unix socket, HTTP, and HTTPS.
+- `ClientSetupValidationErrors`: field and error codes used by adapters without matching
+  error text.
+
+Setup runs before `AppRuntime` construction. A missing, unreadable, malformed, or incomplete
+configuration cannot silently become a runtime with empty defaults. The daemon API token is
+kept out of `Debug` output and the final `cli.toml` is atomically installed with mode `0600`.
+Profile passwords and passphrases continue to use the common Secret Service/keyutils facade.
+
+### `runtime.rs`
+
+- `AppRuntime`: executes controller effects for profile files, `ui.toml`, daemon REST/SSE,
+  key validation and credential storage.
+- `RuntimeResult`: typed events and optional presentation requests returned to the adapter.
+- `PresentationRequest`: open editor, confirmation or other UI work that cannot be executed
+  by the core.
+- `map_sse_event`: maps wire variants to controller events using structured variants and IDs.
+
+Authentication submission always includes both tunnel ID and request ID. The earlier
+request-ID-less GUI client method is unavailable.
+
+### `auth.rs`
+
+- `AuthQueue`: FIFO queue, de-duplicated and reconciled by request ID.
+- `AuthPromptSnapshot`: presentation-ready prompt with typed `AuthPromptKind` and
+  `AuthInputMode`.
+- `AuthAnswer` / `AuthSubmission`: typed answer and exact correlation contract.
+
+`prompt` and all other daemon strings are display copy. `AuthRequestType` selects the prompt
+kind and answer type; the structured `hidden` boolean selects input visibility. Unknown or
+contradictory types fail closed.
+
+### `editor.rs`
+
+- `ProfileEditorSession`, `ProfileEditorDraft`, `ProfileEditorMode`.
+- `EditorField` and `EditorValidationErrors` for field-specific validation.
+- `SecretValue`: zeroizing secret wrapper with redacted `Debug` output.
+- `CredentialUpdate::{Keep, Store, Remove}` and `ProfileSaveRequest`.
+- `ProfileDeletionRequest`: confirmation plus credential cleanup contract.
+
+Existing credentials are never loaded into draft strings. Save/delete operations coordinate
+profile and credential mutations with rollback. Duplicate creates a new UUID and never copies
+the source profile's UUID-scoped credential.
+
+### `preferences.rs`
+
+- `UiPreferencesRepository`: load/reconcile/atomic save.
+- `UiPreferences`: version, manual order, pinned IDs, connected-only filter and `SortMode`.
+- `CURRENT_UI_PREFERENCES_VERSION`.
+
+Missing preferences use defaults. Malformed optional preferences produce a recoverable
+warning. Stale/duplicate IDs are removed and new profiles append deterministically.
+
+### Compatibility and presentation
+
+- `view_models.rs`: `ProfileViewModel`, `ProfileDetailsViewModel`, `StatusColor`.
+- `profiles.rs`: shared CRUD/validation helpers.
+- `daemon/`: `DaemonClient` and configuration helpers.
+- `events.rs`: compatibility `TunnelEventHandler`/`GuiEvent`.
+- `state.rs`: legacy `AppCore`, retained for `gui-gtk` only.
+
+## GUI v2 presentation adapter
+
+| Module | Responsibility |
+|---|---|
+| `lib.rs` | Application/resource bootstrap, system styling and accelerators |
+| `window.rs` | Window shell, navigation, action installation, snapshot rendering and presentation requests |
+| `setup_wizard.rs` | Non-blocking pre-runtime snippet/manual/repair flow and typed field presentation |
+| `bridge.rs` | Dedicated Tokio runtime thread and GLib-safe message bridge |
+| `action_router.rs` | Maps shell actions to shared commands or explicit WIP/unavailable presentation |
+| `profile_list.rs` | Search/filter/sort/pin/order, rows, details, actions, empty/offline states |
+| `profile_editor.rs` | GTK editor bound to the redacted core draft and structured validation |
+| `auth_dialog.rs` | One modal keyed by active request ID, typed input/host-key controls, submit/cancel state |
+| `daemon_view.rs` | Checking, online, offline and daemon information; lifecycle WIP actions |
+| `shell_state.rs` | Presentation mapping for daemon badge, counts and capability labels |
+| `components.rs` | Shared WIP, status, wrapping and accessibility components |
+
+GTK objects remain on the GLib main context. After client setup succeeds, the toolkit-neutral
+runtime runs on a dedicated Tokio thread; only commands, events, snapshots and presentation
+requests cross the bridge.
+
+Application shortcuts:
+
+- `Ctrl+F`: focus profile search
+- `Ctrl+N`: new profile
+- `F5` / `Ctrl+R`: refresh
+- `Ctrl+1`: Profiles
+- `Ctrl+2`: Daemon
+
+## Persistence
+
+| Data | Location |
+|---|---|
+| Profiles | `${XDG_CONFIG_HOME:-~/.config}/ssh-tunnel-manager/profiles/<uuid>.toml` |
+| Client config | `${XDG_CONFIG_HOME:-~/.config}/ssh-tunnel-manager/cli.toml` |
+| GUI preferences | `${XDG_CONFIG_HOME:-~/.config}/ssh-tunnel-manager/ui.toml` |
+| Daemon config/token/known hosts | Same configuration directory |
+| Socket/PID | `$XDG_RUNTIME_DIR/ssh-tunnel-manager/` |
+| Credentials | Secret Service or kernel keyutils, service `ssh-tunnel-manager`, account `<profile-uuid>` |
+
+`ui.toml` is presentation-only. Profile TOML remains authoritative for tunnel configuration.
+
+## Daemon HTTP/SSE API
+
+- `GET /api/health`: liveness.
+- `GET /api/daemon/info`: structured daemon information.
+- `GET /api/tunnels`: current inventory and pending authentication.
+- `POST /api/tunnels/{id}/start`: start using daemon-local or hybrid profile input.
+- `POST /api/tunnels/{id}/stop`: stop/cancel.
+- `GET /api/tunnels/{id}/status`: status and pending auth.
+- `GET /api/tunnels/{id}/auth`: exact outstanding request.
+- `POST /api/tunnels/{id}/auth`: request-ID-correlated `AuthResponse`.
+- `GET /api/events`: `starting`, `connected`, `disconnected`, `error`, `auth_required`, and
+  `heartbeat` SSE events. A **global, unfiltered broadcast** — consumers filter by tunnel id;
+  heartbeats concern everyone. On subscribe, the daemon **replays an `auth_required` for every
+  tunnel with an outstanding prompt**, so a client that connects mid-flight learns what is
+  waiting rather than waiting for an event that has already been sent.
+- `POST /api/daemon/shutdown`: existing shutdown endpoint; GUI v2 does not expose it as an
+  available default capability. No start/restart daemon API exists.
+
+Listener modes are Unix socket (default), loopback-only TCP HTTP, and TCP HTTPS with token
+authentication and optional certificate fingerprint pinning.
+
+## Error and security boundaries
+
+- Daemon/API errors become typed controller outcomes before presentation.
+- Error strings can be displayed but never searched, tokenized or compared to choose an
+  action.
+- Changed known host keys are hard failures. Only the structured unknown-host request selects
+  an accept/reject dialog.
+- Host-key prompt text remains unparsed until the daemon supplies structured host,
+  algorithm, fingerprint and trust-status fields.
+- Unsupported forwarding types are preserved and labelled unsupported; they are never
+  rewritten as local forwarding.
+- WIP actions cannot report success.
+
+## Build and validation
+
+- Pinned toolchain: Rust 1.98.0.
+- Root workspace GUI: GTK 4.12+/libadwaita 1.5+ development files.
+- GUI v2 preview target: Fedora 44/Bazzite with GTK 4.22, libadwaita 1.9 and GLib 2.88.
+- CLI/daemon also require `cmake` and a C toolchain for `aws-lc-sys`.
+
+Root workspace:
+
+```bash
+cargo test --workspace --locked
+cargo clippy --workspace --locked --all-targets --all-features -- -D warnings
+cargo build --workspace --release --locked
+cargo deny check
+```
+
+GUI v2 workspace:
+
+```bash
+cargo test --manifest-path crates/gui-v2/Cargo.toml --locked
+cargo clippy --manifest-path crates/gui-v2/Cargo.toml --locked --all-targets -- -D warnings
+cargo build --manifest-path crates/gui-v2/Cargo.toml --release --locked
+cargo deny --manifest-path crates/gui-v2/Cargo.toml check
+```
+
+Automated/source validation does not substitute for runtime visual, keyboard, Orca,
+high-contrast/font-scaling, live-daemon, Secret Service, or Bazzite host validation. Those
+remain the manual Phase 7 gate before production cutover.

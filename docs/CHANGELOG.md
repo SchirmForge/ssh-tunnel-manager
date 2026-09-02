@@ -9,6 +9,187 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.5.0] - 2026-09-02
+
+Authentication prompts stopped reaching clients, and the daemon could be started in a way that
+nothing could connect to. Both are fixed, along with the architectural split that let the first
+one hide for so long.
+
+> ⚠️ **Breaking: the daemon refuses to run as root.** A daemon started as root now exits at
+> startup with an explanation. See *Changed* below for the migration.
+
+### Changed
+
+- **The daemon refuses to run as root** and exits at startup with an explanation. Running as
+  root never worked: the socket is placed in `$XDG_RUNTIME_DIR`, which for root is
+  `/run/user/0` — a per-user directory that is mode 0700 by design, so the CLI and the GUI
+  running as a normal user could not reach it and reported that no daemon was running.
+  Widening socket permissions could not help, since the socket stayed owned by `root:root`.
+
+  Root was only needed to bind forward ports below 1024. Use `CAP_NET_BIND_SERVICE` instead:
+  the shipped systemd unit already grants it, or run
+  `sudo setcap cap_net_bind_service=+ep /path/to/ssh-tunnel-daemon` and start the daemon as
+  your normal user. See [architecture/SYSTEMD.md](architecture/SYSTEMD.md).
+
+- The privileged-port bind error no longer suggests `sudo ssh-tunnel-daemon`, which was the
+  most likely reason anyone ran the daemon as root. It now points at the capability.
+
+- **The CLI and the GUI now share one event path.** `start_tunnel_with_events` was carrying its
+  own hand-rolled SSE subscription and parsing; it is now built on the same `EventListener` the
+  GUI uses. The duplicated parsing is gone, and a fix on one path can no longer miss the other
+  — which is exactly what had happened.
+
+- A single credential policy, `client_credential_applies`, decides whether a prompt may be
+  answered from client-side storage. The CLI and gui-core enforced the same rule by different
+  mechanisms and could have drifted apart. Submission stays per-client.
+
+### Fixed
+
+- **Authentication prompts were lost whenever the event stream reconnected.** Starting a
+  password-authenticated tunnel could fail with `Authentication prompt timed out after 60s`
+  even with a client attached. Three faults compounded:
+
+  - the event stream was built with a *total* request timeout, which in `reqwest` covers the
+    response body, so every stream was cut at exactly 30 seconds regardless of traffic;
+  - the reconnect backoff doubled on every attempt and never reset after a connection that
+    worked, so the client settled into a permanent 30s-connected / 30s-disconnected cycle;
+  - the daemon broadcast only to subscribers that were live at that instant, so a prompt
+    raised during a gap was unrecoverable.
+
+  The stream now uses a read timeout, the backoff resets after a healthy connection, and the
+  daemon re-sends outstanding prompts to every new subscriber. Existing tests missed all of
+  this because the scripted handler answered instantly, always inside the first 30 seconds.
+
+- **A client connecting mid-flight is told what is outstanding.** Delivery is at-least-once
+  and keeps the *same* request id, because the id identifies the question rather than the
+  delivery. Re-issuing it would stale the held id of any client already waiting and make its
+  answer fail with "Request ID mismatch". Clients dedupe on the id instead.
+
+- **A repeated prompt no longer erases itself in the GUI.** `add_pending_auth` inserted by
+  request id and then removed the previous id for that tunnel — which, on a repeat, is the
+  entry it had just inserted, so the prompt vanished.
+
+- **The daemon can start without a login session.** Socket-path resolution failed outright
+  when `$XDG_RUNTIME_DIR` was unset, which is the case for a dedicated service account, so a
+  system daemon started outside the systemd unit could not run in Unix-socket mode at all. It
+  now falls back to `/run/ssh-tunnel-manager`, the location clients already look in.
+
+- **The PID file no longer lands beside the socket instead of with it.** Socket and PID paths
+  were derived independently and disagreed whenever `$XDG_RUNTIME_DIR` was already the
+  daemon's own directory — which is exactly what the shipped systemd unit sets. The PID file
+  went to `/run/ssh-tunnel-manager/ssh-tunnel-manager/daemon.pid`, a nested directory outside
+  the `RuntimeDirectory=` systemd creates and cleans up. Both now come from one place.
+
+- Ports are reported as privileged when below 1024 rather than at or below it; 1024 itself is
+  not privileged.
+
+### Removed
+
+- `gui-core::events` (`TunnelEventHandler`, `GuiEvent`) — dead code with no implementors
+  anywhere, implying a sharing between front-ends that did not exist.
+
+### Testing
+
+- **`make test-live` no longer passes without running anything.** With no target configured it
+  skipped every test and still reported `ok`, which is indistinguishable from a passing run. It
+  now runs strict and fails loudly.
+- **The tier-2 fixture can no longer destroy a provisioned target's configuration.** It shares
+  `.local/testing/ssh-target.env` with the provisioned tiers and overwrote it on `up`; it now
+  preserves and restores it.
+- The tier-2 live suite runs in 5.3 seconds instead of 300. A never-answering test handler used
+  a blocking `thread::sleep(300)`, which parks a runtime worker that `JoinHandle::abort()`
+  cannot interrupt, so the runtime's drop waited it out.
+
+---
+
+## [0.4.0] - 2026-09-01
+
+Second-generation desktop GUI preview and a toolkit-neutral application core. This release
+adds the complete source implementation and automated validation baseline without replacing
+the packaged `ssh-tunnel-gtk` application yet.
+
+There is no daemon wire-API or profile-format break. GUI-only ordering and filter preferences
+are stored separately in `ui.toml`. The new executable remains a source preview named
+`ssh-tunnel-gui-v2`; packaging, the production application ID/name, default-target changes,
+manual accessibility/runtime acceptance, and retirement of `gui-gtk` are later review gates.
+
+### Added
+
+- **Parallel GTK 4/libadwaita GUI v2** with adaptive profile list/detail views, search,
+  connected-only filtering, name/manual sorting, pinning, drag and keyboard ordering, profile
+  CRUD, daemon information, empty/offline states, and request-correlated authentication.
+- **GUI v2 first-launch client setup** with typed `cli.toml` preflight, daemon-snippet import,
+  bind-all host completion, mode-aware manual fields, invalid-config repair, retry/cancel
+  states, and runtime startup only after validated persistence.
+- **Toolkit-neutral GUI runtime in `gui-core`**: immutable snapshots, typed commands and
+  effects, code-derived action availability, presentation requests, feature capabilities,
+  profile editor state, and a reusable action surface for a future tray adapter.
+- **Versioned `ui.toml` preferences** beside `cli.toml`, containing presentation-only profile
+  order, pins, filter, and sort mode. Missing, malformed, stale, and unknown IDs recover
+  safely.
+- **Transactional credential editing** using explicit redacted Keep/Store/Remove operations.
+  Client-held credentials use the common Secret Service/keyutils facade and are offered once
+  per connection attempt.
+- **FIFO authentication coordination** keyed by daemon request IDs. Password, key-passphrase,
+  keyboard-interactive, structured two-factor, and host-key dialogs are selected exclusively
+  from typed request data.
+- **Accessibility and adaptive-layout groundwork**: labelled icon controls, alert/status
+  semantics, focus/default actions, keyboard shortcuts, wrapping action groups, and bounded
+  scrollers for narrow windows and larger system fonts.
+- Shared SSH private-key file validation in `ssh-tunnel-common`, used only for paths on the
+  client host; daemon-host key paths are preserved without local validation.
+
+### Changed
+
+- `gui-core` now owns controller state, ordering/pinning, authentication queueing, editor
+  validation, runtime effect execution, and presentation-ready models. `AppCore` remains only
+  as the compatibility surface for the packaged GTK GUI.
+- Help and About copy now describes the actual `cli.toml`, `ui.toml`, credential-store,
+  authentication, daemon, and WIP behavior.
+- Unsupported controls remain interactive where their local form behavior is useful, but are
+  visibly marked **WIP** and never report false persistence or success.
+- GUI styling follows system fonts and GTK/libadwaita semantic colors instead of bundling a
+  font family or fixed theme colors.
+
+### Security
+
+- **Daemon-originating text is presentation-only.** No prompt, name, instruction, status
+  description, or error string selects an action. Dialogs, input visibility, response types,
+  retries, and state transitions use structured variants, request IDs, status codes,
+  capability states, and booleans only.
+- Unknown or contradictory structured authentication data fails closed. Regression tests use
+  misleading, localized, and password-like copy to ensure text cannot change behavior.
+- Existing secrets never enter editor drafts or debug output, and duplicate profiles never
+  inherit UUID-scoped credentials.
+- Client setup redacts the daemon API token from debug/error state and replaces `cli.toml`
+  atomically through a `0600` temporary file. Profile credentials remain in the common
+  Secret Service/keyutils facade.
+
+### Removed
+
+- The obsolete `crates/gui-qt` implementation and its remaining workspace, build,
+  documentation, roadmap, and lockfile references.
+
+### Validation
+
+- Fedora 44 locked tests, Clippy with warnings denied, and release builds pass for the root
+  and isolated GUI v2 workspaces.
+- GUI v2: 26 tests passed. Root workspace: 168 passed, 18 live/environment tests ignored,
+  none failed. Dependency policy checks pass for both workspaces.
+- The GUI was not launched or rendered during automated validation. Visual comparison, Orca,
+  focus traversal, high contrast/font scaling, live-daemon authentication, Secret Service,
+  and Bazzite runtime validation remain pending explicit manual approval.
+
+### Not included in v0.4.0
+
+Tray implementation/library selection, stored TOTP generation or persistence, daemon
+start/restart APIs, SSH config import, new traffic/uptime/last-connected telemetry, parsing
+daemon strings into security data, and GUI v2 compatibility outside Bazzite/Fedora 44. See
+[ROADMAP.md](ROADMAP.md#deferred-or-excluded-from-v040) and
+[releases/v0.4.0.md](releases/v0.4.0.md).
+
+---
+
 ## [0.3.0] - 2026-09-01
 
 Credential storage. The headline is a defect that has been present since remote daemon
