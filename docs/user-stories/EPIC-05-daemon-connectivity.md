@@ -198,6 +198,5 @@ then grants access to a group only root is in.
 `nothing_advises_running_the_daemon_with_sudo` (verified to fail against the old message)
 
 > The refusal has **no override**, so a container image running the daemon as root will not
-> start. Nothing in this repository ships such an image. The live refusal has not yet been
-> observed on a real host — see `.plan/ARCH-02_manual-client-validation.md`.
-
+> start. Nothing in this repository ships such an image. Direct observation on a real host
+> remains a manual validation item.

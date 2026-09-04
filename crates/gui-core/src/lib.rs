@@ -45,7 +45,7 @@ pub use daemon::{
 pub use editor::{
     CredentialUpdate, EditorField, EditorValidationError, EditorValidationErrors,
     ProfileDeletionRequest, ProfileEditorDraft, ProfileEditorMode, ProfileEditorSession,
-    ProfileSaveRequest, SecretValue, StoredCredentialState,
+    ProfileReconnectRequest, ProfileSaveRequest, SecretValue, StoredCredentialState,
 };
 pub use preferences::{
     SortMode, UiPreferences, UiPreferencesLoad, UiPreferencesRepository,

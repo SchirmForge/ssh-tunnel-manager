@@ -135,7 +135,7 @@
 <p class="subtitle">SSH Tunnel Manager — what the system is made of, and how its parts behave.</p>
 
 <div class="meta">
-  <span><strong>Version</strong> v0.5.0</span>
+  <span><strong>Version</strong> v0.6.0</span>
   <span><strong>Status</strong> Production CLI, daemon, and second-generation GTK GUI</span>
   <span><strong>Companion</strong> <a href="TECHNICAL_ARCHITECTURE.html">Technical Architecture</a></span>
 </div>
@@ -353,8 +353,18 @@
   <li>Profile actions use the same toolkit-neutral command surface intended for a future tray adapter</li>
   <li>Unsupported behavior is labelled WIP; useful form reveal/hide and validation still operate without false persistence or success</li>
   <li>Daemon copy is display-only. Event/request/status variants, IDs, capabilities and booleans select every action and state transition</li>
+  <li>Active profiles remain editable. Saving leaves the current tunnel unchanged, explains that the new settings apply on its next connection, and offers a structured <strong>Reconnect now</strong> action</li>
+  <li>Authentication prompt copy uses the semantic window background so daemon text remains legible without looking like an editable field</li>
   <li>Help and About are Markdown assets bundled in <code>gui-core/assets/</code></li>
 </ul>
+
+<p>
+  Reconnecting after an edit is a client-side tunnel operation, not automatic recovery and not
+  daemon-process management. <code>gui-core</code> decides whether to show the notice from the
+  structured tunnel status. If selected, the runtime stops the tunnel, waits until the status
+  endpoint reports an inactive state, and starts the persisted profile. No daemon message is
+  inspected to choose or sequence those actions.
+</p>
 
 <p>
   GUI v2 inspects <code>cli.toml</code> before constructing its daemon runtime. A valid file

@@ -76,5 +76,13 @@ mod tests {
             !STYLE.contains('#'),
             "fixed color literals bypass light, dark, and high-contrast themes"
         );
+
+        let auth_prompt_rule = STYLE
+            .split_once(".stm-auth-prompt {")
+            .and_then(|(_, suffix)| suffix.split_once('}'))
+            .map(|(rule, _)| rule)
+            .expect("authentication prompt CSS rule");
+        assert!(auth_prompt_rule.contains("background-color: @window_bg_color;"));
+        assert!(!auth_prompt_rule.contains("@card_bg_color"));
     }
 }

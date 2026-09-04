@@ -9,7 +9,8 @@ use adw::prelude::*;
 use gtk::gio;
 use ssh_tunnel_gui_core::{
     AppCommand, AuthType, CredentialUpdate, ForwardingType, PasswordStorage, ProfileEditorMode,
-    ProfileEditorSession, ProfileSaveRequest, SecretValue, StoredCredentialState,
+    ProfileEditorSession, ProfileReconnectRequest, ProfileSaveRequest, SecretValue,
+    StoredCredentialState,
 };
 
 use crate::components::wrap_actions;
@@ -66,6 +67,60 @@ pub fn present_delete_confirmation(
     content.append(&actions);
     dialog.set_content(Some(&content));
     gtk::prelude::GtkWindowExt::set_focus(&dialog, Some(&cancel));
+    dialog.present();
+}
+
+pub fn present_reconnect_confirmation(
+    parent: &adw::ApplicationWindow,
+    request: ProfileReconnectRequest,
+    handler: CommandHandler,
+) {
+    let dialog = adw::Window::builder()
+        .transient_for(parent)
+        .modal(true)
+        .title("Profile updated")
+        .default_width(460)
+        .resizable(false)
+        .build();
+    let content = gtk::Box::new(gtk::Orientation::Vertical, 16);
+    content.set_margin_top(24);
+    content.set_margin_bottom(20);
+    content.set_margin_start(24);
+    content.set_margin_end(24);
+
+    let title = gtk::Label::new(Some(&format!("Reconnect “{}” now?", request.profile_name)));
+    title.add_css_class("title-3");
+    title.set_wrap(true);
+    content.append(&title);
+    let explanation = gtk::Label::new(Some(
+        "The changes were saved, but the current connection is still using the previous settings. They will take effect the next time this profile connects.",
+    ));
+    explanation.set_wrap(true);
+    explanation.set_justify(gtk::Justification::Center);
+    explanation.add_css_class("dim-label");
+    content.append(&explanation);
+
+    let actions = wrap_actions(gtk::Align::Center);
+    let ok = gtk::Button::with_label("OK");
+    {
+        let dialog = dialog.clone();
+        ok.connect_clicked(move |_| dialog.close());
+    }
+    let reconnect = gtk::Button::with_label("Reconnect now");
+    reconnect.add_css_class("suggested-action");
+    {
+        let dialog = dialog.clone();
+        reconnect.connect_clicked(move |_| {
+            handler(AppCommand::ReconnectProfile(request.profile_id));
+            dialog.close();
+        });
+    }
+    actions.append(&ok);
+    actions.append(&reconnect);
+    content.append(&actions);
+    dialog.set_content(Some(&content));
+    dialog.set_default_widget(Some(&ok));
+    gtk::prelude::GtkWindowExt::set_focus(&dialog, Some(&ok));
     dialog.present();
 }
 

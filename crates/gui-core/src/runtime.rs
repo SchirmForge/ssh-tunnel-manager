@@ -5,6 +5,7 @@
 
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use anyhow::{Context, Result};
 use ssh_tunnel_common::{
@@ -16,13 +17,14 @@ use ssh_tunnel_common::{
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
-use crate::actions::{ControllerEffect, ProfileOperation};
+use crate::actions::{profile_changes_require_reconnect, ControllerEffect, ProfileOperation};
 use crate::client_setup::{ClientSetupDiscovery, ClientSetupRepository};
 use crate::controller::{ControllerEvent, OperationOutcome, TunnelRuntimeSnapshot};
 use crate::daemon::DaemonClient;
 use crate::editor::{
     CredentialUpdate, ProfileDeletionRequest, ProfileEditorDraft, ProfileEditorMode,
-    ProfileEditorSession, ProfileSaveRequest, SecretValue, StoredCredentialState,
+    ProfileEditorSession, ProfileReconnectRequest, ProfileSaveRequest, SecretValue,
+    StoredCredentialState,
 };
 use crate::preferences::UiPreferencesRepository;
 use crate::profiles::{delete_profile, load_profiles, save_profile, validate_profile};
@@ -32,6 +34,7 @@ use crate::profiles::{delete_profile, load_profiles, save_profile, validate_prof
 pub enum PresentationRequest {
     ProfileEditor(Box<ProfileEditorSession>),
     ConfirmDelete(ProfileDeletionRequest),
+    ConfirmReconnect(ProfileReconnectRequest),
 }
 
 /// Result of executing one controller effect.
@@ -123,7 +126,10 @@ impl AppRuntime {
             ControllerEffect::ConfirmDeleteProfile(profile_id) => {
                 self.confirm_delete(profile_id).await
             }
-            ControllerEffect::SaveProfile { request } => self.save_profile(*request).await,
+            ControllerEffect::SaveProfile {
+                request,
+                offer_reconnect,
+            } => self.save_profile(*request, offer_reconnect).await,
             ControllerEffect::DeleteProfile(profile_id) => self.delete_profile(profile_id).await,
             ControllerEffect::ConnectProfile(profile_id) => {
                 self.start_profile(profile_id, ProfileOperation::Connect)
@@ -136,6 +142,9 @@ impl AppRuntime {
             ControllerEffect::DisconnectProfile(profile_id) => {
                 self.stop_profile(profile_id, ProfileOperation::Disconnect)
                     .await
+            }
+            ControllerEffect::ReconnectProfile(profile_id) => {
+                self.reconnect_profile(profile_id).await
             }
             ControllerEffect::RetryProfile(profile_id) => {
                 self.start_profile(profile_id, ProfileOperation::Retry)
@@ -433,7 +442,11 @@ impl AppRuntime {
         }
     }
 
-    async fn save_profile(&self, request: ProfileSaveRequest) -> RuntimeResult {
+    async fn save_profile(
+        &self,
+        request: ProfileSaveRequest,
+        offer_reconnect: bool,
+    ) -> RuntimeResult {
         let profile_id = request.profile.metadata.id;
         let daemon_is_local = self.daemon_is_local();
         let result = tokio::task::spawn_blocking(move || {
@@ -443,7 +456,18 @@ impl AppRuntime {
         .context("Profile save task stopped unexpectedly")
         .and_then(|result| result);
         match result {
-            Ok(profile) => RuntimeResult::event(ControllerEvent::ProfileSaved(Box::new(profile))),
+            Ok(profile) => {
+                let presentation = offer_reconnect.then(|| {
+                    PresentationRequest::ConfirmReconnect(ProfileReconnectRequest {
+                        profile_id,
+                        profile_name: profile.metadata.name.clone(),
+                    })
+                });
+                RuntimeResult {
+                    events: vec![ControllerEvent::ProfileSaved(Box::new(profile))],
+                    presentation,
+                }
+            }
             Err(error) => operation_failure(profile_id, ProfileOperation::Save, error),
         }
     }
@@ -503,6 +527,44 @@ impl AppRuntime {
             // As with start, wait for the structured SSE state transition.
             Ok(()) => RuntimeResult::default(),
             Err(error) => operation_failure(profile_id, operation, error),
+        }
+    }
+
+    async fn reconnect_profile(&self, profile_id: Uuid) -> RuntimeResult {
+        self.clear_client_credential_offer(profile_id);
+        let result = async {
+            let current = self.daemon_client.get_tunnel_status(profile_id).await?;
+            if current
+                .as_ref()
+                .is_some_and(|snapshot| profile_changes_require_reconnect(&snapshot.status))
+            {
+                self.daemon_client.stop_tunnel(profile_id).await?;
+                tokio::time::timeout(Duration::from_secs(10), async {
+                    loop {
+                        let current = self.daemon_client.get_tunnel_status(profile_id).await?;
+                        if current.as_ref().is_none_or(|snapshot| {
+                            !profile_changes_require_reconnect(&snapshot.status)
+                        }) {
+                            return Ok::<(), anyhow::Error>(());
+                        }
+                        tokio::time::sleep(Duration::from_millis(100)).await;
+                    }
+                })
+                .await
+                .context("Timed out waiting for the tunnel to stop before reconnecting")??;
+            }
+
+            let profile = load_profile_by_id(&profile_id)
+                .with_context(|| format!("Failed to load profile {profile_id}"))?;
+            self.daemon_client.start_tunnel(&profile).await
+        }
+        .await;
+
+        match result {
+            // Completion is still driven by structured SSE status events. The
+            // polling above only sequences stop before start safely.
+            Ok(()) => RuntimeResult::default(),
+            Err(error) => operation_failure(profile_id, ProfileOperation::Reconnect, error),
         }
     }
 

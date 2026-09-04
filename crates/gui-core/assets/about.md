@@ -1,7 +1,7 @@
 # SSH Tunnel Manager
 
-**Version**: 0.5.0
-**Release date**: 2026-09-02
+**Version**: 0.6.0
+**Release date**: 2026-09-03
 
 ## Description
 
@@ -10,6 +10,19 @@ A modern GTK4/Libadwaita application for managing SSH tunnels through a backgrou
 Supports both local daemon connections via Unix socket and remote daemon connections over HTTPS, enabling you to manage tunnels on headless servers from your desktop.
 
 ## Features
+
+### New in v0.6.0
+
+The second-generation interface is now the production desktop application.
+
+- **Changed**: profiles can be edited while their tunnel is active. Saving keeps the current
+  connection intact and offers either **OK** or **Reconnect now**.
+- **Changed**: reconnecting after an edit waits for structured daemon status before starting
+  the saved profile; daemon messages are never parsed to drive the action.
+- **Fixed**: daemon authentication prompt text now follows the dialog's semantic window
+  background instead of appearing on a contrasting card.
+- **Changed**: the previous GTK interface is retained only as obsolete, frozen source and is
+  no longer installed or packaged.
 
 ### New in v0.5.0
 

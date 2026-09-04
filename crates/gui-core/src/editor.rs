@@ -109,6 +109,13 @@ pub struct ProfileDeletionRequest {
     pub profile_name: String,
 }
 
+/// Post-save choice offered when an edited profile is currently in use.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProfileReconnectRequest {
+    pub profile_id: Uuid,
+    pub profile_name: String,
+}
+
 /// An editable profile with text fields kept as text until submission.
 ///
 /// Keeping ports and numeric tuning values as strings lets every toolkit show

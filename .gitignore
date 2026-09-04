@@ -33,4 +33,8 @@ logs/
 *.flatpak
 *.flatpakref
 *.flatpakrepo
+
+# local links
 .ui-mockups
+.plan
+.local

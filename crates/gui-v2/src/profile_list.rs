@@ -1066,6 +1066,7 @@ mod tests {
             connect: false,
             cancel_connection: false,
             disconnect: false,
+            reconnect: false,
             retry: false,
             edit: true,
             duplicate: true,

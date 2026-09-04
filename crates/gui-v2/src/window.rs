@@ -18,7 +18,9 @@ use crate::auth_dialog::{sync_action, AuthDialogEvent, AuthDialogHandle, AuthDia
 use crate::bridge::{RuntimeBridge, RuntimeMessage};
 use crate::components::DaemonStatusBadge;
 use crate::daemon_view::DaemonView;
-use crate::profile_editor::{present as present_profile_editor, present_delete_confirmation};
+use crate::profile_editor::{
+    present as present_profile_editor, present_delete_confirmation, present_reconnect_confirmation,
+};
 use crate::profile_list::{ProfileListEvent, ProfileListView};
 use crate::setup_wizard;
 use crate::shell_state::ShellViewState;
@@ -277,6 +279,9 @@ impl UiSession {
             }
             PresentationRequest::ConfirmDelete(delete) => {
                 present_delete_confirmation(&self.shell.window, delete, handler)
+            }
+            PresentationRequest::ConfirmReconnect(reconnect) => {
+                present_reconnect_confirmation(&self.shell.window, reconnect, handler)
             }
         }
     }

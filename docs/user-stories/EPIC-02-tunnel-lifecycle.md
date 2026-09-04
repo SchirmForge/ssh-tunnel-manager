@@ -84,8 +84,11 @@ does.
 - `ssh-tunnel restart <name>` performs a stop followed by a start
 - The start waits for the stop to complete
 - Authentication prompts appear as normal on the way back up
+- After saving an active profile, the production GUI offers **Reconnect now**, waits for a
+  structured inactive status, and starts the saved profile
 
-**Implementation**: `crates/cli/src/main.rs` (`Commands::Restart`)
+**Implementation**: `crates/cli/src/main.rs` (`Commands::Restart`),
+`crates/gui-core/src/actions.rs`, `controller.rs`, `runtime.rs`
 
 ---
 

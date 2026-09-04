@@ -96,6 +96,9 @@ its UUID.
 - A "New Profile" button on the profiles list, and Edit/Delete on the profile details page
 - The dialog is organised into Basic Info, Authentication, Port Forwarding and an Advanced Tuning accordion
 - Duplicate names are rejected; editing an existing profile overwrites correctly rather than creating a second one
+- A profile remains editable while its tunnel is active
+- Saving an active profile explains that the current tunnel retains its previous settings and
+  offers **OK** or **Reconnect now**
 - The list refreshes after every create, edit and delete, and navigates back to the list after edit or delete
 - Escape closes the dialog; the title reads "New Profile" or "Edit Profile" as appropriate
 - A file chooser is offered for the SSH key, filtered to likely key files
@@ -104,7 +107,8 @@ its UUID.
 
 The production GUI extends this source implementation with details,
 create/edit/duplicate/confirmed delete, structured field validation, safe credential
-operations and local/remote key-path semantics; see [Epic 11](EPIC-11-desktop-gui-v2.md).
+operations, active-profile editing with an explicit reconnect choice, and local/remote
+key-path semantics; see [Epic 11](EPIC-11-desktop-gui-v2.md).
 
 **Production GUI implementation**: `crates/gui-core/src/editor.rs`, `runtime.rs`,
 `crates/gui-v2/src/profile_editor.rs`, `profile_list.rs`

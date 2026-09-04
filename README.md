@@ -4,12 +4,13 @@ A secure, performant SSH tunnel management application for Linux with CLI interf
 
 ## Status
 
-**Version**: v0.5.0
+**Version**: v0.6.0
 **Status**: Production-ready CLI, daemon, and GTK 4/libadwaita GUI
 
 ### Highlights
 
 - ✅ **Production GTK GUI** - First-launch setup, adaptive profile organization, typed shared actions, safe credential editing, and honest WIP states
+- ✅ **Safe live-profile editing** - Edit an active profile without interruption, then keep the current tunnel or reconnect immediately with the saved settings
 - ✅ **Remote daemon support** - Connect to daemons over HTTPS on other machines
 - ✅ **Full-featured GUI** - Profile management, real-time status, and markdown documentation
 - ✅ **Enhanced CLI** - Status/restart commands and proactive config validation
@@ -18,7 +19,7 @@ A secure, performant SSH tunnel management application for Linux with CLI interf
 
 ### Limitations
 
-- 🚧 Notification on connection lost or reconnect not implemented yet
+- 🚧 Notification on connection loss and automatic tunnel reconnection are not implemented yet
 - 🚧 Auto-reconnect wiring pending
 
 ## Features

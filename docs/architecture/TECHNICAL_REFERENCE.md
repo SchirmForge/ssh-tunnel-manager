@@ -1,6 +1,6 @@
 # SSH Tunnel Manager Technical Reference
 
-**Version**: v0.5.0
+**Version**: v0.6.0
 **Scope**: Current modules, public contracts, persistence, daemon API, GUI boundaries, and
 build/validation requirements.
 
@@ -98,6 +98,8 @@ New adapters should build on these modules rather than `AppCore`:
 - `ActionAvailability`: enabled operations derived from `TunnelStatus` and outstanding
   structured operations.
 - `ControllerEffect`: side effects emitted by the reducer.
+- `ReconnectProfile`: reusable command/effect that applies a saved profile by reconnecting
+  without making GTK responsible for tunnel sequencing.
 
 ### `controller.rs`
 
@@ -156,10 +158,15 @@ contradictory types fail closed.
 - `SecretValue`: zeroizing secret wrapper with redacted `Debug` output.
 - `CredentialUpdate::{Keep, Store, Remove}` and `ProfileSaveRequest`.
 - `ProfileDeletionRequest`: confirmation plus credential cleanup contract.
+- `ProfileReconnectRequest`: post-save confirmation data for an active profile.
 
 Existing credentials are never loaded into draft strings. Save/delete operations coordinate
 profile and credential mutations with rollback. Duplicate creates a new UUID and never copies
-the source profile's UUID-scoped credential.
+the source profile's UUID-scoped credential. Editing is enabled independently of tunnel state.
+When a successful overwrite was initiated under an active structured status,
+`RuntimeResult` carries both `ProfileSaved` and `ConfirmReconnect`. The reconnect runtime
+polls `TunnelStatusResponse` until inactive before starting the saved profile; it never
+matches daemon text.
 
 ### `preferences.rs`
 
@@ -269,5 +276,5 @@ cargo deny check
 cargo check --package ssh-tunnel-gui-gtk --locked
 ```
 
-Functional runtime acceptance and production cutover are complete. Keyboard-only and mockup
-screen-comparison follow-up remains in `.plan/UI_v2-final-validation.md`.
+Functional runtime acceptance and production cutover are complete. Keyboard-only and screen-
+comparison follow-up remains listed in [KNOWN_ISSUES.md](../KNOWN_ISSUES.md).

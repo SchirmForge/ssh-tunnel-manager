@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+---
+
+## [0.6.0] - 2026-09-03
+
+The second-generation GTK interface is now the production desktop application. This release
+also makes editing an active profile safe and explicit: saving does not interrupt the current
+tunnel, and the user can either keep it running or reconnect immediately with the new settings.
+
 ### Changed
 
 - **GUI v2 is now the production desktop application.** The root-workspace package and binary
@@ -18,6 +26,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   workspace.
 - `crates/gui-gtk` is obsolete and frozen. It remains a non-default workspace member for
   compile compatibility, is not installed or packaged, and has no planned removal date.
+- Profiles remain editable while connecting, awaiting authentication, connected, or
+  reconnecting. After a successful save, the GUI explains that the active tunnel still uses
+  its previous settings and offers **OK** or **Reconnect now**.
+- **Reconnect now** is a reusable `gui-core` action. It composes the existing tunnel stop,
+  status, and start operations, waiting for a structured inactive status before starting the
+  saved profile. It does not add a daemon-process lifecycle API or implement automatic tunnel
+  reconnection after a network failure.
+
+### Fixed
+
+- Daemon-supplied authentication prompt copy now uses the semantic window background instead
+  of a contrasting card background, so the text is visually integrated with its dialog.
+
+### Security
+
+- The active-profile notice and reconnect sequence are selected exclusively from structured
+  `TunnelStatus` values. Daemon messages and prompt text remain display-only and are never
+  parsed to choose an action.
 
 ### Validation
 
@@ -25,9 +51,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   daemon, SSE, or authentication behavior.
 - `ssh-tunnel-gui` and obsolete `ssh-tunnel-gui-gtk` compile in the controlled Fedora 44
   environment. The frozen GUI retains expected deprecation warnings.
-- Keyboard-only and mockup screen-comparison review moved to
-  `.plan/UI_v2-final-validation.md`; detailed functional defects remain in the user-owned
-  `.plan/UI_known-issues.md`.
+- The default workspace reports 214 tests passed, 19 live/environment tests ignored, and no
+  failures. This includes GUI regression tests proving that misleading daemon text cannot
+  enable the reconnect path.
+- Dependency bans, licenses, and sources pass policy checks; existing duplicate-version
+  findings remain warnings. Keyboard-only and screen-comparison review remain follow-up
+  validation and do not block the production target.
 
 ---
 
@@ -116,8 +145,8 @@ one hide for so long.
   skipped every test and still reported `ok`, which is indistinguishable from a passing run. It
   now runs strict and fails loudly.
 - **The tier-2 fixture can no longer destroy a provisioned target's configuration.** It shares
-  `.local/testing/ssh-target.env` with the provisioned tiers and overwrote it on `up`; it now
-  preserves and restores it.
+  one private target configuration with the provisioned tiers and overwrote it on `up`; it
+  now preserves and restores it.
 - The tier-2 live suite runs in 5.3 seconds instead of 300. A never-answering test handler used
   a blocking `thread::sleep(300)`, which parks a runtime worker that `JoinHandle::abort()`
   cannot interrupt, so the runtime's drop waited it out.
@@ -386,9 +415,9 @@ accepted risk in [`deny.toml`](../deny.toml) and
   among them, so the SSH client path is exercised on **every pull request**.
 - **Live SSH target provisioning** (`scripts/provision-test-target.sh`) — creates the three
   test accounts (key, password, 2FA/TOTP) on a remote host, generates every key and secret,
-  and writes `.local/testing/ssh-target.env`. Idempotent, takes the host as an argument and
-  hardcodes nothing. Every `sshd_config` change is scoped with `Match User` to the test
-  accounts and validated with `sshd -t` before reload, so it cannot lock you out.
+  and writes the gitignored private target configuration. It is idempotent, takes the host as
+  an argument, and hardcodes nothing. Every `sshd_config` change is scoped with `Match User`
+  to the test accounts and validated with `sshd -t` before reload, so it cannot lock you out.
 - **`SSH_TUNNEL_TEST_STRICT`** — turns a skipped live test into a failure. `=1` requires the
   target file (tier 2); `=all` additionally requires every account a test asks for (tier 4).
   Closes the trap documented in US-10.5, where a fully skipped run still reported `ok`.
@@ -567,8 +596,8 @@ is from what we intend to do next.
 
 - **New structure**: `docs/architecture/` (specification and operations) and
   `docs/user-stories/` (behaviour by epic), with `ROADMAP.md`, `PROJECT_STATUS.md`,
-  `CHANGELOG.md` and `KNOWN_ISSUES.md` at the top level. Development plans are not
-  published — `.plan/` is a local, gitignored scratch area.
+  `CHANGELOG.md` and `KNOWN_ISSUES.md` at the top level. Development plans remain local
+  scratch material and are not published.
 - **New**: `docs/ROADMAP.md`, extracted from the 206-line roadmap section of
   PROJECT_STATUS.md and reorganised by horizon (Now / Next / Later / Not planned /
   Technical debt) rather than by priority label.

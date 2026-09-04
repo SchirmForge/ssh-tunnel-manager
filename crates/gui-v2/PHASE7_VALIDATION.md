@@ -1,6 +1,6 @@
 # Phase 7 validation and cutover record
 
-Validated on 2026-09-01 and 2026-09-02 against the Fedora 44 development
+Validated on 2026-09-01, 2026-09-02, and 2026-09-03 against the Fedora 44 development
 environment and the Bazzite/Fedora 44 host runtime.
 
 ## Completed validation
@@ -50,7 +50,7 @@ On 2026-09-02 in the `fedora44-rpmbuild` Fedora 44 distrobox:
 Final locked validation in Fedora 44 also passed:
 
 - `cargo fmt --all -- --check`
-- Default-workspace tests: 212 passed, 19 live/environment tests ignored, 0 failed
+- Default-workspace tests: 214 passed, 19 live/environment tests ignored, 0 failed
 - Default-workspace Clippy with all targets/features and warnings denied
 - Release builds for both `ssh-tunnel-gui` and `ssh-tunnel-gui-gtk`
 - `cargo deny check bans licenses sources` (existing duplicate-version warnings only)
@@ -59,12 +59,18 @@ Final locked validation in Fedora 44 also passed:
 
 ## Deferred validation
 
-The user owns interaction-by-interaction validation and records functional bugs
-in `.plan/UI_known-issues.md`. The only unfinished Phase 7 review is:
+The user owns interaction-by-interaction validation. The only unfinished Phase 7 review is:
 
 - complete keyboard-only traversal/focus/default/cancel checks;
 - compare the implemented screens with the supplied mockups in the relevant
   system appearance modes.
 
-That work is transferred to `.plan/UI_v2-final-validation.md`. It is not a
-production-cutover blocker and does not reopen the accepted functional areas.
+That work is listed publicly in `docs/KNOWN_ISSUES.md`. It is not a production-cutover
+blocker and does not reopen the accepted functional areas.
+
+## v0.6.0 follow-up validation
+
+On 2026-09-03, the active-profile edit and structured reconnect changes passed 53
+`gui-core` tests and 26 production-GUI tests. Strict Clippy passed for both maintained
+crates, and the obsolete GUI still compiled with its known deprecation warnings. Regression
+tests confirm that only typed status codes can trigger the post-save reconnect offer.

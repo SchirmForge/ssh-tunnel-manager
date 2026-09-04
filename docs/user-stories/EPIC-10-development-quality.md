@@ -65,8 +65,8 @@ See [../DEVELOPMENT.md](../DEVELOPMENT.md#testing) for how to run any of this.
 **I want** test credentials to be impossible to commit by accident
 
 **Acceptance criteria**
-- The test host name and every credential live only in `.local/testing/ssh-target.env`
-- `/.local/` is gitignored in its entirety
+- The test host name and every credential live only in a gitignored private target file
+- The repository's private test-data directory is gitignored in its entirety
 - **No committed file** — script, test, document or CI workflow — contains the host name or any credential
 - A template with placeholders is committed at `docs/testing/ssh-target.env.template`
 - The gating CI tier needs **no credentials at all**: it generates a throwaway localhost fixture per run
@@ -195,8 +195,7 @@ Clippy, and release build and explicitly compiles obsolete `gui-gtk`.
 
 **Acceptance criteria**
 - `scripts/provision-test-target.sh --host <host>` creates the three test accounts, generates
-  every key and secret, configures `sshd` and PAM, and writes
-  `.local/testing/ssh-target.env`
+  every key and secret, configures `sshd` and PAM, and writes the private target configuration
 - It is idempotent, takes the host as an argument and hardcodes nothing
 - Every `sshd_config` change is scoped with `Match User` to the test accounts, so the
   administrative account's authentication is never altered
@@ -277,8 +276,8 @@ Clippy, and release build and explicitly compiles obsolete `gui-gtk`.
 else.
 
 **Acceptance criteria**
-- `ssh-fixture.sh up` moves an existing non-fixture `.local/testing/ssh-target.env` aside
-  rather than overwriting it, and `down` restores it
+- `ssh-fixture.sh up` moves an existing non-fixture private target configuration aside rather
+  than overwriting it, and `down` restores it
 - The fixture's own file is still removed on `down`, identified by its generated-by marker
 - A full `up`/`down` cycle leaves a pre-existing target configuration byte-identical
 

@@ -139,7 +139,8 @@ id, so reissuing it would stale the id a waiting client holds and make its answe
 **Tests**: `live_ssh::a_late_subscriber_is_told_about_an_outstanding_prompt` (verified to fail
 without the replay), `gui-core::state` idempotency tests
 
-> Manual GUI validation is still outstanding — see `.plan/ARCH-02_manual-client-validation.md`.
+> The production GUI's event delivery was accepted during cutover; remaining manual checks
+> are listed in [KNOWN_ISSUES.md](../KNOWN_ISSUES.md).
 
 ---
 
@@ -168,4 +169,3 @@ without the replay), `gui-core::state` idempotency tests
 > its own subscription on the request client, so fixing the timeout on one path left the other
 > broken. `gui-core::events` — a `TunnelEventHandler` with no implementors anywhere — was
 > removed at the same time.
-

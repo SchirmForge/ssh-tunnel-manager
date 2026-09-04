@@ -1,11 +1,12 @@
 # Installation Guide
 
-**Version**: v0.5.0
-**Last Updated**: 2026-09-02
+**Version**: v0.6.0
+**Last Updated**: 2026-09-03
 
 ## Quick Start
 
-For a current source install or the next published package, the normal flow is:
+For a current v0.6.0 source install or a package using the production GUI identity, the
+normal flow is:
 
 1. **Install** .deb packages (Ubuntu/Debian) or build from source
 2. **Start** the daemon as a user service (`systemctl --user enable --now ssh-tunnel-daemon`)
@@ -14,8 +15,9 @@ For a current source install or the next published package, the normal flow is:
 
 See detailed instructions below for your platform.
 
-The already-published v0.5.0 DEB retains the historical `ssh-tunnel-gtk` launcher; see its
-artifact note below.
+The v0.5.0 DEB artifacts retain the historical `ssh-tunnel-gtk` launcher; see their artifact
+note below. Do not substitute v0.6.0 in those URLs until matching release artifacts have been
+published.
 
 ## Debian/Ubuntu (Recommended)
 

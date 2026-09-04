@@ -6,7 +6,8 @@ behind it.
 The second-generation GUI became the production desktop application after runtime and
 functional acceptance. Its package and binary are `ssh-tunnel-gui`, with application ID
 `io.github.schirmforge.SshTunnelManager`. Keyboard-only and mockup-comparison follow-up is
-tracked separately; the obsolete `gui-gtk` remains frozen in the workspace.
+listed in the published known-issues document; the obsolete `gui-gtk` remains frozen in the
+workspace.
 
 [← Back to index](README.md)
 
@@ -28,8 +29,8 @@ tracked separately; the obsolete `gui-gtk` remains frozen in the workspace.
 - Missing/malformed preferences recover safely; stale IDs disappear and new IDs append
   deterministically
 
-**Remaining**: keyboard-only and visual-parity checks in
-`.plan/UI_v2-final-validation.md`.
+**Remaining**: keyboard-only and visual-parity checks listed in
+[KNOWN_ISSUES.md](../KNOWN_ISSUES.md).
 
 **Implementation**: `crates/gui-core/src/preferences.rs`, `controller.rs`,
 `crates/gui-v2/src/profile_list.rs`
@@ -56,6 +57,11 @@ tracked separately; the obsolete `gui-gtk` remains frozen in the workspace.
 - Auth, account/password, 2FA and auto-reconnect choices reveal/hide and validate their actual
   local fields; unsupported backend behavior is labelled WIP
 - Remote/dynamic profiles are preserved and labelled unsupported rather than rewritten
+- Profiles remain editable under active tunnel statuses. A successful save leaves the current
+  tunnel untouched, explains that it still uses the previous settings, and offers **OK** or
+  **Reconnect now**
+- Reconnect waits for a structured inactive status before starting the saved profile; failed
+  saves never offer the action
 
 The user accepted profile and credential-store behavior during production cutover.
 
@@ -138,6 +144,8 @@ persistence_replaces_atomically_and_secures_the_target}` and `setup_wizard::test
 - Focus/default actions for editor and authentication dialogs
 - Wrapping action/metric layouts and bounded scrollers for narrow or long content
 - System light/dark styling
+- Daemon-supplied authentication copy uses the semantic window background rather than a
+  contrasting field/card surface
 
 **Remaining**: actual keyboard traversal/focus-order, Orca names/roles/live announcements,
 high contrast, enlarged system fonts, narrow resizing, long/localized content and visual
@@ -159,6 +167,8 @@ comparison in light/dark modes.
 - Main-window actions dispatch those shared commands instead of calling daemon/profile APIs
   directly
 - Feature availability and operation errors are shared presentation state
+- `ReconnectProfile` is a shared command/effect that composes stop, typed status polling, and
+  start, so a future tray does not need a second implementation
 
 **Remaining**: tray UX design, platform behavior, adapter implementation and tray-library
 selection. No tray dependency was added in v0.4.0.

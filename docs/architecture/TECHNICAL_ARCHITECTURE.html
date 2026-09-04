@@ -132,7 +132,7 @@
 <p class="subtitle">SSH Tunnel Manager — the decisions behind the implementation, and how the code is organised.</p>
 
 <div class="meta">
-  <span><strong>Version</strong> v0.5.0</span>
+  <span><strong>Version</strong> v0.6.0</span>
   <span><strong>Audience</strong> Contributors</span>
   <span><strong>Companion</strong> <a href="FUNCTIONAL_ARCHITECTURE.html">Functional Architecture</a></span>
 </div>
@@ -223,7 +223,7 @@
     <dt>Rationale</dt>
     <dd>Daemon/profile/security behavior is testable without GTK and cannot drift between the main window and a future tray. Widgets stay presentation-only, while <code>ActionAvailability</code> is the single source for enabled operations.</dd>
     <dt>Consequence</dt>
-    <dd><code>gui-v2</code> bridges the GLib main context to a dedicated Tokio runtime thread through messages. GTK objects never cross to Tokio tasks. The outgoing <code>AppCore</code> remains only for <code>gui-gtk</code> compatibility.</dd>
+    <dd><code>gui-v2</code> bridges the GLib main context to a dedicated Tokio runtime thread through messages. GTK objects never cross to Tokio tasks. Active-profile edits use the same boundary: a successful save may return a typed reconnect presentation request, and <code>ReconnectProfile</code> composes stop, structured-status wait, and start effects. The outgoing <code>AppCore</code> remains only for <code>gui-gtk</code> compatibility.</dd>
   </dl>
 </div>
 
@@ -445,6 +445,15 @@ if let Some(client) = client {
 </p>
 
 <p>
+  Profile editing is independent of connection state. On save, the controller checks the
+  current <code>TunnelStatus</code> and annotates the save effect when the previous profile is
+  active. Only a successful save yields <code>ConfirmReconnect</code>. Choosing reconnect sends
+  the reusable <code>ReconnectProfile</code> command; the runtime stops the tunnel, polls the
+  typed status response for up to ten seconds until it is inactive, then starts the newly
+  persisted profile. The normal SSE status events still complete controller operations.
+</p>
+
+<p>
   Before that Tokio runtime exists, GUI v2 asks the toolkit-neutral
   <code>ClientSetupRepository</code> to classify local <code>cli.toml</code> state. Only a
   parsed and field-validated configuration can construct <code>AppRuntime</code>. Missing or
@@ -622,9 +631,9 @@ if let Some(client) = client {
   <li>Teardown while connected, and teardown mid-authentication</li>
 </ul>
 <p>
-  Host names and credentials live only in <code>.local/testing/ssh-target.env</code>, which is
-  gitignored in its entirety. <strong>No committed file — script, test, document or CI
-  workflow — may contain them.</strong> The template is
+  Host names and credentials live only in the gitignored private test-target configuration.
+  <strong>No committed file — script, test, document or CI workflow — may contain
+  them.</strong> The published template is
   <code>docs/testing/ssh-target.env.template</code>.
 </p>
 <div class="note">
@@ -642,7 +651,7 @@ if let Some(client) = client {
 <ul>
   <li><code>scripts/dev-env.sh</code> — a sandbox with a daemon, a wired <code>cli.toml</code>, seeded profiles per auth type and the debug binaries on <code>PATH</code>. This is how the GTK GUI is exercised; it is not automated.</li>
   <li><code>scripts/test-network-modes.sh</code> — drives the CLI against all three listener modes, including TLS certificate generation and fingerprint pinning.</li>
-  <li>Production GUI validation — functional Bazzite/live-daemon acceptance is complete. Keyboard-only and mockup screen comparison remain in <code>.plan/UI_v2-final-validation.md</code>.</li>
+  <li>Production GUI validation — functional Bazzite/live-daemon acceptance is complete. Keyboard-only and screen comparison remain published follow-up items in <code>docs/KNOWN_ISSUES.md</code>.</li>
 </ul>
 
 <h3>5.5 CI</h3>

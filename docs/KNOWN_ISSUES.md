@@ -1,6 +1,6 @@
 # Known Issues & Limitations
 
-This document tracks known bugs, limitations, and missing features in SSH Tunnel Manager v0.5.0.
+This document tracks known bugs, limitations, and missing features in SSH Tunnel Manager v0.6.0.
 
 For missing features described as user stories with their status, see the
 [user stories](user-stories/). For what is planned about them, see [ROADMAP.md](ROADMAP.md).
@@ -106,7 +106,8 @@ For missing features described as user stories with their status, see the
 - **Status**: Follow-up validation; not a production-cutover blocker
 - **Current**: `ssh-tunnel-gui` is the default root-workspace, installer, and desktop target
 - **Remaining**: Complete keyboard-only review and compare the implemented screens with the
-  supplied mockups; tracked in `.plan/UI_v2-final-validation.md`
+  supplied design references. Functional profile, credential-store, daemon, SSE, and
+  authentication behavior has already been accepted.
 
 **System Tray Integration**
 - **Status**: Adapter and library selection deferred; reusable core commands are implemented

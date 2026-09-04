@@ -35,6 +35,11 @@ auto-reconnect. Drag handles reorder profiles in Manual order. Keyboard users
 can use **Move up** and **Move down** in the same menu; moves stay within the
 pinned or unpinned section. Name sorting intentionally disables manual moves.
 
+Profiles can be edited while connecting or connected. Saving does not alter the
+current tunnel: the new settings apply on its next connection. After a successful
+save, choose **OK** to leave the current connection alone or **Reconnect now** to
+stop it and start it again with the saved settings.
+
 Remote and dynamic/SOCKS profiles are preserved and displayed, but their daemon
 execution is unsupported. The GUI marks that limitation and never silently
 converts them to local forwarding. Importing `~/.ssh/config` is also WIP.
@@ -123,4 +128,4 @@ select a UI action. Unknown or contradictory protocol codes fail closed.
 - Repository: <https://github.com/SchirmForge/ssh-tunnel-manager>
 - Issues: <https://github.com/SchirmForge/ssh-tunnel-manager/issues>
 
-SSH Tunnel Manager v0.5.0 · released 2026-09-02 · Apache-2.0
+SSH Tunnel Manager v0.6.0 · released 2026-09-03 · Apache-2.0

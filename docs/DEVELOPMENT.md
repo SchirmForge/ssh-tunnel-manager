@@ -1,7 +1,7 @@
 # Development Guide
 
-**Version**: v0.5.0
-**Last Updated**: 2026-09-02
+**Version**: v0.6.0
+**Last Updated**: 2026-09-03
 
 ## Where documentation lives
 
@@ -18,10 +18,9 @@
 A behavioural change usually touches a user story **and** the changelog. A purely internal
 change touches the architecture documents instead.
 
-Development plans are **not** published: `.plan/` at the repository root is a local scratch
-area and is gitignored. Once a plan is acted on, what survives belongs in
-[ROADMAP.md](ROADMAP.md) if it is a decision, or in the architecture documents if it is a
-design — not in a plan file.
+Development plans are local scratch material and are not part of the published repository.
+Once a plan is acted on, what survives belongs in [ROADMAP.md](ROADMAP.md) if it is a
+decision, or in the architecture documents if it is a design.
 
 ## Development
 
@@ -221,11 +220,10 @@ privilege; those four skip here and are covered by tier 4.
 
 Drive the fixture directly with `scripts/ssh-fixture.sh up|down|status` when debugging.
 
-The fixture writes its own `.local/testing/ssh-target.env` — the same file the tier-4 target
-uses. If you already have a provisioned target configured there, `up` moves it aside to
-`ssh-target.env.real` and `down` puts it back. It used to overwrite it, which silently
-destroyed credentials that only existed in that file, and the only symptom was tier 4
-skipping every test afterwards while still reporting `ok`.
+The fixture writes the same gitignored private target configuration used by tier 4. If a
+provisioned target is already configured, `up` moves it aside and `down` restores it. The
+fixture used to overwrite that configuration, which silently destroyed credentials and left
+tier 4 skipping every test afterwards while still reporting `ok`.
 
 This is what CI runs on every pull request, so the SSH client path is exercised on every
 change rather than on demand.
@@ -241,22 +239,16 @@ make test-live
 ```
 
 It creates the accounts, generates every key and secret, configures sshd and PAM, and writes
-`.local/testing/ssh-target.env`. It is idempotent, takes the host as an argument and
-hardcodes nothing. Every `sshd_config` change is scoped with `Match User` to the test
+the private test-target configuration consumed by the live tests. It is idempotent, takes the
+host as an argument and hardcodes nothing. Every `sshd_config` change is scoped with `Match User` to the test
 accounts and validated with `sshd -t` before reload, so it cannot lock you out of the host.
 
-**Setup by hand**, if you would rather not use the script - copy the template and fill it in:
-
-```bash
-mkdir -p .local/testing
-cp docs/testing/ssh-target.env.template .local/testing/ssh-target.env
-chmod 600 .local/testing/ssh-target.env
-$EDITOR .local/testing/ssh-target.env
-```
-
-`.local/` is gitignored in its entirety. **Host names, user names, passwords, TOTP secrets
-and private keys belong only there** - never in a committed file, script, test or CI
-workflow. The tests read the target from that file; nothing is hardcoded.
+For hand setup, start with
+[`docs/testing/ssh-target.env.template`](testing/ssh-target.env.template) and use the private
+configuration location reported by `make test-live` when no target is configured. Protect the
+result with mode `0600`. **Host names, user names, passwords, TOTP secrets, and private keys
+must remain in that gitignored configuration**—never in a committed file, script, test, or CI
+workflow. Nothing is hardcoded.
 
 The file describes three accounts on the target server: key-only, password-only, and
 password + keyboard-interactive 2FA. Supplying the TOTP secret lets the tests generate
@@ -285,7 +277,7 @@ make sandbox ARGS="--mode unix-socket --profiles key,password,2fa"
 ```
 
 That builds debug binaries, starts a daemon, wires `cli.toml` to its generated token, seeds
-a profile per auth type from `.local/testing/ssh-target.env`, and drops you into a shell
+a profile per auth type from the private test-target configuration, and drops you into a shell
 with `ssh-tunnel` and `ssh-tunnel-gui` on `PATH` pointing at the sandbox:
 
 ```bash
@@ -311,7 +303,7 @@ cargo deny check
 
 Phase 7 validation and cutover evidence is recorded in
 [`crates/gui-v2/PHASE7_VALIDATION.md`](../crates/gui-v2/PHASE7_VALIDATION.md). Keyboard-only and
-mockup screen-comparison follow-up is tracked in `.plan/UI_v2-final-validation.md`.
+screen-comparison follow-up is listed in [KNOWN_ISSUES.md](KNOWN_ISSUES.md).
 
 ### Before pushing
 

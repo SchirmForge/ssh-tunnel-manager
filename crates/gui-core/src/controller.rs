@@ -13,7 +13,8 @@ use ssh_tunnel_common::{
 use uuid::Uuid;
 
 use crate::actions::{
-    ActionAvailability, AppCommand, ControllerEffect, ProfileAction, ProfileOperation,
+    profile_changes_require_reconnect, ActionAvailability, AppCommand, ControllerEffect,
+    ProfileAction, ProfileOperation,
 };
 use crate::auth::{AuthAnswerError, AuthPromptSnapshot, AuthQueue, AuthSubmission};
 use crate::preferences::{SortMode, UiPreferences};
@@ -405,10 +406,18 @@ impl AppController {
             }
             AppCommand::SaveProfile { request } => {
                 let profile_id = request.profile.metadata.id;
+                let offer_reconnect = request.overwrite
+                    && self
+                        .tunnel_statuses
+                        .get(&profile_id)
+                        .is_some_and(profile_changes_require_reconnect);
                 self.pending_operations
                     .insert(profile_id, ProfileOperation::Save);
                 self.bump_revision();
-                Ok(vec![ControllerEffect::SaveProfile { request }])
+                Ok(vec![ControllerEffect::SaveProfile {
+                    request,
+                    offer_reconnect,
+                }])
             }
             AppCommand::DuplicateProfile(profile_id) => {
                 self.require_action(profile_id, ProfileAction::Duplicate)?;
@@ -441,6 +450,12 @@ impl AppController {
                 ProfileAction::Disconnect,
                 ProfileOperation::Disconnect,
                 ControllerEffect::DisconnectProfile(profile_id),
+            ),
+            AppCommand::ReconnectProfile(profile_id) => self.queue_profile_effect(
+                profile_id,
+                ProfileAction::Reconnect,
+                ProfileOperation::Reconnect,
+                ControllerEffect::ReconnectProfile(profile_id),
             ),
             AppCommand::RetryProfile(profile_id) => self.queue_profile_effect(
                 profile_id,
@@ -940,6 +955,7 @@ mod tests {
 
     use super::*;
     use crate::auth::{AuthAnswer, AuthInputMode, AuthPromptKind};
+    use crate::editor::{CredentialUpdate, ProfileSaveRequest};
 
     fn profile(name: &str) -> Profile {
         Profile::new(
@@ -1009,6 +1025,57 @@ mod tests {
         let snapshot = controller.snapshot();
         assert!(snapshot.profiles[0].actions.disconnect);
         assert!(!snapshot.profiles[0].actions.connect);
+    }
+
+    #[test]
+    fn editing_an_active_profile_offers_a_structured_reconnect_after_save() {
+        let profile = profile("Active");
+        let profile_id = profile.metadata.id;
+        let mut controller = AppController::new();
+        controller.apply_event(ControllerEvent::ProfilesLoaded(vec![profile.clone()]));
+        controller.apply_event(ControllerEvent::DaemonConnectionChanged(true));
+        controller.apply_event(ControllerEvent::TunnelStatusChanged {
+            profile_id,
+            status: TunnelStatus::Connected,
+        });
+
+        let edit = controller
+            .dispatch(AppCommand::EditProfile(profile_id))
+            .expect("connected profiles remain editable");
+        assert!(matches!(
+            edit.as_slice(),
+            [ControllerEffect::OpenEditProfile(id)] if *id == profile_id
+        ));
+
+        let save = controller
+            .dispatch(AppCommand::SaveProfile {
+                request: Box::new(ProfileSaveRequest {
+                    profile: profile.clone(),
+                    overwrite: true,
+                    credential: CredentialUpdate::Keep,
+                }),
+            })
+            .expect("the edited profile should save");
+        assert!(matches!(
+            save.as_slice(),
+            [ControllerEffect::SaveProfile {
+                offer_reconnect: true,
+                ..
+            }]
+        ));
+
+        controller.apply_event(ControllerEvent::ProfileSaved(Box::new(profile)));
+        let reconnect = controller
+            .dispatch(AppCommand::ReconnectProfile(profile_id))
+            .expect("reconnect should be available after the save completes");
+        assert!(matches!(
+            reconnect.as_slice(),
+            [ControllerEffect::ReconnectProfile(id)] if *id == profile_id
+        ));
+        assert_eq!(
+            controller.snapshot().profiles[0].pending_operation,
+            Some(ProfileOperation::Reconnect)
+        );
     }
 
     #[test]

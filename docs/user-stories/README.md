@@ -34,7 +34,7 @@ reused, so references from commits, issues and tests stay valid.
 | 8 | [Security hardening](EPIC-08-security-hardening.md) | 9 | Permissions, authentication defaults, network restrictions |
 | 9 | [Deployment and operations](EPIC-09-deployment-operations.md) | 6 | Service setup, headless operation, packaging, diagnostics |
 | 10 | [Development and quality](EPIC-10-development-quality.md) | 14 | Testing, sandboxing and CI — stories for contributors |
-| 11 | [Second-generation desktop GUI](EPIC-11-desktop-gui-v2.md) | 7 | Adaptive profile UI, safe editing/authentication, accessibility and production rollout |
+| 11 | [Second-generation desktop GUI](EPIC-11-desktop-gui-v2.md) | 7 | Adaptive profile UI, active-profile editing, safe authentication, accessibility and production rollout |
 
 **89 stories**: 80 ✅ implemented, 4 ⚠️ partial, 5 ❌ not implemented.
 

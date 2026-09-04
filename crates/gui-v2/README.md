@@ -10,8 +10,11 @@ The profile list supports persisted pinning, manual ordering, name sorting,
 connected-only filtering, local search, selection, and the structured shared
 connect/cancel/disconnect/retry actions. Profile details, create/edit/duplicate,
 confirmed deletion, local key selection, and client-held credential storage are
-wired through `gui-core`. Human authentication uses one request-ID-keyed modal
-at a time, follows the core FIFO queue, obeys structured request/input codes,
+wired through `gui-core`. Active profiles remain editable; after saving, the
+user can keep the current tunnel on its previous settings or dispatch the shared
+structured reconnect action to apply the saved profile immediately. Human
+authentication uses one request-ID-keyed modal at a time, follows the core FIFO
+queue, obeys structured request/input codes,
 and waits for structured daemon confirmation after submit or cancel. Host-key
 copy is displayed without parsing. The daemon page renders structured
 checking, online, offline, and information states; health refresh/retry is real.
@@ -32,8 +35,9 @@ packages installed:
 cargo check --package ssh-tunnel-gui --locked
 ```
 
-The UI follows the system color scheme and font configuration. No font or
-appearance preference is bundled or forced.
+The UI follows the system color scheme and font configuration. Daemon prompt
+copy uses the semantic window background. No font or appearance preference is
+bundled or forced.
 
 Keyboard shortcuts include Control+F for profile search, Control+N for a new
 profile, F5 or Control+R for refresh, and Control+1/Control+2 for navigation.

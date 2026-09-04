@@ -54,8 +54,8 @@ credential_store = "keyutils" # or "auto", "secret-service", "none"
 Keyutils solves access without a desktop session, but its contents disappear on reboot. A
 daemon with no attached client can therefore still fail after restart when it needs a lost
 password/passphrase: it emits its structured prompt and times out after 60 seconds if nobody
-answers. Persistent unattended credentials are separate work tracked in
-`.plan/AUTH-02_unattended-credentials.md`.
+answers. Persistent unattended credentials require a separate reviewed security design; see
+the deferred work in [ROADMAP.md](../ROADMAP.md).
 
 ### Operational choices
 

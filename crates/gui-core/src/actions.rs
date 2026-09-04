@@ -17,6 +17,7 @@ pub enum ProfileAction {
     Connect,
     CancelConnection,
     Disconnect,
+    Reconnect,
     Retry,
     Edit,
     Duplicate,
@@ -31,6 +32,7 @@ pub enum ProfileOperation {
     Connect,
     CancelConnection,
     Disconnect,
+    Reconnect,
     Retry,
     Save,
     Duplicate,
@@ -45,6 +47,7 @@ pub struct ActionAvailability {
     pub connect: bool,
     pub cancel_connection: bool,
     pub disconnect: bool,
+    pub reconnect: bool,
     pub retry: bool,
     pub edit: bool,
     pub duplicate: bool,
@@ -60,10 +63,7 @@ impl ActionAvailability {
         status: &TunnelStatus,
         pending_operation: Option<ProfileOperation>,
     ) -> Self {
-        let inactive = matches!(
-            status,
-            TunnelStatus::NotConnected | TunnelStatus::Disconnected | TunnelStatus::Failed(_)
-        );
+        let inactive = !profile_changes_require_reconnect(status);
         let connectable = matches!(
             status,
             TunnelStatus::NotConnected | TunnelStatus::Disconnected
@@ -84,8 +84,11 @@ impl ActionAvailability {
             disconnect: daemon_connected
                 && operation_idle
                 && matches!(status, TunnelStatus::Connected),
+            reconnect: daemon_connected && operation_idle,
             retry: daemon_connected && operation_idle && matches!(status, TunnelStatus::Failed(_)),
-            edit: operation_idle && inactive,
+            // Editing is independent of tunnel state. A successful save while
+            // the old profile is active offers an explicit reconnect.
+            edit: operation_idle,
             duplicate: operation_idle,
             delete: operation_idle && inactive,
             pin: true,
@@ -99,6 +102,7 @@ impl ActionAvailability {
             ProfileAction::Connect => self.connect,
             ProfileAction::CancelConnection => self.cancel_connection,
             ProfileAction::Disconnect => self.disconnect,
+            ProfileAction::Reconnect => self.reconnect,
             ProfileAction::Retry => self.retry,
             ProfileAction::Edit => self.edit,
             ProfileAction::Duplicate => self.duplicate,
@@ -126,6 +130,7 @@ pub enum AppCommand {
     ConnectProfile(Uuid),
     CancelConnection(Uuid),
     DisconnectProfile(Uuid),
+    ReconnectProfile(Uuid),
     RetryProfile(Uuid),
     SetProfilePinned {
         profile_id: Uuid,
@@ -163,16 +168,39 @@ pub enum ControllerEffect {
     OpenEditProfile(Uuid),
     OpenDuplicateProfile(Uuid),
     ConfirmDeleteProfile(Uuid),
-    SaveProfile { request: Box<ProfileSaveRequest> },
+    SaveProfile {
+        request: Box<ProfileSaveRequest>,
+        offer_reconnect: bool,
+    },
     DeleteProfile(Uuid),
     ConnectProfile(Uuid),
     CancelConnection(Uuid),
     DisconnectProfile(Uuid),
+    ReconnectProfile(Uuid),
     RetryProfile(Uuid),
-    SetAutoReconnect { profile_id: Uuid, enabled: bool },
+    SetAutoReconnect {
+        profile_id: Uuid,
+        enabled: bool,
+    },
     PersistPreferences(UiPreferences),
     SubmitAuthentication(AuthSubmission),
-    CancelAuthentication { request_id: Uuid, tunnel_id: Uuid },
+    CancelAuthentication {
+        request_id: Uuid,
+        tunnel_id: Uuid,
+    },
+}
+
+/// Whether the daemon is using (or trying to use) the currently loaded profile.
+///
+/// This decision is deliberately based only on the structured tunnel status.
+pub(crate) fn profile_changes_require_reconnect(status: &TunnelStatus) -> bool {
+    matches!(
+        status,
+        TunnelStatus::Connecting
+            | TunnelStatus::WaitingForAuth
+            | TunnelStatus::Connected
+            | TunnelStatus::Reconnecting
+    )
 }
 
 #[cfg(test)]
@@ -184,7 +212,8 @@ mod tests {
         let connected = ActionAvailability::for_profile(true, &TunnelStatus::Connected, None);
         assert!(connected.disconnect);
         assert!(!connected.connect);
-        assert!(!connected.edit);
+        assert!(connected.edit);
+        assert!(connected.reconnect);
 
         let failed = ActionAvailability::for_profile(
             true,
@@ -195,6 +224,23 @@ mod tests {
         assert!(failed.retry);
         assert!(failed.edit);
         assert!(!failed.disconnect);
+    }
+
+    #[test]
+    fn reconnect_notice_uses_only_active_status_codes() {
+        for status in [
+            TunnelStatus::Connecting,
+            TunnelStatus::WaitingForAuth,
+            TunnelStatus::Connected,
+            TunnelStatus::Reconnecting,
+        ] {
+            assert!(profile_changes_require_reconnect(&status));
+            assert!(ActionAvailability::for_profile(true, &status, None).edit);
+        }
+
+        assert!(!profile_changes_require_reconnect(&TunnelStatus::Failed(
+            "Connected; reconnect now".to_string()
+        )));
     }
 
     #[test]

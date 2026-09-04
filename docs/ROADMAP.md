@@ -1,6 +1,6 @@
 # Roadmap
 
-**Last updated**: 2026-09-02 (v0.5.0)
+**Last updated**: 2026-09-03 (v0.6.0)
 
 What is planned, what is deliberately not, and the design decisions already taken for work
 that has not started yet.
@@ -64,14 +64,23 @@ Delivered in v0.4.0:
 - First-launch GUI v2 client setup with snippet import, manual/repair flows, and secure atomic
   `cli.toml` persistence before the daemon runtime starts
 
+Delivered in v0.6.0:
+
+- GUI v2 promoted to the production `ssh-tunnel-gui` package, binary, desktop entry, and
+  default workspace target; `gui-gtk` marked obsolete and frozen
+- Active-profile editing with an explicit post-save choice to keep the current tunnel or
+  reconnect immediately with the saved settings
+- Reusable, structured status-driven reconnect command/effect in `gui-core`
+- Authentication prompt copy aligned with the semantic window background
+
 Remaining:
-- Unattended credentials for a daemon with no client attached — see `.plan/AUTH-02`
+- Unattended credentials for a daemon with no client attached; this requires an explicit
+  security model for credential access without a connected client
 - The obsolete `gui-gtk` source still records the legacy storage value. It is frozen,
   excluded from default builds and packaging, and is not a supported editing path.
 - Fix whatever the live tier turns up once the test accounts exist on the target host
-- Close the test and audit backlog in `.plan/DEP-02_test-and-audit-backlog.md` — most
-  notably unit coverage for `tunnel.rs` and `keychain.rs`, and an sshd version matrix to
-  validate the v0.2.0 algorithm-negotiation changes against more than one server
+- Close the remaining test and audit backlog — most notably broader unit coverage for the
+  tunnel and credential-store paths, plus an sshd version matrix for algorithm negotiation
 - Decide whether `AUTH_RESPONSE_TIMEOUT` (60s) is the right value when nothing answers a
   credential prompt
 
@@ -97,8 +106,8 @@ Remaining:
 - `crates/gui-gtk` remains an obsolete, frozen workspace member on the same GTK binding
   generation. It is excluded from default builds and packaging; removal is not planned.
 
-Keyboard-only review and screen comparison continue separately in
-`.plan/UI_v2-final-validation.md`; they do not roll back the accepted production target.
+Keyboard-only review and screen comparison remain follow-up validation in
+[KNOWN_ISSUES.md](KNOWN_ISSUES.md); they do not roll back the accepted production target.
 
 ## Deferred or excluded from v0.4.0
 
@@ -109,7 +118,7 @@ backlog item.
 | Capability | v0.4.0 disposition | Future tracking / reason |
 |---|---|---|
 | Tray implementation and tray-library selection | **Deferred** | The shared snapshot and `AppCommand` action surface is implemented. A tray adapter and dependency will be selected only through a separate design review. |
-| Stored TOTP generation or secret persistence | **Deferred** | Server keyboard-interactive and structured two-factor prompts work. Persisting a seed changes the security model; see `.plan/EPIC-09_ssh-tunnel-integrated-totp.html` and `.plan/AUTH-02_unattended-credentials.md`. |
+| Stored TOTP generation or secret persistence | **Deferred** | Server keyboard-interactive and structured two-factor prompts work. Persisting a seed changes the security and unattended-credential model, so it requires a separate reviewed design. |
 | Daemon API for starting/restarting the daemon | **Deferred** | Health/info/refresh are real. GUI lifecycle controls remain WIP until an authenticated, scoped daemon/service-management contract is designed. |
 | SSH config import | **Deferred** | The GUI entry point is visibly WIP and performs no fake import. Parser, merge, conflict, and credential semantics need a separate feature plan. |
 | New traffic, uptime, or last-connected telemetry | **Deferred** | GUI v2 renders fields the daemon already supplies, including daemon-wide uptime. No new per-tunnel traffic, last-connected, or additional uptime field/endpoint was added. |

@@ -2,9 +2,9 @@
 
 ## Current State
 
-**Version**: v0.5.0
+**Version**: v0.6.0
 **Status**: ✅ Production-ready CLI, daemon, and GTK 4/libadwaita GUI
-**Release date**: 2026-09-02
+**Release date**: 2026-09-03
 
 A snapshot of what exists today. For what is planned see [ROADMAP.md](ROADMAP.md); for what
 shipped when see [CHANGELOG.md](CHANGELOG.md); for behaviour described from the user's point
@@ -20,7 +20,7 @@ of view see the [user stories](user-stories/).
 | Testing | ✅ Four tiers (static, hermetic, live SSH on a local fixture, live SSH on a real host), sandboxed, all but the last gating CI |
 | Supply chain | ✅ `cargo deny check` gates every pull request; git dependencies banned; 1 known advisory, documented as accepted |
 | Credential storage | ✅ Store selected at runtime and reported; works with a local or remote daemon; migrates from the pre-v0.2.0 store |
-| Auto-reconnect | ❌ Config options exist but nothing acts on them |
+| Automatic tunnel reconnect | ❌ Config options exist but nothing acts on them; the explicit post-edit **Reconnect now** action is manual and separate |
 | Notifications | ❌ Not implemented |
 
 ## What’s Implemented
@@ -61,6 +61,9 @@ of view see the [user stories](user-stories/).
 - Framework-agnostic application state and operations for GTK and future presentation adapters.
 - Shared `AppController`, immutable `AppSnapshot`, typed `AppCommand`/`ControllerEffect`,
   code-derived `ActionAvailability`, and explicit feature capabilities.
+- Shared active-profile reconnect action and presentation contract. The controller decides
+  from structured `TunnelStatus` values whether a successful edit needs a reconnect notice;
+  the runtime sequences stop, status, and start without parsing daemon text.
 - Toolkit-neutral runtime/effect executor for profile I/O, daemon health/inventory/SSE,
   preferences, authentication, editor persistence, and client-held credentials.
 - FIFO authentication queue and typed answers correlated by request/tunnel IDs. Structured
@@ -85,6 +88,8 @@ of view see the [user stories](user-stories/).
   pinning, drag ordering, and keyboard ordering within pin sections.
 - Shared connect/cancel/disconnect/retry, edit, duplicate, delete, pin, order, and
   auto-reconnect commands routed exclusively through `gui-core`.
+- Profiles remain editable while active. A successful save explains that the running tunnel
+  still uses its previous settings and offers **OK** or **Reconnect now**.
 - Profile editor with local/remote key-path semantics, redacted credential changes, dynamic
   auth/2FA/account/auto-reconnect fields, and explicit WIP capability presentation.
 - One request-ID-keyed authentication dialog at a time, FIFO advancement, structured hidden
@@ -92,11 +97,12 @@ of view see the [user stories](user-stories/).
 - Real daemon health/info/refresh, empty-profile and offline states. Start, restart, shutdown,
   SSH import, unsupported forwarding/runtime options, and missing telemetry are honest WIP
   surfaces.
-- System fonts, semantic theme colors, labelled controls, alert/status semantics, keyboard
-  shortcuts, wrapping layouts, and long-content scrollers.
+- System fonts, semantic theme colors, daemon prompt copy on the window background, labelled
+  controls, alert/status semantics, keyboard shortcuts, wrapping layouts, and long-content
+  scrollers.
 - Automated validation, Bazzite runtime launch, live daemon/SSE reconciliation, and user
-  regression acceptance pass. Final keyboard-only and screen-comparison checks remain in
-  `.plan/UI_v2-final-validation.md` and do not block the production target.
+  regression acceptance pass. Final keyboard-only and screen-comparison checks remain listed
+  in [KNOWN_ISSUES.md](KNOWN_ISSUES.md) and do not block the production target.
 
 ### ⛔ Obsolete GUI GTK (`crates/gui-gtk`)
 
@@ -158,6 +164,8 @@ Historical capabilities at the point it was frozen:
 ✅ Production GUI structured FIFO authentication and client-held credential resolution
 ✅ Production GUI daemon/empty/offline views and adaptive/accessibility groundwork
 ✅ `ssh-tunnel-gui` is the default executable and installed desktop entry
+✅ Active profiles can be edited, retained on their current settings, or reconnected with the
+saved settings through a structured status-driven action
 
 ✅ Sandboxed test suite across four tiers, blocking supply-chain audit, CI, clippy clean
 
